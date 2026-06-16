@@ -256,7 +256,7 @@ export default function App() {
         return n>max?n:max;
       },0);
       const yeniId=String(maxId+1).padStart(4,"0");
-      const [ins]=await sbInsert("hastalar",{ad,tel,cinsiyet,hasta_id:yeniId});
+      const [ins]=await sbInsert("lazer_hastalar",{ad,tel,cinsiyet,hasta_id:yeniId});
       const yeni={id:ins.id,ad,tel,cinsiyet,hasta_id:yeniId};
       setHastalar(prev=>[...prev,yeni]);
       return yeni;
