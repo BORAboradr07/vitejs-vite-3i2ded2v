@@ -113,7 +113,7 @@ export default function App() {
         setYukleniyor(true);
         const [r,h,b,sl,gl,bl]=await Promise.all([
           sbGet("randevular"),
-          sbGet("hastalar"),
+          sbGet("lazer_hastalar"),
           sbGet("bekleme"),
           sbGet("sil_log","order=id.desc"),
           sbGet("gunici_log","order=id.desc"),
@@ -249,8 +249,14 @@ export default function App() {
 
   async function hastaEkleDB(ad,tel,cinsiyet="Bayan"){
     try{
-      // Mevcut en yüksek hasta_id'yi bul ve bir artır
-      const mevcutlar=await sbGet("hastalar","select=hasta_id");
+      // Önce aynı isim ve telefon var mı kontrol et
+      const mevcutlar=await sbGet("lazer_hastalar","select=hasta_id,id,ad,tel,cinsiyet");
+      const varMi=mevcutlar.find(h=>h.ad?.toLowerCase().trim()===ad.toLowerCase().trim()&&h.tel?.trim()===tel?.trim());
+      if(varMi){
+        // Zaten var, mevcut kaydı döndür
+        return varMi;
+      }
+      // Yoksa yeni kayıt oluştur
       const maxId=mevcutlar.reduce((max,h)=>{
         const n=parseInt(h.hasta_id||"0");
         return n>max?n:max;
@@ -730,10 +736,21 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     if(yeni){setHasta(yeni.ad);setHastaId(yeni.id);setHastaTel(yeni.tel||"");setHastaCinsiyet(yeni.cinsiyet||"Bayan");setYeniHasta(false);setYeniAd("");setYeniTel("");}
   }
   async function submit(){
-    if(!hasta){alert("Hasta seçin.");return;}
+    // Hasta adı yazılmışsa ama listeden seçilmemişse otomatik kaydet
+    let aktifHasta=hasta;
+    let aktifHastaId=hastaId;
+    if(!aktifHasta&&hastaFiltre.trim()){
+      aktifHasta=hastaFiltre.trim();
+    }
+    if(!aktifHasta){alert("Hasta adı girin.");return;}
     if(seciliBolgeler.length===0){alert("En az bir bölge seçin.");return;}
     setKayitYapiliyor(true);
-    await onKaydet({id:basData.id||null,oda,hasta,hastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar});
+    // Listeden seçilmemişse otomatik kaydet
+    if(!hastaId&&aktifHasta.trim()){
+      const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel,hastaCinsiyet);
+      if(yeni) aktifHastaId=yeni.id;
+    }
+    await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar});
     setKayitYapiliyor(false);
   }
   const filtreliHastalar=hastaFiltre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(hastaFiltre.toLowerCase())||h.hasta_id?.includes(hastaFiltre)||h.tel?.includes(hastaFiltre)):[];
@@ -759,11 +776,37 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
                 style={{...inputStyle,fontSize:13,color:"#4338ca",background:"#eef0ff",border:"1px solid #a5b4fc"}}
                 placeholder="Hasta adını düzenle..."
               />
+              <input
+                value={hastaTel}
+                onChange={e=>setHastaTel(e.target.value)}
+                style={{...inputStyle,fontSize:13}}
+                placeholder="Telefon (opsiyonel)"
+              />
+              <div style={{display:"flex",gap:6}}>
+                {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
+              </div>
               {hastaTel&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}>
                 <span style={{fontSize:12,color:"#888"}}>📞</span>
                 <a href={`https://wa.me/90${hastaTel.replace(/[^0-9]/g,"").slice(-10)}`} target="_blank" style={{fontSize:14,fontWeight:600,color:"#16a34a",textDecoration:"none"}}>{hastaTel}</a>
                 <span style={{fontSize:11,color:"#888",marginLeft:"auto"}}>WhatsApp ile aç →</span>
               </div>}
+            </div>
+          )}
+          {!hasta&&hastaFiltre.trim().length>=1&&filtreliHastalar.length===0&&(
+            <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>
+                "{hastaFiltre}" listede yok — telefon ve cinsiyet girerek kaydet:
+              </div>
+              <input
+                value={hastaTel}
+                onChange={e=>setHastaTel(e.target.value)}
+                style={inputStyle}
+                placeholder="Telefon (opsiyonel)"
+              />
+              <div style={{display:"flex",gap:6}}>
+                {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
+              </div>
+              <button onClick={()=>{setHasta(hastaFiltre);setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12}}>✓ Bu isimle devam et</button>
             </div>
           )}
           <button onClick={()=>setYeniHasta(true)} style={{...chipStyle(false),marginTop:6,fontSize:12}}>+ Yeni Hasta Ekle</button>
