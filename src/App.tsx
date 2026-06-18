@@ -1,9 +1,24 @@
 import { useState, useEffect, useCallback } from "react";
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
-const SB_URL = "https://pwcyawsgjzjcydcisyvy.supabase.co";
-const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3Y3lhd3NnanpqY3lkY2lzeXZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNDA4MDEsImV4cCI6MjA5NDcxNjgwMX0.gnee9oYsFpxzdb_-H-JtRC2fU0Imj2Dajybt7or9a0Y";
+const SB_URL = "https://ukqfxyarurvrxjtumjfm.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVrcWZ4eWFydXJ2cnhqdHVtamZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MjcxMzYsImV4cCI6MjA5NTIwMzEzNn0.5SpZ5q4B1-qB5IcPFNUCFcxoKJuddThph_A16mE3gMk";
+
+// Kasa Supabase - sadece hasta kontrolü için
+const KASA_URL = "https://pwcyawsgjzjcydcisyvy.supabase.co";
+const KASA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3Y3lhd3NnanpqY3lkY2lzeXZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNDA4MDEsImV4cCI6MjA5NDcxNjgwMX0.gnee9oYsFpxzdb_-H-JtRC2fU0Imj2Dajybt7or9a0Y";
 const HDR = { "Content-Type":"application/json", "apikey":SB_KEY, "Authorization":"Bearer "+SB_KEY };
+
+
+async function kasadaHastaVarMi(ad){
+  try{
+    const r=await fetch(`${KASA_URL}/rest/v1/hastalar?ad=ilike.*${encodeURIComponent(ad.trim())}*&select=id,ad`,{
+      headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY}
+    });
+    if(!r.ok) return [];
+    return r.json();
+  } catch(e){ return []; }
+}
 
 async function sbGet(tablo, params=""){
   const r = await fetch(`${SB_URL}/rest/v1/${tablo}?${params}&order=id.asc`, {headers:{...HDR,"Prefer":"return=representation"}});
@@ -89,7 +104,7 @@ function islemRenk(bolgeler,oda,durum){
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [aktifRol,setAktifRol]       = useLocalStorage("kl_rol","sekreter");
+  const [aktifRol,setAktifRol]       = useState("sekreter");
   const [aktifSekme,setAktifSekme]   = useState("takvim");
   const [seciliTarih,setSeciliTarih] = useLocalStorage("kl_tarih",today());
   const [yoneticiKilit,setYoneticiKilit] = useState(true);
@@ -113,7 +128,7 @@ export default function App() {
         setYukleniyor(true);
         const [r,h,b,sl,gl,bl]=await Promise.all([
           sbGet("randevular"),
-          sbGet("lazer_hastalar"),
+          sbGet("hastalar"),
           sbGet("bekleme"),
           sbGet("sil_log","order=id.desc"),
           sbGet("gunici_log","order=id.desc"),
@@ -153,8 +168,12 @@ export default function App() {
   }
 
   async function randevuKaydet(data){
-    // Dr. Yok uyarısı
+    // Geçmiş tarihe randevu kontrolü
     const tarihKontrol=data.tarih||seciliTarih;
+    if(!data.id&&tarihKontrol<today()){
+      showToast("Geçmiş tarihe randevu oluşturulamaz!","error");
+      return false;
+    }
     const saatMin=timeToMin(data.saat);
     const bitisMin=saatMin+data.sure;
     const drYokVarMi=bloklar.filter(b=>b.baslik==="DR_YOK"&&b.tarih===tarihKontrol)
@@ -250,7 +269,7 @@ export default function App() {
   async function hastaEkleDB(ad,tel,cinsiyet="Bayan"){
     try{
       // Önce aynı isim ve telefon var mı kontrol et
-      const mevcutlar=await sbGet("lazer_hastalar","select=hasta_id,id,ad,tel,cinsiyet");
+      const mevcutlar=await sbGet("hastalar","select=hasta_id,id,ad,tel,cinsiyet");
       const varMi=mevcutlar.find(h=>h.ad?.toLowerCase().trim()===ad.toLowerCase().trim()&&h.tel?.trim()===tel?.trim());
       if(varMi){
         // Zaten var, mevcut kaydı döndür
@@ -262,7 +281,7 @@ export default function App() {
         return n>max?n:max;
       },0);
       const yeniId=String(maxId+1).padStart(4,"0");
-      const [ins]=await sbInsert("lazer_hastalar",{ad,tel,cinsiyet,hasta_id:yeniId});
+      const [ins]=await sbInsert("hastalar",{ad,tel,cinsiyet,hasta_id:yeniId});
       const yeni={id:ins.id,ad,tel,cinsiyet,hasta_id:yeniId};
       setHastalar(prev=>[...prev,yeni]);
       return yeni;
@@ -372,6 +391,8 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
   const [hastaAraPanel,setHastaAraPanel]=useState(false);
   const [tooltip,setTooltip]=useState(null);
   const [drYokPanel,setDrYokPanel]=useState(false);
+  const [kasaPanel,setKasaPanel]=useState(false);
+  const [kasaSifre,setKasaSifre]=useState(false);
   function prevDay(){setSeciliTarih(addDays(seciliTarih,-1));}
   function nextDay(){setSeciliTarih(addDays(seciliTarih,1));}
   const PX=1,LABEL_W=52,START=9*60,END=20*60,TOTAL=END-START,totalH=TOTAL*PX;
@@ -430,10 +451,12 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
           <button onClick={()=>{setBosPanel(p=>!p);setBlokPanel(false);setHastaAraPanel(false);}} style={{...navBtnStyle,background:bosPanel?"#eef0ff":"#f0f0ed",color:bosPanel?"#4338ca":"#444",border:bosPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>🔍 Boş Randevu Bul</button>
           {(aktifRol==="yonetici"||aktifRol==="sekreter")&&<button onClick={()=>{setBlokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setDrYokPanel(false);}} style={{...navBtnStyle,background:blokPanel?"#fee2e2":"#f0f0ed",color:blokPanel?"#dc2626":"#444",border:blokPanel?"1px solid #fca5a5":"1px solid #ddd"}}>🔒 Blok Kapat</button>}
           {(aktifRol==="yonetici"||aktifRol==="sekreter")&&<button onClick={()=>{setDrYokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);}} style={{...navBtnStyle,background:drYokPanel?"#fff7ed":"#f0f0ed",color:drYokPanel?"#c2410c":"#444",border:drYokPanel?"1px solid #fed7aa":"1px solid #ddd"}}>🩺 Dr. Yok</button>}
+          {aktifRol==="yonetici"&&<button onClick={()=>{if(!kasaSifre){const s=window.prompt("Yönetici şifresi:");if(s==="SUM26"){setKasaSifre(true);setKasaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}else{alert("Yanlış şifre!");}}else{setKasaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}}} style={{...navBtnStyle,background:kasaPanel?"#fef3c7":"#f0f0ed",color:kasaPanel?"#92400e":"#444",border:kasaPanel?"1px solid #fcd34d":"1px solid #ddd"}}>🔎 Kontrol</button>}
         </div>
       </div>
       {hastaAraPanel&&<HastaAraPanel randevular={randevular} onDuzenle={(r)=>{setHastaAraPanel(false);onRandevuDuzenle(r);}} onKapat={()=>setHastaAraPanel(false)}/>}
       {drYokPanel&&<DrYokPanel bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} seciliTarih={seciliTarih} showToast={showToast} onKapat={()=>setDrYokPanel(false)}/>}
+      {kasaPanel&&<KasaKontrolPanel gunRandevular={[...alexR,...sopR]} seciliTarih={seciliTarih} onKapat={()=>setKasaPanel(false)}/>}
       {bosPanel&&<BosRandevuPanel randevular={randevular} bloklar={bloklar} setSeciliTarih={setSeciliTarih} onYeniRandevu={onYeniRandevu} onKapat={()=>setBosPanel(false)}/>}
       {blokPanel&&<BlokPanel bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} seciliTarih={seciliTarih} showToast={showToast} onKapat={()=>setBlokPanel(false)}/>}
       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
@@ -575,6 +598,76 @@ function DrYokPanel({bloklar,blokEkle,blokSil,seciliTarih,showToast,onKapat}){
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+
+// ── KASA KONTROL PANEL ───────────────────────────────────────────────────────
+function KasaKontrolPanel({gunRandevular,seciliTarih,onKapat}){
+  const [sonuclar,setSonuclar]=useState(null);
+  const [yukleniyor,setYukleniyor]=useState(false);
+
+  const seanslar=gunRandevular.filter(r=>r.durum==="Seans");
+
+  async function kontrol(){
+    setYukleniyor(true);
+    const KASA_URL="https://pwcyawsgjzjcydcisyvy.supabase.co";
+    const KASA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3Y3lhd3NnanpqY3lkY2lzeXZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNDA4MDEsImV4cCI6MjA5NDcxNjgwMX0.gnee9oYsFpxzdb_-H-JtRC2fU0Imj2Dajybt7or9a0Y";
+    const sonuc=[];
+    for(const r of seanslar){
+      try{
+        const res=await fetch(`${KASA_URL}/rest/v1/hastalar?tarih=eq.${seciliTarih}&ad=ilike.*${encodeURIComponent(r.hasta.trim())}*&select=id,ad`,{
+          headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY}
+        });
+        const data=await res.json();
+        sonuc.push({hasta:r.hasta,oda:r.oda,saat:r.saat,kasada:data&&data.length>0});
+      } catch(e){
+        sonuc.push({hasta:r.hasta,oda:r.oda,saat:r.saat,kasada:false});
+      }
+    }
+    setSonuclar(sonuc);
+    setYukleniyor(false);
+  }
+
+  return(
+    <div style={{background:"#fff",border:"1.5px solid #fcd34d",borderRadius:12,padding:"1.25rem",marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{fontSize:15,fontWeight:600,color:"#92400e"}}>🔎 Kontrol — {seciliTarih}</div>
+        <button onClick={onKapat} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"#aaa"}}>✕</button>
+      </div>
+      {seanslar.length===0?(
+        <div style={{fontSize:13,color:"#aaa",textAlign:"center",padding:16}}>Bu günde seans kaydı yok.</div>
+      ):(
+        <>
+          <div style={{fontSize:13,color:"#666",marginBottom:12}}>
+            Bugün <strong>{seanslar.length}</strong> seans var. Kasada kayıtlı mı kontrol et:
+          </div>
+          <button onClick={kontrol} disabled={yukleniyor} style={{...btnPrimary,background:"#92400e",marginBottom:14}}>
+            {yukleniyor?"Kontrol ediliyor...":"Kasayı Kontrol Et"}
+          </button>
+          {sonuclar&&(
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600,color:"#999",marginBottom:8,padding:"0 4px"}}>
+                <span>HASTA</span><span>DURUM</span>
+              </div>
+              {sonuclar.map((s,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:s.kasada?"#f0fdf4":"#fff0f0",border:`1px solid ${s.kasada?"#bbf7d0":"#fca5a5"}`,borderRadius:10,marginBottom:6}}>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:14}}>{s.hasta}</div>
+                    <div style={{fontSize:12,color:"#888"}}>{s.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · {s.saat}</div>
+                  </div>
+                  <div style={{fontSize:20}}>{s.kasada?"✅":"⚠️"}</div>
+                </div>
+              ))}
+              <div style={{marginTop:12,padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,fontSize:13,color:"#92400e"}}>
+                ✅ Kasada: <strong>{sonuclar.filter(s=>s.kasada).length}</strong> &nbsp;|&nbsp; 
+                ⚠️ Kasada yok: <strong>{sonuclar.filter(s=>!s.kasada).length}</strong>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -725,6 +818,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
   const [notlar,setNotlar]=useState(basData.notlar||"");
   const [yeniHasta,setYeniHasta]=useState(false);const [yeniAd,setYeniAd]=useState("");const [yeniTel,setYeniTel]=useState("");
   const [hastaFiltre,setHastaFiltre]=useState("");const [kayitYapiliyor,setKayitYapiliyor]=useState(false);
+  const [kasaKontrol,setKasaKontrol]=useState(null);
   const bolgeler=oda==="alex"?ALEX_BOLGELER:SOPRANO_BOLGELER;
   const durumlar=oda==="alex"?DURUMLAR_ALEX:DURUMLAR_SOPRANO;
   useEffect(()=>{if(manuelSure)return;const t=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||15),0);setSure(durum==="Kontrol"?Math.ceil((t||15)/2):(t||15));},[seciliBolgeler,durum,manuelSure]);
@@ -747,6 +841,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     setKayitYapiliyor(true);
     // Listeden seçilmemişse otomatik kaydet
     if(!hastaId&&aktifHasta.trim()){
+      if(!hastaTel.trim()){showToast("Telefon numarası zorunlu!","error");setKayitYapiliyor(false);return;}
       const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel,hastaCinsiyet);
       if(yeni) aktifHastaId=yeni.id;
     }
@@ -762,63 +857,37 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
       <Label>Oda</Label>
       <div style={{display:"flex",gap:8,marginBottom:14}}>{[["alex","🟢 Alex Lazer"],["soprano","🟣 Soprano / Cilt / Forma"]].map(([k,l])=><button key={k} onClick={()=>{setOda(k);setSeciliBolgeler([]);setManuelSure(false);}} style={chipStyle(oda===k)}>{l}</button>)}</div>
       <Label>Hasta</Label>
-      {!yeniHasta?(
+      {!yeniHasta&&(
         <div style={{marginBottom:14}}>
-          <input value={hastaFiltre} onChange={e=>setHastaFiltre(e.target.value)} placeholder="İsim, ID veya telefon ara..." style={inputStyle}/>
+          <input value={hastaFiltre} onChange={async e=>{
+            setHastaFiltre(e.target.value);
+            setKasaKontrol(null);
+            if(e.target.value.trim().length>=2){
+              const sonuc=await kasadaHastaVarMi(e.target.value.trim());
+              setKasaKontrol(sonuc);
+            }
+          }} placeholder="İsim, ID veya telefon ara..." style={inputStyle}/>
+          {kasaKontrol!==null&&kasaKontrol.length===0&&hastaFiltre.trim().length>=2&&<div style={{fontSize:12,color:"#dc2626",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:8,padding:"6px 10px",marginTop:4}}>⚠️ Bu hasta kasada kayıtlı değil!</div>}
+          {kasaKontrol!==null&&kasaKontrol.length>0&&<div style={{fontSize:12,color:"#16a34a",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"6px 10px",marginTop:4}}>✅ Kasada kayıtlı.</div>}
           <div style={{maxHeight:130,overflowY:"auto",border:"1px solid #e0e0da",borderRadius:8,marginTop:4}}>
             {filtreliHastalar.map(h=><div key={h.id} onClick={()=>{setHasta(h.ad);setHastaId(h.id);setHastaTel(h.tel||"");setHastaCinsiyet(h.cinsiyet||"Bayan");setHastaFiltre("");}} style={{padding:"7px 12px",cursor:"pointer",background:hastaId===h.id?"#eef0ff":"transparent",borderBottom:"1px solid #f0f0ec",fontSize:14}}><strong>{h.ad}</strong>{h.hasta_id&&<span style={{background:"#6366f1",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:20,marginLeft:8}}>#{h.hasta_id}</span>}{h.tel&&<span style={{color:"#999",marginLeft:8,fontSize:12}}>{h.tel}</span>}</div>)}
           </div>
           {hasta&&(
             <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
-              <input
-                value={hasta}
-                onChange={e=>setHasta(e.target.value)}
-                style={{...inputStyle,fontSize:13,color:"#4338ca",background:"#eef0ff",border:"1px solid #a5b4fc"}}
-                placeholder="Hasta adını düzenle..."
-              />
-              <input
-                value={hastaTel}
-                onChange={e=>setHastaTel(e.target.value)}
-                style={{...inputStyle,fontSize:13}}
-                placeholder="Telefon (opsiyonel)"
-              />
-              <div style={{display:"flex",gap:6}}>
-                {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
-              </div>
-              {hastaTel&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}>
-                <span style={{fontSize:12,color:"#888"}}>📞</span>
-                <a href={`https://wa.me/90${hastaTel.replace(/[^0-9]/g,"").slice(-10)}`} target="_blank" style={{fontSize:14,fontWeight:600,color:"#16a34a",textDecoration:"none"}}>{hastaTel}</a>
-                <span style={{fontSize:11,color:"#888",marginLeft:"auto"}}>WhatsApp ile aç →</span>
-              </div>}
+              <input value={hasta} onChange={e=>setHasta(e.target.value)} style={{...inputStyle,fontSize:13,color:"#4338ca",background:"#eef0ff",border:"1px solid #a5b4fc"}} placeholder="Hasta adını düzenle..."/>
+              <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
+              <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
+              {hastaTel&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}><span style={{fontSize:12,color:"#888"}}>📞</span><a href={`https://wa.me/90${hastaTel.replace(/[^0-9]/g,"").slice(-10)}`} target="_blank" style={{fontSize:14,fontWeight:600,color:"#16a34a",textDecoration:"none"}}>{hastaTel}</a></div>}
             </div>
           )}
           {!hasta&&hastaFiltre.trim().length>=1&&filtreliHastalar.length===0&&(
             <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
-              <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>
-                "{hastaFiltre}" listede yok — telefon ve cinsiyet girerek kaydet:
-              </div>
-              <input
-                value={hastaTel}
-                onChange={e=>setHastaTel(e.target.value)}
-                style={inputStyle}
-                placeholder="Telefon (opsiyonel)"
-              />
-              <div style={{display:"flex",gap:6}}>
-                {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
-              </div>
+              <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>"{hastaFiltre}" listede yok — bilgileri girin:</div>
+              <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
+              <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
               <button onClick={()=>{setHasta(hastaFiltre);setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12}}>✓ Bu isimle devam et</button>
             </div>
           )}
-          <button onClick={()=>setYeniHasta(true)} style={{...chipStyle(false),marginTop:6,fontSize:12}}>+ Yeni Hasta Ekle</button>
-        </div>
-      ):(
-        <div style={{background:"#f7f7f5",borderRadius:10,padding:12,marginBottom:14}}>
-          <input value={yeniAd} onChange={e=>setYeniAd(e.target.value)} placeholder="Ad Soyad *" style={{...inputStyle,marginBottom:6}}/>
-          <input value={yeniTel} onChange={e=>setYeniTel(e.target.value)} placeholder="Telefon" style={{...inputStyle,marginBottom:6}}/>
-          <div style={{display:"flex",gap:6,marginBottom:8}}>
-            {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
-          </div>
-          <div style={{display:"flex",gap:6}}><button onClick={hastaEkle} style={btnPrimary}>Kaydet</button><button onClick={()=>setYeniHasta(false)} style={btnSecondary}>İptal</button></div>
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
