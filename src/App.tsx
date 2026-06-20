@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
 const SB_URL = "https://ukqfxyarurvrxjtumjfm.supabase.co";
@@ -60,8 +60,10 @@ function useLocalStorage(key, init) {
 const BOLGE_SURELER = {
   "T.Bacak":30,"T.Kol":15,"Göbek":15,"Sırt":30,"Yüz":15,
   "Koltukaltı":10,"Genital":12,"Ense":10,"Sakal Üstü":10,
-  "Boyun":10,"Bel":15,"Göğüs Arası":5,"Omuz":15,"Popo":15,
+  "Boyun":10,"Bel":15,"Göğüs Arası":10,"Omuz":15,"Popo":15,
   "Koltuk Altı":10,"Karbon":30,"Cilt Bakımı":75,"Forma":45,"Tüy Sarartma":20,
+  "Çene":10,"Bıyık":10,"Kulak Önü":10,"Alın":10,"Göğüs Ucu":10,
+  "Alt Bacak":15,"Üst Bacak":20,"Yarım Kol":10,
 };
 const ISLEM_KATEGORI = {"Karbon":"karbon","Cilt Bakımı":"cilt","Forma":"forma","Tüy Sarartma":"tuysarart"};
 const RENK = {
@@ -73,15 +75,15 @@ const RENK = {
   gelmedi:   {bg:"#7a3f3f",brd:"#9b5050",label:"Gelmedi"},
   blok:      {bg:"#555",brd:"#777",label:"Blok"},
 };
-const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Karbon","Cilt Bakımı","Forma","Tüy Sarartma"];
-const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo"];
+const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Karbon","Cilt Bakımı","Forma","Tüy Sarartma"];
+const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol"];
 const ODEME_TIPLERI    = ["Nakit","Kart","EFT","Ödeme Alınmadı"];
 const DURUMLAR_ALEX    = ["Seans","Kontrol","Gelmedi"];
 const DURUMLAR_SOPRANO = ["Seans","Gelmedi"];
 const ROLLER = {yonetici:"Yönetici",sekreter:"Sekreter",personel:"Uygulayıcı"};
 
 const SAATLER = [];
-for(let h=9;h<=20;h++) for(let m=0;m<60;m+=15){if(h===20&&m>0)break;SAATLER.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);}
+for(let h=9;h<=20;h++) for(let m=0;m<60;m+=5){if(h===20&&m>0)break;SAATLER.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);}
 
 function timeToMin(t){const[h,m]=t.split(":").map(Number);return h*60+m;}
 function minToTime(m){return `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;}
@@ -268,15 +270,13 @@ export default function App() {
 
   async function hastaEkleDB(ad,tel,cinsiyet="Bayan"){
     try{
-      // Önce aynı isim ve telefon var mı kontrol et
-      const mevcutlar=await sbGet("hastalar","select=hasta_id,id,ad,tel,cinsiyet");
-      const varMi=mevcutlar.find(h=>h.ad?.toLowerCase().trim()===ad.toLowerCase().trim()&&h.tel?.trim()===tel?.trim());
+      // Önce mevcut hastalar listesinde (state'ten, sorgu atmadan) ara
+      const varMi=hastalar.find(h=>h.ad?.toLowerCase().trim()===ad.toLowerCase().trim()&&h.tel?.trim()===tel?.trim());
       if(varMi){
-        // Zaten var, mevcut kaydı döndür
         return varMi;
       }
-      // Yoksa yeni kayıt oluştur
-      const maxId=mevcutlar.reduce((max,h)=>{
+      // Yoksa yeni kayıt oluştur — ID'yi mevcut state'ten hesapla
+      const maxId=hastalar.reduce((max,h)=>{
         const n=parseInt(h.hasta_id||"0");
         return n>max?n:max;
       },0);
@@ -406,7 +406,19 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
     const top=(timeToMin(b.saat)-START)*PX,height=Math.max(b.sure*PX-2,18);
     return{position:"absolute",top,left:2,right:2,height,background:"repeating-linear-gradient(45deg,#888,#888 4px,#aaa 4px,#aaa 8px)",border:"1px solid #666",borderRadius:6,padding:"3px 7px",cursor:"pointer",overflow:"hidden",zIndex:2,opacity:0.85};
   }
+  function bosluklariBul(randevular,bloklar){
+    const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
+    const bosluklar=[];
+    let imlec=START;
+    meşgul.forEach(m=>{
+      if(m.b>imlec) bosluklar.push({b:imlec,e:m.b});
+      imlec=Math.max(imlec,m.e);
+    });
+    if(imlec<END) bosluklar.push({b:imlec,e:END});
+    return bosluklar.filter(bo=>bo.e-bo.b>0&&bo.e-bo.b<60);
+  }
   function renderOda(randevular,bloklar,odaId){
+    const bosluklar=bosluklariBul(randevular,bloklar);
     return(
       <div style={{flex:1,position:"relative"}}>
         {Array.from({length:TOTAL/15},(_,i)=>{const min=START+i*15;const isHour=min%60===0;const isHalf=min%60===30;return<div key={i} style={{position:"absolute",top:i*15,left:0,right:0,height:15,borderTop:isHour?"1px solid #c8c8c0":isHalf?"1px dashed #ddddd8":"1px solid #efefec",background:isHour?"#f8f8f6":"transparent",boxSizing:"border-box"}}/>;},)}
@@ -420,6 +432,14 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
           ):(
             <div key={"b"+b.id} style={blokStyle(b)} onClick={()=>{if(window.confirm(`"${b.baslik}" bloğunu sil?`))blokSil(b.id);}}>
               <div style={{fontSize:11,fontWeight:600,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>🔒 {b.baslik}</div>
+            </div>
+          );
+        })}
+        {bosluklar.map((bo,i)=>{
+          const top=(bo.b-START)*PX,height=bo.e-bo.b;
+          return(
+            <div key={"bo"+i} style={{position:"absolute",top,left:2,right:2,height,background:"rgba(251,191,36,0.18)",border:"1px dashed #f59e0b",borderRadius:4,zIndex:1,pointerEvents:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {height>=12&&<span style={{fontSize:9,color:"#92400e",fontWeight:600}}>{bo.e-bo.b}dk boş</span>}
             </div>
           );
         })}
@@ -819,6 +839,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
   const [yeniHasta,setYeniHasta]=useState(false);const [yeniAd,setYeniAd]=useState("");const [yeniTel,setYeniTel]=useState("");
   const [hastaFiltre,setHastaFiltre]=useState("");const [kayitYapiliyor,setKayitYapiliyor]=useState(false);
   const [kasaKontrol,setKasaKontrol]=useState(null);
+  const kasaTimerRef=useRef(null);
   const bolgeler=oda==="alex"?ALEX_BOLGELER:SOPRANO_BOLGELER;
   const durumlar=oda==="alex"?DURUMLAR_ALEX:DURUMLAR_SOPRANO;
   useEffect(()=>{if(manuelSure)return;const t=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||15),0);setSure(durum==="Kontrol"?Math.ceil((t||15)/2):(t||15));},[seciliBolgeler,durum,manuelSure]);
@@ -859,12 +880,16 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
       <Label>Hasta</Label>
       {!yeniHasta&&(
         <div style={{marginBottom:14}}>
-          <input value={hastaFiltre} onChange={async e=>{
-            setHastaFiltre(e.target.value);
+          <input value={hastaFiltre} onChange={e=>{
+            const val=e.target.value;
+            setHastaFiltre(val);
             setKasaKontrol(null);
-            if(e.target.value.trim().length>=2){
-              const sonuc=await kasadaHastaVarMi(e.target.value.trim());
-              setKasaKontrol(sonuc);
+            if(kasaTimerRef.current) clearTimeout(kasaTimerRef.current);
+            if(val.trim().length>=2){
+              kasaTimerRef.current=setTimeout(async()=>{
+                const sonuc=await kasadaHastaVarMi(val.trim());
+                setKasaKontrol(sonuc);
+              },500);
             }
           }} placeholder="İsim, ID veya telefon ara..." style={inputStyle}/>
           {kasaKontrol!==null&&kasaKontrol.length===0&&hastaFiltre.trim().length>=2&&<div style={{fontSize:12,color:"#dc2626",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:8,padding:"6px 10px",marginTop:4}}>⚠️ Bu hasta kasada kayıtlı değil!</div>}
