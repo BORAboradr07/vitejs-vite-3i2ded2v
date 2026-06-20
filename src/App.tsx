@@ -61,9 +61,9 @@ const BOLGE_SURELER = {
   "T.Bacak":30,"T.Kol":15,"Göbek":15,"Sırt":30,"Yüz":15,
   "Koltukaltı":10,"Genital":12,"Ense":10,"Sakal Üstü":10,
   "Boyun":10,"Bel":15,"Göğüs Arası":10,"Omuz":15,"Popo":15,
-  "Koltuk Altı":10,"Karbon":30,"Cilt Bakımı":75,"Forma":45,"Tüy Sarartma":20,
+  "Koltuk Altı":10,"Karbon":20,"Cilt Bakımı":75,"Forma":45,"Tüy Sarartma":20,
   "Çene":10,"Bıyık":10,"Kulak Önü":10,"Alın":10,"Göğüs Ucu":10,
-  "Alt Bacak":15,"Üst Bacak":20,"Yarım Kol":10,
+  "Alt Bacak":15,"Üst Bacak":20,"Yarım Kol":10,"Gövde":30,
 };
 const ISLEM_KATEGORI = {"Karbon":"karbon","Cilt Bakımı":"cilt","Forma":"forma","Tüy Sarartma":"tuysarart"};
 const RENK = {
@@ -75,8 +75,8 @@ const RENK = {
   gelmedi:   {bg:"#7a3f3f",brd:"#9b5050",label:"Gelmedi"},
   blok:      {bg:"#555",brd:"#777",label:"Blok"},
 };
-const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Karbon","Cilt Bakımı","Forma","Tüy Sarartma"];
-const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol"];
+const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde","Karbon","Cilt Bakımı","Forma","Tüy Sarartma"];
+const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde"];
 const ODEME_TIPLERI    = ["Nakit","Kart","EFT","Ödeme Alınmadı"];
 const DURUMLAR_ALEX    = ["Seans","Kontrol","Gelmedi"];
 const DURUMLAR_SOPRANO = ["Seans","Gelmedi"];
@@ -860,11 +860,14 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     if(!aktifHasta){alert("Hasta adı girin.");return;}
     if(seciliBolgeler.length===0){alert("En az bir bölge seçin.");return;}
     setKayitYapiliyor(true);
-    // Listeden seçilmemişse otomatik kaydet
-    if(!hastaId&&aktifHasta.trim()){
+    // Düzenleme modundaysa ve hasta zaten kayıtlıysa (basData'da hastaId varsa), tekrar hasta eklemeye çalışma
+    const zatenKayitli=duzenleme&&basData.hastaId;
+    if(!hastaId&&!zatenKayitli&&aktifHasta.trim()){
       if(!hastaTel.trim()){showToast("Telefon numarası zorunlu!","error");setKayitYapiliyor(false);return;}
       const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel,hastaCinsiyet);
       if(yeni) aktifHastaId=yeni.id;
+    } else if(zatenKayitli&&!aktifHastaId){
+      aktifHastaId=basData.hastaId;
     }
     await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar});
     setKayitYapiliyor(false);
