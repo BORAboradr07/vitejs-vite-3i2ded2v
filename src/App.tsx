@@ -365,14 +365,14 @@ export default function App() {
           {[["takvim","📅 Takvim",0],["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
             ...(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="personel"?[["rapor","📊 Rapor",0]]:[]),
             ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
-            ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["dashboard","📈 Kontrol",0]]:[])]
+            ["dashboard","📅 Boş Randevular",0]]
             .map(([k,l,badge])=>(
             <button key={k} onClick={()=>{
               if((k==="rapor"||k==="log")&&yoneticiKilit){setSifreModal(k);}
-              else if(k==="dashboard"&&!dashboardKilit){setSifreModal(k);}
+
               else setAktifSekme(k);
             }} style={{padding:"12px 16px",background:"none",border:"none",borderBottom:aktifSekme===k?"2px solid #6366f1":"2px solid transparent",color:aktifSekme===k?"#6366f1":"#666",fontWeight:aktifSekme===k?600:400,fontSize:14,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
-              {l}{(k==="rapor"||k==="log")&&yoneticiKilit&&<span style={{fontSize:11,opacity:0.5}}>🔒</span>}{k==="dashboard"&&!dashboardKilit&&<span style={{fontSize:11,opacity:0.5}}>🔒</span>}{badge>0&&<span style={{background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:20}}>{badge}</span>}
+              {l}{(k==="rapor"||k==="log")&&yoneticiKilit&&<span style={{fontSize:11,opacity:0.5}}>🔒</span>}{badge>0&&<span style={{background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:20}}>{badge}</span>}
             </button>
           ))}
         </div>
@@ -382,7 +382,7 @@ export default function App() {
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} showToast={showToast} randevular={randevular} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle}/>}
         {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular}/>}
-        {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={setSeciliTarih} setAktifSekme={setAktifSekme}/>}
+        {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
         {aktifSekme==="log"&&aktifRol==="yonetici"&&<LogSekme randevular={randevular} silLog={silLog} gunIciLog={gunIciLog}/>}
       </div>
       {modal&&(
@@ -1225,104 +1225,132 @@ function HastalarSekme({hastalar,hastaEkleDB,aktifRol,showToast,randevular,onRan
 // ── RAPOR ────────────────────────────────────────────────────────────────────
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme}){
+function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme,onYeniRandevu}){
   const bugun=today();
-  const yarin=addDays(bugun,1);
+  const [offset,setOffset]=useState(0);
+  const seciliGun=addDays(bugun,offset);
 
   function gunBoslukBul(tarih){
     const sonuc={alex:[],soprano:[]};
     ["alex","soprano"].forEach(oda=>{
       const gunR=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat));
       const gunB=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih);
-      const meşgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
+      const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
       let imlec=9*60;
-      meşgul.forEach(m=>{
-        if(m.b>imlec+10) sonuc[oda].push(minToTime(imlec));
+      mesgul.forEach(m=>{
+        if(m.b>imlec+5){sonuc[oda].push({saat:minToTime(imlec),dk:m.b-imlec});}
         imlec=Math.max(imlec,m.e);
       });
-      if(imlec<20*60-10) sonuc[oda].push(minToTime(imlec));
+      if(imlec<20*60-5) sonuc[oda].push({saat:minToTime(imlec),dk:(20*60)-imlec});
     });
     return sonuc;
   }
 
-  const bugunBosluk=gunBoslukBul(bugun);
-  const yarinBosluk=gunBoslukBul(yarin);
+  const gunBosluk=gunBoslukBul(seciliGun);
 
   const bekleyenler=bekleme.filter(b=>b.durum==="bekliyor");
-  const tumBosluklar=[...bugunBosluk.alex.map(s=>({tarih:bugun,oda:"alex",saat:s})),...bugunBosluk.soprano.map(s=>({tarih:bugun,oda:"soprano",saat:s})),...yarinBosluk.alex.map(s=>({tarih:yarin,oda:"alex",saat:s})),...yarinBosluk.soprano.map(s=>({tarih:yarin,oda:"soprano",saat:s}))];
+  const tumBosluklar7=Array.from({length:7},(_,i)=>addDays(bugun,i)).flatMap(t=>[
+    ...gunBoslukBul(t).alex.map(s=>({tarih:t,oda:"alex",...s})),
+    ...gunBoslukBul(t).soprano.map(s=>({tarih:t,oda:"soprano",...s}))
+  ]);
 
   // Haftalık doluluk
   const haftaGunleri=Array.from({length:7},(_,i)=>addDays(bugun,i));
   const haftaDoluluk=haftaGunleri.map(t=>{
     const gunR=randevular.filter(r=>r.tarih===t&&r.durum!=="Gelmedi");
     const toplamDk=gunR.reduce((s,r)=>s+r.sure,0);
-    const kapasite=2*(20-9)*60; // 2 oda, 9-20 arası
+    const kapasite=2*(20-9)*60;
     return {tarih:t,yuzde:Math.min(100,Math.round(toplamDk/kapasite*100))};
   });
 
+  const gunAdi=offset===0?"Bugün":offset===1?"Yarın":formatDate(seciliGun);
+
   return(
     <div>
-      <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>📈 Kontrol</h2>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>📅 Boş Randevular</h2>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
-        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.25rem"}}>
-          <div style={{fontSize:13,fontWeight:600,color:"#666",marginBottom:10}}>📅 Bugünkü Boşluklar — {formatDate(bugun)}</div>
-          {bugunBosluk.alex.length===0&&bugunBosluk.soprano.length===0?(
-            <div style={{fontSize:13,color:"#aaa"}}>Bugün boşluk yok, tamamen dolu.</div>
-          ):(
-            <>
-              {bugunBosluk.alex.length>0&&<div style={{marginBottom:8}}><span style={{fontSize:12,color:"#2d6a35",fontWeight:600}}>🟢 Alex: </span><span style={{fontSize:13}}>{bugunBosluk.alex.join(" · ")}</span></div>}
-              {bugunBosluk.soprano.length>0&&<div><span style={{fontSize:12,color:"#5b3fa0",fontWeight:600}}>🟣 Soprano: </span><span style={{fontSize:13}}>{bugunBosluk.soprano.join(" · ")}</span></div>}
-            </>
-          )}
+      {/* Günlük Boşluklar - Kaydırılabilir */}
+      <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.25rem",marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <button onClick={()=>setOffset(o=>Math.max(0,o-1))} disabled={offset===0} style={{background:"none",border:"1px solid #ddd",borderRadius:8,padding:"4px 12px",cursor:offset===0?"not-allowed":"pointer",fontSize:16,color:offset===0?"#ccc":"#444"}}>←</button>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:14,fontWeight:600,color:"#333"}}>{gunAdi}</div>
+            <div style={{fontSize:12,color:"#888"}}>{formatDate(seciliGun)}</div>
+          </div>
+          <button onClick={()=>setOffset(o=>Math.min(6,o+1))} disabled={offset===6} style={{background:"none",border:"1px solid #ddd",borderRadius:8,padding:"4px 12px",cursor:offset===6?"not-allowed":"pointer",fontSize:16,color:offset===6?"#ccc":"#444"}}>→</button>
         </div>
-        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.25rem"}}>
-          <div style={{fontSize:13,fontWeight:600,color:"#666",marginBottom:10}}>📅 Yarınki Boşluklar — {formatDate(yarin)}</div>
-          {yarinBosluk.alex.length===0&&yarinBosluk.soprano.length===0?(
-            <div style={{fontSize:13,color:"#aaa"}}>Yarın boşluk yok, tamamen dolu.</div>
-          ):(
-            <>
-              {yarinBosluk.alex.length>0&&<div style={{marginBottom:8}}><span style={{fontSize:12,color:"#2d6a35",fontWeight:600}}>🟢 Alex: </span><span style={{fontSize:13}}>{yarinBosluk.alex.join(" · ")}</span></div>}
-              {yarinBosluk.soprano.length>0&&<div><span style={{fontSize:12,color:"#5b3fa0",fontWeight:600}}>🟣 Soprano: </span><span style={{fontSize:13}}>{yarinBosluk.soprano.join(" · ")}</span></div>}
-            </>
-          )}
-        </div>
+        {gunBosluk.alex.length===0&&gunBosluk.soprano.length===0?(
+          <div style={{fontSize:13,color:"#aaa",textAlign:"center",padding:12}}>Bu gün boşluk yok, tamamen dolu.</div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {gunBosluk.alex.length>0&&(
+              <div>
+                <div style={{fontSize:12,color:"#2d6a35",fontWeight:600,marginBottom:4}}>🟢 Alex Lazer</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {gunBosluk.alex.map((b,i)=>(
+                    <span key={i} onClick={()=>onYeniRandevu("alex",b.saat,seciliGun)} style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:20,padding:"3px 10px",fontSize:12,color:"#166534",cursor:"pointer"}}>
+                      {b.saat} · {b.dk}dk +
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {gunBosluk.soprano.length>0&&(
+              <div>
+                <div style={{fontSize:12,color:"#5b3fa0",fontWeight:600,marginBottom:4}}>🟣 Soprano / Cilt</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {gunBosluk.soprano.map((b,i)=>(
+                    <span key={i} onClick={()=>onYeniRandevu("soprano",b.saat,seciliGun)} style={{background:"#f5f3ff",border:"1px solid #c4b5fd",borderRadius:20,padding:"3px 10px",fontSize:12,color:"#5b21b6",cursor:"pointer"}}>
+                      {b.saat} · {b.dk}dk +
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Bekleyenler */}
       <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.25rem",marginBottom:16}}>
         <div style={{fontSize:13,fontWeight:600,color:"#666",marginBottom:10}}>⏳ Bekleyenler — Uygun Boşlukla Eşleştirme</div>
         {bekleyenler.length===0?(
           <div style={{fontSize:13,color:"#aaa"}}>Bekleme listesi boş.</div>
         ):(
-          bekleyenler.map(b=>(
-            <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"#f7f7f5",borderRadius:8,marginBottom:6}}>
-              <div>
-                <span style={{fontWeight:500,fontSize:14}}>{b.ad}</span>
-                <span style={{fontSize:12,color:"#888",marginLeft:8}}>{b.oda==="alex"?"Alex":"Soprano/Cilt/Forma"}</span>
+          bekleyenler.map(b=>{
+            const uygunSlot=tumBosluklar7.find(s=>s.oda===b.oda);
+            return(
+              <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"#f7f7f5",borderRadius:8,marginBottom:6,gap:8}}>
+                <div>
+                  <span style={{fontWeight:500,fontSize:14}}>{b.ad}</span>
+                  <span style={{fontSize:12,color:"#888",marginLeft:8}}>{b.oda==="alex"?"🟢 Alex":"🟣 Soprano"}</span>
+                </div>
+                {uygunSlot?(
+                  <button onClick={()=>{setSeciliTarih(uygunSlot.tarih);setAktifSekme("takvim");}} style={{...btnPrimary,fontSize:12,padding:"5px 12px",whiteSpace:"nowrap"}}>
+                    {uygunSlot.tarih===bugun?"Bugün":uygunSlot.tarih===addDays(bugun,1)?"Yarın":uygunSlot.tarih} {uygunSlot.saat} →
+                  </button>
+                ):(
+                  <span style={{fontSize:12,color:"#aaa"}}>Uygun slot yok</span>
+                )}
               </div>
-              {tumBosluklar.filter(s=>s.oda===b.oda).length>0?(
-                <button onClick={()=>{const ilk=tumBosluklar.filter(s=>s.oda===b.oda)[0];setSeciliTarih(ilk.tarih);setAktifSekme("takvim");}} style={{...btnPrimary,fontSize:12,padding:"5px 12px"}}>
-                  {tumBosluklar.filter(s=>s.oda===b.oda)[0].tarih===bugun?"Bugün":"Yarın"} {tumBosluklar.filter(s=>s.oda===b.oda)[0].saat} → Randevuya Çevir
-                </button>
-              ):(
-                <span style={{fontSize:12,color:"#aaa"}}>Uygun slot yok</span>
-              )}
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
+      {/* Haftalık Doluluk */}
       <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.25rem"}}>
         <div style={{fontSize:13,fontWeight:600,color:"#666",marginBottom:14}}>📊 Haftalık Doluluk</div>
         <div style={{display:"flex",alignItems:"flex-end",gap:8,height:80}}>
           {haftaDoluluk.map((g,i)=>(
-            <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer"}} onClick={()=>setOffset(i)}>
               <div style={{fontSize:10,color:"#888"}}>%{g.yuzde}</div>
-              <div style={{width:"100%",height:Math.max(g.yuzde*0.6,4),background:g.yuzde>=80?"#16a34a":g.yuzde>=50?"#6366f1":"#f59e0b",borderRadius:4}}/>
-              <div style={{fontSize:10,color:"#999"}}>{formatDateShort(g.tarih).split(" ")[0]}</div>
+              <div style={{width:"100%",height:Math.max(g.yuzde*0.6,4),background:i===offset?"#f59e0b":g.yuzde>=80?"#16a34a":g.yuzde>=50?"#6366f1":"#d1d5db",borderRadius:4,border:i===offset?"2px solid #d97706":"none"}}/>
+              <div style={{fontSize:10,color:i===offset?"#d97706":"#999",fontWeight:i===offset?600:400}}>{i===0?"Bug.":i===1?"Yar.":formatDate(g.tarih).slice(0,5)}</div>
             </div>
           ))}
         </div>
+        <div style={{fontSize:11,color:"#aaa",marginTop:8,textAlign:"center"}}>Grafikteki güne tıklayınca o günün boşluklarını görebilirsin</div>
       </div>
     </div>
   );
@@ -1393,7 +1421,7 @@ function SifreModal({hedef,aktifRol,onBasari,onKapat}){
     const dogruSifre=hedef==="dashboard"&&aktifRol==="sorumlu"?"5555":"SON26";
     if(sifre===dogruSifre){setHata(false);onBasari();}else{setHata(true);setDeneme(d=>d+1);setSifre("");}
   }
-  const baslik=hedef==="rapor"?"📊 Rapor":hedef==="log"?"📋 Log":"📈 Kontrol";
+  const baslik=hedef==="rapor"?"📊 Rapor":hedef==="log"?"📋 Log":"📅 Boş Randevular";
   return(
     <div onClick={onKapat} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:"2rem",width:"100%",maxWidth:360,boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
