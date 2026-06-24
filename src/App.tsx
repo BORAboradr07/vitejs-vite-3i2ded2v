@@ -171,11 +171,15 @@ export default function App() {
   }
 
   async function randevuKaydet(data){
-    // Geçmiş tarihe randevu kontrolü
+    // Geçmiş tarihe randevu kontrolü (sadece yeni randevularda)
     const tarihKontrol=data.tarih||seciliTarih;
     if(!data.id&&tarihKontrol<today()){
       showToast("Geçmiş tarihe randevu oluşturulamaz!","error");
       return false;
+    }
+    // Düzenleme modunda tarih değiştiriliyorsa ve geçmişe alınmak isteniyorsa uyar
+    if(data.id&&data.tarih&&data.tarih<today()){
+      if(!window.confirm("⚠️ Randevuyu geçmiş bir tarihe taşımak istiyorsunuz. Devam etmek istiyor musunuz?")) return false;
     }
     const saatMin=timeToMin(data.saat);
     const bitisMin=saatMin+data.sure;
