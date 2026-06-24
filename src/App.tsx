@@ -59,7 +59,7 @@ function useLocalStorage(key, init) {
 // ── SABİTLER ─────────────────────────────────────────────────────────────────
 const BOLGE_SURELER = {
   "T.Bacak":30,"T.Kol":15,"Göbek":15,"Sırt":30,"Yüz":15,
-  "Koltukaltı":10,"Genital":12,"Ense":10,"Sakal Üstü":10,
+  "Koltukaltı":10,"Genital":10,"Ense":10,"Sakal Üstü":10,
   "Boyun":10,"Bel":15,"Göğüs Arası":10,"Omuz":15,"Popo":15,
   "Koltuk Altı":10,"Karbon":20,"Cilt Bakımı":75,"Forma":45,"Tüy Sarartma":20,
   "Çene":10,"Bıyık":10,"Kulak Önü":10,"Alın":10,"Göğüs Ucu":10,
@@ -201,12 +201,14 @@ export default function App() {
       if(data.id){
         const eskiR=randevular.find(r=>r.id===data.id);
         const yeniLog=[...(eskiR?.log||[]),{saat:now,kullanici:ROLLER[aktifRol],islem:"Randevu güncellendi"}];
-        if((data.tarih||seciliTarih)===today()&&(aktifRol==="sekreter"||aktifRol==="personel")){
-          const gl={deg_tarih:today(),deg_saat:now,kullanic:ROLLER[aktifRol],hasta:data.hasta,oda:data.oda,randevu_tarih:data.tarih,eski_saat:eskiR?.saat,eski_sure:eskiR?.sure,yeni_saat:data.saat,yeni_sure:data.sure,bolgeler:data.bolgeler||[]};
-          const [ins]=await sbInsert("gunici_log",gl);
-          setGunIciLog(prev=>[{...gl,id:ins.id,degTarih:gl.deg_tarih,degSaat:gl.deg_saat,kullanic:gl.kullanic,eskiSaat:gl.eski_saat,eskiSure:gl.eski_sure,yeniSaat:gl.yeni_saat,yeniSure:gl.yeni_sure},...prev]);
-        }
-        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum,odeme:data.odeme,notlar:data.notlar||"",log:yeniLog};
+        try{
+          if((data.tarih||seciliTarih)===today()&&(aktifRol==="sekreter"||aktifRol==="personel")){
+            const gl={deg_tarih:today(),deg_saat:now,kullanic:ROLLER[aktifRol],hasta:data.hasta,oda:data.oda,randevu_tarih:data.tarih,eski_saat:eskiR?.saat,eski_sure:eskiR?.sure,yeni_saat:data.saat,yeni_sure:data.sure,bolgeler:data.bolgeler||[]};
+            const [ins]=await sbInsert("gunici_log",gl);
+            setGunIciLog(prev=>[{...gl,id:ins.id,degTarih:gl.deg_tarih,degSaat:gl.deg_saat,kullanic:gl.kullanic,eskiSaat:gl.eski_saat,eskiSure:gl.eski_sure,yeniSaat:gl.yeni_saat,yeniSure:gl.yeni_sure},...prev]);
+          }
+        }catch(logErr){console.warn("Log kaydedilemedi:",logErr);}
+        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum,odeme:data.odeme,notlar:data.notlar||"",log:yeniLog};
         await sbUpdate("randevular",data.id,sbData);
         setRandevular(prev=>prev.map(r=>r.id===data.id?{...r,...sbData,id:data.id}:r));
         showToast("Randevu güncellendi.");
@@ -882,14 +884,12 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     if(!aktifHasta){alert("Hasta adı girin.");return;}
     if(seciliBolgeler.length===0){alert("En az bir bölge seçin.");return;}
     setKayitYapiliyor(true);
-    // Düzenleme modundaysa ve hasta zaten kayıtlıysa (basData'da hastaId varsa), tekrar hasta eklemeye çalışma
-    const zatenKayitli=duzenleme&&basData.hastaId;
-    if(!hastaId&&!zatenKayitli&&aktifHasta.trim()){
-      if(!hastaTel.trim()){showToast("Telefon numarası zorunlu!","error");setKayitYapiliyor(false);return;}
-      const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel,hastaCinsiyet);
-      if(yeni) aktifHastaId=yeni.id;
-    } else if(zatenKayitli&&!aktifHastaId){
-      aktifHastaId=basData.hastaId;
+    // Düzenleme modundaysa hasta eklemeye çalışma - sadece yeni randevularda hasta kaydet
+    if(!duzenleme&&!hastaId&&aktifHasta.trim()){
+      if(hastaTel.trim()){
+        const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel,hastaCinsiyet);
+        if(yeni) aktifHastaId=yeni.id;
+      }
     }
     await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar});
     setKayitYapiliyor(false);
