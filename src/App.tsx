@@ -732,8 +732,9 @@ function BosRandevuPanel({randevular,bloklar,setSeciliTarih,onYeniRandevu,onKapa
     const bitis=aralikGun===30?35:aralikGun;
     for(let i=baslangic;i<bitis;i++){
       const tarih=addDays(today(),i);const dow=dayOfWeek(tarih);
-      if(gunFiltre==="haftaici"&&(dow===0||dow===6))continue;
-      if(gunFiltre==="haftasonu"&&dow!==0&&dow!==6)continue;
+      if(dow===0)continue; // Pazar günleri her zaman atla
+      if(gunFiltre==="haftaici"&&dow===6)continue;
+      if(gunFiltre==="haftasonu"&&dow!==6)continue;
       const S=9*60,E=20*60;
       for(let t=S;t+sure<=E;t+=15){
         const saat=minToTime(t);const bitis=t+sure;
@@ -1240,6 +1241,8 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
       const gunR=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat));
       const gunB=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih);
       const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
+      // Pazar günü ise boşluk gösterme
+      if(new Date(tarih+"T00:00:00").getDay()===0) return;
       let imlec=9*60;
       mesgul.forEach(m=>{
         if(m.b>imlec+5){sonuc[oda].push({saat:minToTime(imlec),dk:m.b-imlec});}
@@ -1253,10 +1256,12 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
   const gunBosluk=gunBoslukBul(seciliGun);
 
   const bekleyenler=bekleme.filter(b=>b.durum==="bekliyor");
-  const tumBosluklar7=Array.from({length:7},(_,i)=>addDays(bugun,i)).flatMap(t=>[
-    ...gunBoslukBul(t).alex.map(s=>({tarih:t,oda:"alex",...s})),
-    ...gunBoslukBul(t).soprano.map(s=>({tarih:t,oda:"soprano",...s}))
-  ]);
+  const tumBosluklar7=Array.from({length:7},(_,i)=>addDays(bugun,i))
+    .filter(t=>new Date(t+"T00:00:00").getDay()!==0)
+    .flatMap(t=>[
+      ...gunBoslukBul(t).alex.map(s=>({tarih:t,oda:"alex",...s})),
+      ...gunBoslukBul(t).soprano.map(s=>({tarih:t,oda:"soprano",...s}))
+    ]);
 
   // Haftalık doluluk
   const haftaGunleri=Array.from({length:7},(_,i)=>addDays(bugun,i));
