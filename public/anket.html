@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memnuniyet Anketi — Dr. Duygu Coşkun Özbakır Kliniği</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#f8f4ff;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:20px;}
+  .card{background:#fff;border-radius:16px;padding:28px 24px;width:100%;max-width:520px;box-shadow:0 4px 24px rgba(0,0,0,0.08);}
+  .logo{text-align:center;margin-bottom:20px;}
+  .logo h1{font-size:18px;color:#5b3fa0;font-weight:700;}
+  .logo p{font-size:13px;color:#888;margin-top:4px;}
+  .soru{margin-bottom:22px;}
+  .soru label{display:block;font-size:14px;font-weight:600;color:#333;margin-bottom:8px;line-height:1.4;}
+  .yildiz{display:flex;gap:6px;flex-direction:row-reverse;justify-content:flex-end;}
+  .yildiz input{display:none;}
+  .yildiz label{font-size:28px;cursor:pointer;color:#ddd;transition:color 0.15s;}
+  .yildiz input:checked ~ label,.yildiz label:hover,.yildiz label:hover ~ label{color:#f59e0b;}
+  .secenekler{display:flex;flex-direction:column;gap:8px;}
+  .secenek{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1.5px solid #e0e0e0;border-radius:10px;cursor:pointer;transition:all 0.15s;}
+  .secenek:hover{border-color:#a78bfa;background:#f5f3ff;}
+  .secenek input[type=radio]{accent-color:#6366f1;width:16px;height:16px;}
+  .secenek.secili{border-color:#6366f1;background:#eef0ff;}
+  .puan-grup{display:flex;gap:8px;flex-wrap:wrap;}
+  .puan-btn{width:44px;height:44px;border:1.5px solid #ddd;border-radius:10px;background:#f5f5f2;font-size:15px;font-weight:600;cursor:pointer;transition:all 0.15s;color:#555;}
+  .puan-btn:hover{border-color:#6366f1;background:#eef0ff;color:#4338ca;}
+  .puan-btn.aktif{border-color:#6366f1;background:#6366f1;color:#fff;}
+  textarea{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical;min-height:80px;outline:none;}
+  textarea:focus{border-color:#6366f1;}
+  .btn{width:100%;padding:14px;background:#6366f1;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;margin-top:8px;font-family:inherit;}
+  .btn:disabled{opacity:0.6;cursor:not-allowed;}
+  .baslik{text-align:center;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #f0f0f0;}
+  .baslik h2{font-size:17px;font-weight:700;color:#1a1a2e;}
+  .baslik p{font-size:13px;color:#888;margin-top:4px;}
+  .tesekkur{text-align:center;padding:32px 16px;}
+  .tesekkur .icon{font-size:56px;margin-bottom:16px;}
+  .tesekkur h2{font-size:20px;font-weight:700;color:#1a1a2e;margin-bottom:8px;}
+  .tesekkur p{font-size:14px;color:#666;margin-bottom:20px;line-height:1.6;}
+  .google-btn{display:inline-block;padding:12px 24px;background:#4285f4;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;}
+  .hata{text-align:center;padding:32px;color:#dc2626;}
+  .bolum-baslik{font-size:13px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:1px;margin:20px 0 14px;padding-bottom:6px;border-bottom:2px solid #eef0ff;}
+</style>
+</head>
+<body>
+<div class="card" id="app">
+  <div class="logo">
+    <div style="font-size:32px;margin-bottom:6px;">🌸</div>
+    <h1>Dr. Duygu Coşkun Özbakır Kliniği</h1>
+    <p>Memnuniyet Anketi</p>
+  </div>
+  <div id="icerik"><div style="text-align:center;padding:40px;color:#888;">Yükleniyor...</div></div>
+</div>
+
+<script>
+const SB_URL="https://ukqfxyarurvrxjtumjfm.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVrcWZ4eWFydXJ2cnhqdHVtamZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MjcxMzYsImV4cCI6MjA5NTIwMzEzNn0.5SpZ5q4B1-qB5IcPFNUCFcxoKJuddThph_A16mE3gMk";
+const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEAE/review";
+const HDR={"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY};
+
+const token=location.pathname.split("/").pop()||location.hash.replace("#","");
+let anketData=null;
+let cevaplar={};
+
+const LAZER_SORULAR=[
+  {id:"s1",tip:"yildiz",baslik:"Klinik Deneyimi",soru:"1. Randevu ve karşılama sürecinden memnun kaldınız mı?"},
+  {id:"s2",tip:"yildiz",soru:"2. Personelimizin ilgi ve iletişimini nasıl değerlendirirsiniz?"},
+  {id:"s3",tip:"yildiz",soru:"3. İşlem sırasında kendinizi rahat ve güvende hissettiniz mi?"},
+  {id:"s4",tip:"radio",soru:"4. Mahremiyetinize yeterince özen gösterildiğini düşünüyor musunuz?",secenekler:["Evet","Kısmen","Hayır"]},
+  {id:"s5",tip:"yildiz",soru:"5. Klinik hijyenini nasıl değerlendirirsiniz?"},
+  {id:"s6",tip:"yildiz",baslik:"Tedavi Deneyimi",soru:"6. İşlem öncesinde yeterince bilgilendirildiğinizi düşünüyor musunuz?"},
+  {id:"s7",tip:"puan",soru:"7. Şu ana kadar lazer epilasyon sürecinden genel olarak memnun musunuz? (1-10)",yonlendirme:true},
+  {id:"s8",tip:"radio",soru:"8. Tekrar aynı personelden hizmet almak ister misiniz?",secenekler:["Kesinlikle evet","Evet","Kararsızım","Hayır"]},
+  {id:"s9",tip:"radio",soru:"9. Kliniğimizi yakınlarınıza tavsiye eder misiniz?",secenekler:["Kesinlikle evet","Muhtemelen evet","Emin değilim","Hayır"]},
+  {id:"s10",tip:"metin",soru:"10. Görüş veya önerilerinizi bizimle paylaşabilirsiniz."},
+];
+
+const CILT_SORULAR=[
+  {id:"s1",tip:"yildiz",soru:"1. İşlem öncesinde size yeterli bilgilendirme yapıldı mı?"},
+  {id:"s2",tip:"yildiz",soru:"2. Personelimizin ilgisini ve iletişimini nasıl değerlendirirsiniz?"},
+  {id:"s3",tip:"yildiz",soru:"3. İşlem sırasında kendinizi rahat hissettiniz mi?"},
+  {id:"s4",tip:"yildiz",soru:"4. Klinik hijyenini nasıl değerlendirirsiniz?"},
+  {id:"s5",tip:"yildiz",soru:"5. İşlem sonrasında öneriler ve bakım tavsiyeleri yeterince anlatıldı mı?"},
+  {id:"s6",tip:"puan",soru:"6. Şu ana kadar aldığınız hizmetten genel olarak ne kadar memnunsunuz? (1-10)",yonlendirme:true},
+  {id:"s7",tip:"radio",soru:"7. Aynı personelden tekrar hizmet almak ister misiniz?",secenekler:["Kesinlikle evet","Evet","Kararsızım","Hayır"]},
+  {id:"s8",tip:"radio",soru:"8. Kliniğimizi yakınlarınıza tavsiye eder misiniz?",secenekler:["Kesinlikle evet","Muhtemelen evet","Emin değilim","Hayır"]},
+  {id:"s9",tip:"metin",soru:"9. Görüş, öneri veya paylaşmak istediğiniz başka bir konu var mı?"},
+];
+
+async function yukle(){
+  if(!token||token.length<4){goster('<div class="hata">❌ Geçersiz anket bağlantısı.</div>');return;}
+  try{
+    const r=await fetch(`${SB_URL}/rest/v1/anketler?token=eq.${token}&select=*`,{headers:HDR});
+    const data=await r.json();
+    if(!data||data.length===0){goster('<div class="hata">❌ Anket bulunamadı veya süresi dolmuş.</div>');return;}
+    anketData=data[0];
+    if(anketData.tamamlandi){gosterTesekkur(anketData.puan);return;}
+    gosterAnket();
+  }catch(e){goster('<div class="hata">❌ Bağlantı hatası. Lütfen tekrar deneyin.</div>');}
+}
+
+function goster(html){document.getElementById("icerik").innerHTML=html;}
+
+function gosterAnket(){
+  const sorular=anketData.anket_tipi==="cilt"?CILT_SORULAR:LAZER_SORULAR;
+  let html='<div class="baslik"><h2>Memnuniyet Anketi</h2><p>Görüşleriniz bizim için çok değerli 🙏</p></div>';
+  sorular.forEach(s=>{
+    html+=`<div class="soru" id="soru_${s.id}">`;
+    if(s.baslik) html+=`<div class="bolum-baslik">${s.baslik}</div>`;
+    html+=`<label>${s.soru}</label>`;
+    if(s.tip==="yildiz"){
+      html+=`<div class="yildiz">`;
+      for(let i=5;i>=1;i--) html+=`<input type="radio" name="${s.id}" id="${s.id}_${i}" value="${i}"><label for="${s.id}_${i}">★</label>`;
+      html+=`</div>`;
+    } else if(s.tip==="radio"){
+      html+=`<div class="secenekler">`;
+      s.secenekler.forEach(sec=>{ html+=`<label class="secenek"><input type="radio" name="${s.id}" value="${sec}"> ${sec}</label>`; });
+      html+=`</div>`;
+    } else if(s.tip==="puan"){
+      html+=`<div class="puan-grup">`;
+      for(let i=1;i<=10;i++) html+=`<button type="button" class="puan-btn" onclick="puanSec('${s.id}',${i},this)">${i}</button>`;
+      html+=`</div>`;
+    } else if(s.tip==="metin"){
+      html+=`<textarea id="${s.id}" placeholder="Buraya yazabilirsiniz..." rows="3"></textarea>`;
+    }
+    html+=`</div>`;
+  });
+  html+=`<button class="btn" onclick="gonder()">Anketi Gönder 🌸</button>`;
+  goster(html);
+
+  // Radio seçenek stilleri
+  document.querySelectorAll('.secenek input').forEach(inp=>{
+    inp.addEventListener('change',()=>{
+      document.querySelectorAll(`.secenek input[name="${inp.name}"]`).forEach(x=>x.closest('.secenek').classList.remove('secili'));
+      inp.closest('.secenek').classList.add('secili');
+    });
+  });
+}
+
+function puanSec(id,val,btn){
+  document.querySelectorAll('.puan-btn').forEach(b=>b.classList.remove('aktif'));
+  btn.classList.add('aktif');
+  cevaplar[id]=val;
+}
+
+async function gonder(){
+  const sorular=anketData.anket_tipi==="cilt"?CILT_SORULAR:LAZER_SORULAR;
+  let genel_puan=null;
+  const tum_cevaplar={};
+  let eksik=false;
+
+  sorular.forEach(s=>{
+    if(s.tip==="metin"){
+      tum_cevaplar[s.id]=document.getElementById(s.id)?.value||"";
+    } else if(s.tip==="puan"){
+      const val=cevaplar[s.id];
+      if(!val){eksik=true;}
+      else{tum_cevaplar[s.id]=val; if(s.yonlendirme) genel_puan=val;}
+    } else {
+      const sel=document.querySelector(`input[name="${s.id}"]:checked`);
+      if(!sel&&s.tip!=="metin"){eksik=true;}
+      else if(sel) tum_cevaplar[s.id]=sel.value;
+    }
+  });
+
+  if(eksik){alert("Lütfen tüm soruları yanıtlayın.");return;}
+
+  const btn=document.querySelector('.btn');
+  btn.disabled=true; btn.textContent="Gönderiliyor...";
+
+  try{
+    await fetch(`${SB_URL}/rest/v1/anketler?token=eq.${token}`,{
+      method:"PATCH",
+      headers:{...HDR,"Prefer":"return=minimal"},
+      body:JSON.stringify({puan:genel_puan,cevaplar:tum_cevaplar,tamamlandi:true,tamamlama_tarih:new Date().toISOString().slice(0,10)})
+    });
+    gosterTesekkur(genel_puan);
+  }catch(e){btn.disabled=false;btn.textContent="Anketi Gönder 🌸";alert("Hata oluştu, tekrar deneyin.");}
+}
+
+function gosterTesekkur(puan){
+  let html=`<div class="tesekkur">`;
+  if(puan>=8){
+    html+=`<div class="icon">🌟</div>`;
+    html+=`<h2>Teşekkürler!</h2>`;
+    html+=`<p>Memnuniyetinizi paylaştığınız için çok teşekkür ederiz. Sizi tekrar kliniğimizde görmekten mutluluk duyarız! 🌸</p>`;
+  } else {
+    html+=`<div class="icon">🙏</div>`;
+    html+=`<h2>Görüşünüz İçin Teşekkürler</h2>`;
+    html+=`<p>Geri bildiriminizi aldık. Hizmet kalitemizi artırmak için değerlendireceğiz. 🌸</p>`;
+  }
+  html+=`</div>`;
+  goster(html);
+}
+
+yukle();
+</script>
+</body>
+</html>
