@@ -1105,7 +1105,7 @@ function BeklemeKarti({b,onRandevuyaCevir,onSil,aktifRol,siraNo}){
           {b.bolgeler?.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>{b.bolgeler.map(bl=><span key={bl} style={{background:"#eef0ff",color:"#4338ca",fontSize:12,padding:"2px 8px",borderRadius:20}}>{bl}</span>)}</div>}
           <div style={{fontSize:12,display:"flex",gap:12,flexWrap:"wrap"}}>
             {tercihTarih&&<span style={{color:"#dc2626",fontWeight:700}}>📅 {tercihTarih}{tercihSaat?` ${tercihSaat}`:""}</span>}
-            {b.notlar&&<span style={{color:"#aaa"}}>💬 {b.notlar}</span>}
+            {b.notlar&&<span style={{color:"#dc2626",fontWeight:700}}>💬 {b.notlar}</span>}
           </div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
