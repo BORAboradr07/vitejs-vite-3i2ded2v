@@ -104,6 +104,29 @@ function islemRenk(bolgeler,oda,durum){
   return RENK.soprano;
 }
 
+
+// ── ANKET FONKSİYONLARI ──────────────────────────────────────────────────────
+function anketToken(){return Math.random().toString(36).slice(2,8)+Date.now().toString(36);}
+function anketTipi(oda,bolgeler){
+  const b=bolgeler||[];
+  if(b.includes("Cilt Bakımı")||b.includes("Karbon")||b.includes("Tüy Sarartma")) return "cilt";
+  return "lazer";
+}
+async function anketOlustur(randevu){
+  const token=anketToken();
+  await sbInsert("anketler",{
+    token,
+    hasta:randevu.hasta,
+    randevu_id:randevu.id,
+    randevu_tarih:randevu.tarih,
+    oda:randevu.oda,
+    anket_tipi:anketTipi(randevu.oda,randevu.bolgeler),
+    tamamlandi:false,
+    olusturma_tarih:today()
+  });
+  return token;
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [aktifRol,setAktifRol]       = useState("sekreter");
@@ -295,6 +318,32 @@ export default function App() {
     } catch(e){showToast("Hata: "+e.message,"error");return null;}
   }
 
+
+  async function anketDurumGuncelle(id, durum){
+    // durum: "onay_verildi" | "izin_vermedi" | "gonderildi"
+    try{
+      await sbUpdate("randevular",id,{anket_durum:durum});
+      setRandevular(prev=>prev.map(r=>r.id===id?{...r,anket_durum:durum}:r));
+    } catch(e){showToast("Hata: "+e.message,"error");}
+  }
+
+  async function anketGonder(randevu){
+    try{
+      const token=await anketOlustur(randevu);
+      const link=`https://randevuuu.netlify.app/anket/${token}`;
+      const unvan=randevu.cinsiyet==="Bay"?"BEY":"HANIM";
+      const msg=`🌸 ${(randevu.hasta||"").toUpperCase()} ${unvan} MERHABALAR,\nDr. Duygu Coşkun Özbakır Kliniği olarak hizmet kalitemizi artırmak için görüşlerinize ihtiyaç duyuyoruz.\nSizin için hazırladığımız kısa anketi doldurmak ister misiniz? 🙏\n\n👉 ${link}\n\nAnketimiz yalnızca birkaç dakikanızı alacak ve yanıtlarınız tamamen gizli tutulacaktır.\nKatkınız için şimdiden teşekkür ederiz. 🌸`;
+      const tel=(randevu.tel||"").replace(/[^0-9]/g,"").slice(-10);
+      if(tel.length===10){
+        window.open(`https://wa.me/90${tel}?text=${encodeURIComponent(msg)}`,"_blank");
+        await anketDurumGuncelle(randevu.id,"gonderildi");
+        showToast("Anket gönderildi!");
+      } else {
+        showToast("Bu hastanın telefon numarası kayıtlı değil!","error");
+      }
+    } catch(e){showToast("Hata: "+e.message,"error");}
+  }
+
   async function beklemeyeEkle(veri){
     try{
       const sbData={ad:veri.ad,tel:veri.tel,oda:veri.oda,bolgeler:veri.bolgeler||[],tercih_tarih:veri.tercihTarih||null,tercih_saat:veri.tercihSaat||null,notlar:veri.notlar||"",durum:"bekliyor",kayit_tarih:today(),kayit_saat:nowTime()};
@@ -370,16 +419,17 @@ export default function App() {
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex"}}>
           {[["takvim","📅 Takvim",0],["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
             ...(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="personel"?[["rapor","📊 Rapor",0]]:[]),
-            ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
+            ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi],["anket_sonuc","📊 Anket Sonuçları",0]]:[]),
             ["gelmeyenler","🚫 Gelmeyenler",0],
             ["dashboard","📅 Boş Randevular",0]]
             .map(([k,l,badge])=>(
             <button key={k} onClick={()=>{
               if((k==="rapor"||k==="log")&&yoneticiKilit){setSifreModal(k);}
+              else if(k==="anket_sonuc"&&yoneticiKilit){setSifreModal(k);}
 
               else setAktifSekme(k);
             }} style={{padding:"12px 16px",background:"none",border:"none",borderBottom:aktifSekme===k?"2px solid #6366f1":"2px solid transparent",color:aktifSekme===k?"#6366f1":"#666",fontWeight:aktifSekme===k?600:400,fontSize:14,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
-              {l}{(k==="rapor"||k==="log")&&yoneticiKilit&&<span style={{fontSize:11,opacity:0.5}}>🔒</span>}{badge>0&&<span style={{background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:20}}>{badge}</span>}
+              {l}{(k==="rapor"||k==="log"||k==="anket_sonuc")&&yoneticiKilit&&<span style={{fontSize:11,opacity:0.5}}>🔒</span>}{badge>0&&<span style={{background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:20}}>{badge}</span>}
             </button>
           ))}
         </div>
@@ -389,6 +439,7 @@ export default function App() {
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} showToast={showToast} randevular={randevular} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle}/>}
         {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular}/>}
+        {aktifSekme==="anket_sonuc"&&<AnketSonucSekme/>}
         {aktifSekme==="gelmeyenler"&&<GelmeyenlerSekme randevular={randevular} aktifRol={aktifRol} onDurumGuncelle={durumGuncelle}/>}
         {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
         {aktifSekme==="log"&&aktifRol==="yonetici"&&<LogSekme randevular={randevular} silLog={silLog} gunIciLog={gunIciLog}/>}
@@ -396,7 +447,7 @@ export default function App() {
       {modal&&(
         <ModalWrapper onClose={()=>setModal(null)}>
           {modal.tip==="yeni"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={async(data)=>{const ok=await randevuKaydet(data);if(ok&&modal.beklemdeId)await beklemeRandevuAlindi(modal.beklemdeId);}} onIptal={()=>setModal(null)}/>}
-          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={hastaAdDuzenle}/>}
+          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={hastaAdDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder}/>}
           {modal.tip==="duzenle"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={randevuKaydet} onIptal={()=>setModal(null)} duzenleme/>}
         </ModalWrapper>
       )}
@@ -973,7 +1024,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
 }
 
 // ── RANDEVU DETAY ────────────────────────────────────────────────────────────
-function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle}){
+function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder}){
   const [durum,setDurum]=useState(r.durum);const [odeme,setOdeme]=useState(r.odeme);
   const [hastaEdit,setHastaEdit]=useState(false);
   const [yeniHastaAd,setYeniHastaAd]=useState(r.hasta);
@@ -1027,6 +1078,32 @@ function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSi
         <button onClick={()=>{if(window.confirm("Bu randevu silinecek. Emin misiniz?"))onSil(r.id);}} style={{...btnSecondary,color:"#dc2626",borderColor:"#dc2626"}}>Sil</button>
         <button onClick={onKapat} style={btnSecondary}>Kapat</button>
       </div>
+      {/* Anket Bölümü */}
+      {r.tarih<today()&&r.durum!=="Gelmedi"&&r.tel&&(
+        <div style={{marginTop:14,padding:"12px 14px",background:"#f8faff",border:"1px solid #c7d7f4",borderRadius:10}}>
+          <div style={{fontSize:13,fontWeight:600,color:"#3b5bdb",marginBottom:8}}>📋 Memnuniyet Anketi</div>
+          {!r.anket_durum&&(
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={()=>onAnketDurum(r.id,"onay_verildi")} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#2f9e44"}}>✅ Onay Verdi</button>
+              <button onClick={()=>onAnketDurum(r.id,"izin_vermedi")} style={{...btnSecondary,fontSize:12,padding:"6px 14px",color:"#e03131",borderColor:"#ffa8a8"}}>❌ İzin Vermedi</button>
+            </div>
+          )}
+          {r.anket_durum==="onay_verildi"&&(
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{fontSize:12,color:"#2f9e44",fontWeight:500}}>✅ Onay verildi</span>
+              <button onClick={()=>onAnketGonder(r)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#25d366"}}>📱 Anketi WhatsApp'tan Gönder</button>
+            </div>
+          )}
+          {r.anket_durum==="gonderildi"&&<span style={{fontSize:12,color:"#3b5bdb",fontWeight:500}}>📨 Anket gönderildi</span>}
+          {r.anket_durum==="izin_vermedi"&&<span style={{fontSize:12,color:"#e03131",fontWeight:500}}>❌ Hasta izin vermedi</span>}
+        </div>
+      )}
+      {r.tarih<today()&&r.durum!=="Gelmedi"&&!r.tel&&(
+        <div style={{marginTop:14,padding:"10px 14px",background:"#fff9db",border:"1px solid #ffd43b",borderRadius:10,fontSize:12,color:"#856404"}}>
+          ⚠️ Anket göndermek için hastanın telefon numarası gerekli.
+        </div>
+      )}
+
       {(r.log||[]).length>0&&(
         <div style={{marginTop:16,borderTop:"1px solid #e8e6e0",paddingTop:12}}>
           <div style={{fontSize:12,fontWeight:600,color:"#999",marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>İşlem Geçmişi</div>
@@ -1393,6 +1470,109 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
 
 
 // ── GELMEYENLERs ─────────────────────────────────────────────────────────────
+
+// ── ANKET SONUÇLARI ──────────────────────────────────────────────────────────
+function AnketSonucSekme(){
+  const [anketler,setAnketler]=useState([]);
+  const [yukleniyor,setYukleniyor]=useState(true);
+  const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEAE/review";
+
+  useEffect(()=>{
+    async function yukle(){
+      try{
+        const r=await sbGet("anketler","tamamlandi=eq.true&order=id.desc");
+        setAnketler(r);
+      }catch(e){}
+      setYukleniyor(false);
+    }
+    yukle();
+  },[]);
+
+  const yuksekPuan=anketler.filter(a=>a.puan>=8);
+  const dusukPuan=anketler.filter(a=>a.puan<8&&a.puan>0);
+  const ortalama=anketler.length>0?(anketler.reduce((s,a)=>s+(a.puan||0),0)/anketler.length).toFixed(1):"-";
+
+  function googleGonder(a){
+    const msg=`Merhaba ${a.hasta||"değerli hastamız"}, kliniğimize verdiğiniz destek için teşekkür ederiz! Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilirsiniz 🌸
+
+👉 ${GOOGLE_LINK}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
+  }
+
+  if(yukleniyor) return <div style={{padding:40,textAlign:"center",color:"#aaa"}}>Yükleniyor...</div>;
+
+  return(
+    <div>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>📊 Anket Sonuçları</h2>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+        {[
+          {l:"Toplam Anket",v:anketler.length,c:"#6366f1"},
+          {l:"Ortalama Puan",v:ortalama,c:"#16a34a"},
+          {l:"8+ Puan (Mutlu)",v:yuksekPuan.length,c:"#f59e0b"},
+        ].map(s=>(
+          <div key={s.l} style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"14px 16px"}}>
+            <div style={{fontSize:11,color:"#888"}}>{s.l}</div>
+            <div style={{fontSize:24,fontWeight:700,color:s.c}}>{s.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {yuksekPuan.length>0&&(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:16,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",background:"#fffbeb",borderBottom:"1px solid #fcd34d",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontWeight:600,color:"#92400e"}}>⭐ 8+ Puan Verenler — Google'a Yönlendir</span>
+            <span style={{fontSize:12,color:"#888"}}>{yuksekPuan.length} kişi</span>
+          </div>
+          {yuksekPuan.map((a,i)=>(
+            <div key={a.id} style={{padding:"12px 16px",borderBottom:i<yuksekPuan.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+              <div>
+                <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
+                <div style={{fontSize:12,color:"#888"}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?"Lazer Epilasyon":"Cilt/Karbon/Tüy"}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{background:"#f0fdf4",color:"#16a34a",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
+                <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#4285f4",whiteSpace:"nowrap"}}>Google'a Yönlendir</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {dusukPuan.length>0&&(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",background:"#fff0f0",borderBottom:"1px solid #fca5a5"}}>
+            <span style={{fontWeight:600,color:"#dc2626"}}>📋 Geri Bildirim Gerektirenler (1-7 Puan)</span>
+          </div>
+          {dusukPuan.map((a,i)=>(
+            <div key={a.id} style={{padding:"12px 16px",borderBottom:i<dusukPuan.length-1?"1px solid #f5f5f2":"none"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
+                <span style={{background:"#fee2e2",color:"#dc2626",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
+              </div>
+              <div style={{fontSize:12,color:"#888",marginBottom:6}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?"Lazer Epilasyon":"Cilt/Karbon/Tüy"}</div>
+              {a.cevaplar&&Object.keys(a.cevaplar).length>0&&(
+                <div style={{background:"#f7f7f5",borderRadius:8,padding:"8px 10px",fontSize:12,color:"#555"}}>
+                  {Object.entries(a.cevaplar).map(([k,v])=>(
+                    <div key={k} style={{marginBottom:3}}><strong>{k}:</strong> {v}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {anketler.length===0&&(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa"}}>
+          <div style={{fontSize:40,marginBottom:12}}>📋</div>
+          <div style={{fontSize:15,fontWeight:500}}>Henüz tamamlanmış anket yok.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GelmeyenlerSekme({randevular,aktifRol,onDurumGuncelle}){
   const [aramaAdi,setAramaAdi]=useState("");
   const bugun=today();
@@ -1557,10 +1737,10 @@ function SifreModal({hedef,aktifRol,onBasari,onKapat}){
   const [sifre,setSifre]=useState("");const [hata,setHata]=useState(false);const [deneme,setDeneme]=useState(0);
   useEffect(()=>{const fn=e=>{if(e.key==="Escape")onKapat();};window.addEventListener("keydown",fn);return()=>window.removeEventListener("keydown",fn);},[]);
   function kontrol(){
-    const dogruSifre=hedef==="dashboard"&&aktifRol==="sorumlu"?"5555":"SON26";
+    const dogruSifre=hedef==="dashboard"&&aktifRol==="sorumlu"?"5555":hedef==="anket_sonuc"?"12345":"SON26";
     if(sifre===dogruSifre){setHata(false);onBasari();}else{setHata(true);setDeneme(d=>d+1);setSifre("");}
   }
-  const baslik=hedef==="rapor"?"📊 Rapor":hedef==="log"?"📋 Log":"📅 Boş Randevular";
+  const baslik=hedef==="rapor"?"📊 Rapor":hedef==="log"?"📋 Log":hedef==="anket_sonuc"?"📊 Anket Sonuçları":"📅 Boş Randevular";
   return(
     <div onClick={onKapat} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:"2rem",width:"100%",maxWidth:360,boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
