@@ -371,6 +371,7 @@ export default function App() {
           {[["takvim","📅 Takvim",0],["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
             ...(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="personel"?[["rapor","📊 Rapor",0]]:[]),
             ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
+            ["gelmeyenler","🚫 Gelmeyenler",0],
             ["dashboard","📅 Boş Randevular",0]]
             .map(([k,l,badge])=>(
             <button key={k} onClick={()=>{
@@ -388,6 +389,7 @@ export default function App() {
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} showToast={showToast} randevular={randevular} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle}/>}
         {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular}/>}
+        {aktifSekme==="gelmeyenler"&&<GelmeyenlerSekme randevular={randevular} aktifRol={aktifRol} onDurumGuncelle={durumGuncelle}/>}
         {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
         {aktifSekme==="log"&&aktifRol==="yonetici"&&<LogSekme randevular={randevular} silLog={silLog} gunIciLog={gunIciLog}/>}
       </div>
@@ -1078,29 +1080,32 @@ function BeklemeListesi({bekleme,aktifRol,showToast,onRandevuyaCevir,onSil,onEkl
       )}
       {bekleyenler.length===0&&!formAcik?(<div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2.5rem",textAlign:"center",color:"#aaa"}}><div style={{fontSize:32,marginBottom:8}}>⏳</div><div style={{fontSize:15,fontWeight:500}}>Bekleme listesi boş</div></div>):(
         <>
-          {bekleyenler.length>0&&<div style={{marginBottom:16}}><div style={{fontSize:13,fontWeight:600,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:10}}>⏳ {bekleyenler.length} kişi bekliyor</div>{bekleyenler.map(b=><BeklemeKarti key={b.id} b={b} onRandevuyaCevir={onRandevuyaCevir} onSil={onSil} aktifRol={aktifRol}/>)}</div>}
+          {bekleyenler.length>0&&<div style={{marginBottom:16}}><div style={{fontSize:13,fontWeight:600,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:10}}>⏳ {bekleyenler.length} kişi bekliyor</div>{bekleyenler.map((b,i)=><BeklemeKarti key={b.id} b={b} onRandevuyaCevir={onRandevuyaCevir} onSil={onSil} aktifRol={aktifRol} siraNo={i+1}/>)}</div>}
           {alinanlar.length>0&&<div><div style={{fontSize:12,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Randevu Alınanlar</div>{alinanlar.map(b=><BeklemeKarti key={b.id} b={b} onRandevuyaCevir={onRandevuyaCevir} onSil={onSil} aktifRol={aktifRol}/>)}</div>}
         </>
       )}
     </div>
   );
 }
-function BeklemeKarti({b,onRandevuyaCevir,onSil,aktifRol}){
+function BeklemeKarti({b,onRandevuyaCevir,onSil,aktifRol,siraNo}){
   const alindi=b.durum==="randevuAlindi";
   const tel=b.tel;const tercihTarih=b.tercihTarih||b.tercih_tarih;const tercihSaat=b.tercihSaat||b.tercih_saat;
+  const kayitTarih=b.kayitTarih||b.kayit_tarih||"";
+  const kayitTarihFormatli=kayitTarih?new Date(kayitTarih+"T00:00:00").toLocaleDateString("tr-TR",{day:"numeric",month:"long",year:"numeric"}):"";
   return(
     <div style={{background:"#fff",border:`1px solid ${alindi?"#bbf7d0":"#e8e6e0"}`,borderRadius:12,padding:"14px 16px",marginBottom:8,opacity:alindi?0.75:1}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
         <div style={{flex:1}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+            {!alindi&&siraNo&&<span style={{background:"#6366f1",color:"#fff",fontSize:12,fontWeight:700,width:24,height:24,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{siraNo}</span>}
             <span style={{fontWeight:600,fontSize:15}}>{b.ad}</span>
-            <span style={{background:alindi?"#dcfce7":"#fef3c7",color:alindi?"#166534":"#92400e",fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500}}>{alindi?"✓ Randevu Alındı":"⏳ Bekliyor"}</span>
+            <span style={{background:alindi?"#dcfce7":"#fef3c7",color:alindi?"#166534":"#92400e",fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500}}>{alindi?"✓ Randevu Alındı":`📅 ${kayitTarihFormatli} tarihinde bekleme listesine eklendi`}</span>
           </div>
           <div style={{fontSize:13,color:"#555",marginBottom:6}}>📞 <a href={`tel:${tel}`} style={{color:"#6366f1",textDecoration:"none",fontWeight:500}}>{tel}</a><span style={{color:"#ccc",margin:"0 8px"}}>|</span>{b.oda==="alex"?"Alex Lazer":"Soprano/Cilt/Forma"}</div>
           {b.bolgeler?.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>{b.bolgeler.map(bl=><span key={bl} style={{background:"#eef0ff",color:"#4338ca",fontSize:12,padding:"2px 8px",borderRadius:20}}>{bl}</span>)}</div>}
-          <div style={{fontSize:12,color:"#aaa",display:"flex",gap:12,flexWrap:"wrap"}}>
-            {tercihTarih&&<span>📅 {tercihTarih}{tercihSaat?" "+tercihSaat:""}</span>}
-            {b.notlar&&<span>💬 {b.notlar}</span>}
+          <div style={{fontSize:12,display:"flex",gap:12,flexWrap:"wrap"}}>
+            {tercihTarih&&<span style={{color:"#dc2626",fontWeight:700}}>📅 {tercihTarih}{tercihSaat?` ${tercihSaat}`:""}</span>}
+            {b.notlar&&<span style={{color:"#aaa"}}>💬 {b.notlar}</span>}
           </div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
@@ -1326,24 +1331,45 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
         {bekleyenler.length===0?(
           <div style={{fontSize:13,color:"#aaa"}}>Bekleme listesi boş.</div>
         ):(
-          bekleyenler.map(b=>{
-            const uygunSlot=tumBosluklar7.find(s=>s.oda===b.oda);
-            return(
-              <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"#f7f7f5",borderRadius:8,marginBottom:6,gap:8}}>
-                <div>
-                  <span style={{fontWeight:500,fontSize:14}}>{b.ad}</span>
-                  <span style={{fontSize:12,color:"#888",marginLeft:8}}>{b.oda==="alex"?"🟢 Alex":"🟣 Soprano"}</span>
+          (()=>{
+            const kullanilanSlotlar=[];
+            return bekleyenler.map(b=>{
+              const tercihTarih=b.tercihTarih||b.tercih_tarih||"";
+              const tercihSaat=b.tercihSaat||b.tercih_saat||"";
+              // Tercih kriterlerine göre sırala: önce tercih tarih+saate uyan, sonra en yakın
+              const uygunSlotlar=tumBosluklar7.filter(s=>
+                s.oda===b.oda&&
+                !kullanilanSlotlar.some(k=>k.tarih===s.tarih&&k.saat===s.saat&&k.oda===s.oda)
+              );
+              // Tercih varsa ona göre sırala
+              if(tercihTarih||tercihSaat){
+                uygunSlotlar.sort((a,b)=>{
+                  const aScore=(tercihTarih&&a.tarih===tercihTarih?0:1)*100+
+                    (tercihSaat?Math.abs(timeToMin(a.saat)-timeToMin(tercihSaat||"09:00")):0);
+                  const bScore=(tercihTarih&&b.tarih===tercihTarih?0:1)*100+
+                    (tercihSaat?Math.abs(timeToMin(b.saat)-timeToMin(tercihSaat||"09:00")):0);
+                  return aScore-bScore;
+                });
+              }
+              const uygunSlot=uygunSlotlar[0]||null;
+              if(uygunSlot) kullanilanSlotlar.push(uygunSlot);
+              return(
+                <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"#f7f7f5",borderRadius:8,marginBottom:6,gap:8}}>
+                  <div>
+                    <span style={{fontWeight:500,fontSize:14}}>{b.ad}</span>
+                    <span style={{fontSize:12,color:"#888",marginLeft:8}}>{b.oda==="alex"?"🟢 Alex":"🟣 Soprano"}</span>
+                  </div>
+                  {uygunSlot?(
+                    <button onClick={()=>{setSeciliTarih(uygunSlot.tarih);setAktifSekme("takvim");}} style={{...btnPrimary,fontSize:12,padding:"5px 12px",whiteSpace:"nowrap"}}>
+                      {uygunSlot.tarih===bugun?"Bugün":uygunSlot.tarih===addDays(bugun,1)?"Yarın":uygunSlot.tarih} {uygunSlot.saat} →
+                    </button>
+                  ):(
+                    <span style={{fontSize:12,color:"#aaa"}}>Uygun slot yok</span>
+                  )}
                 </div>
-                {uygunSlot?(
-                  <button onClick={()=>{setSeciliTarih(uygunSlot.tarih);setAktifSekme("takvim");}} style={{...btnPrimary,fontSize:12,padding:"5px 12px",whiteSpace:"nowrap"}}>
-                    {uygunSlot.tarih===bugun?"Bugün":uygunSlot.tarih===addDays(bugun,1)?"Yarın":uygunSlot.tarih} {uygunSlot.saat} →
-                  </button>
-                ):(
-                  <span style={{fontSize:12,color:"#aaa"}}>Uygun slot yok</span>
-                )}
-              </div>
-            );
-          })
+              );
+            });
+          })()
         )}
       </div>
 
@@ -1361,6 +1387,110 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
         </div>
         <div style={{fontSize:11,color:"#aaa",marginTop:8,textAlign:"center"}}>Grafikteki güne tıklayınca o günün boşluklarını görebilirsin</div>
       </div>
+    </div>
+  );
+}
+
+
+// ── GELMEYENLERs ─────────────────────────────────────────────────────────────
+function GelmeyenlerSekme({randevular,aktifRol,onDurumGuncelle}){
+  const [aramaAdi,setAramaAdi]=useState("");
+  const bugun=today();
+  const dun=addDays(bugun,-1);
+
+  // Tüm "Gelmedi" randevular
+  const gelmeyenler=randevular.filter(r=>r.durum==="Gelmedi").sort((a,b)=>b.tarih.localeCompare(a.tarih));
+
+  // İsimle arama modu
+  if(aramaAdi.trim().length>=2){
+    const hastaGelmeyenler=gelmeyenler.filter(r=>r.hasta?.toLowerCase().includes(aramaAdi.toLowerCase()));
+    return(
+      <div>
+        <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>🚫 Gelmeyenler</h2>
+        <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center"}}>
+          <input value={aramaAdi} onChange={e=>setAramaAdi(e.target.value)} placeholder="Hasta adı ile ara..." style={{...inputStyle,maxWidth:300}}/>
+          <button onClick={()=>setAramaAdi("")} style={btnSecondary}>Tümünü Gör</button>
+        </div>
+        {hastaGelmeyenler.length===0?(
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>Bu isimde gelmeyen hasta bulunamadı.</div>
+        ):(
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"12px 16px",background:"#fee2e2",borderBottom:"1px solid #fca5a5"}}>
+              <span style={{fontWeight:600,color:"#dc2626"}}>{hastaGelmeyenler[0]?.hasta}</span>
+              <span style={{fontSize:13,color:"#888",marginLeft:8}}>toplam <strong>{hastaGelmeyenler.length}</strong> kez gelmedi</span>
+            </div>
+            {hastaGelmeyenler.map((r,i)=>(
+              <div key={r.id} style={{padding:"10px 16px",borderBottom:i<hastaGelmeyenler.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:500}}>{r.tarih} · {r.saat}</div>
+                  <div style={{fontSize:12,color:"#888"}}>{r.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · {r.sure}dk</div>
+                  {r.bolgeler?.length>0&&<div style={{fontSize:11,color:"#bbb"}}>{r.bolgeler.join(" · ")}</div>}
+                </div>
+                <span style={{background:"#fee2e2",color:"#dc2626",fontSize:12,padding:"2px 8px",borderRadius:20,fontWeight:500}}>Gelmedi</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Aylık görünüm
+  const aylar=[...new Set(gelmeyenler.map(r=>r.tarih.slice(0,7)))].sort().reverse();
+  const [seciliAy,setSeciliAy]=useState(aylar[0]||bugun.slice(0,7));
+  const ayGelmeyenler=gelmeyenler.filter(r=>r.tarih.startsWith(seciliAy));
+
+  // Güne göre grupla
+  const gunler={};
+  ayGelmeyenler.forEach(r=>{
+    if(!gunler[r.tarih])gunler[r.tarih]=[];
+    gunler[r.tarih].push(r);
+  });
+
+  return(
+    <div>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>🚫 Gelmeyenler</h2>
+      <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+        <input value={aramaAdi} onChange={e=>setAramaAdi(e.target.value)} placeholder="Hasta adı ile ara..." style={{...inputStyle,maxWidth:260}}/>
+        <select value={seciliAy} onChange={e=>setSeciliAy(e.target.value)} style={{...inputStyle,width:"auto"}}>
+          {aylar.map(ay=>{
+            const [y,m]=ay.split("-");
+            const ayAdi=new Date(y,m-1,1).toLocaleDateString("tr-TR",{month:"long",year:"numeric"});
+            return <option key={ay} value={ay}>{ayAdi}</option>;
+          })}
+        </select>
+        <span style={{fontSize:13,color:"#888"}}>Bu ayda toplam <strong>{ayGelmeyenler.length}</strong> gelmeyen</span>
+      </div>
+
+      {Object.keys(gunler).length===0?(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>Bu ayda gelmeyen yok.</div>
+      ):(
+        Object.entries(gunler).sort((a,b)=>b[0].localeCompare(a[0])).map(([tarih,randevular])=>(
+          <div key={tarih} style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:10,overflow:"hidden"}}>
+            <div style={{padding:"10px 16px",background:"#f7f7f5",borderBottom:"1px solid #e8e6e0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontWeight:600,fontSize:14}}>{formatDate(tarih)}</span>
+              <div style={{display:"flex",gap:8}}>
+                <span style={{background:"#fee2e2",color:"#dc2626",fontSize:12,padding:"2px 8px",borderRadius:20}}>Alex: {randevular.filter(r=>r.oda==="alex").length}</span>
+                <span style={{background:"#ede9fe",color:"#5b3fa0",fontSize:12,padding:"2px 8px",borderRadius:20}}>Soprano: {randevular.filter(r=>r.oda==="soprano").length}</span>
+              </div>
+            </div>
+            {randevular.map((r,i)=>(
+              <div key={r.id} style={{padding:"10px 16px",borderBottom:i<randevular.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                <div>
+                  <div style={{fontWeight:500,fontSize:14}}>{r.hasta}</div>
+                  <div style={{fontSize:12,color:"#888"}}>{r.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · {r.saat} · {r.sure}dk</div>
+                  {r.bolgeler?.length>0&&<div style={{fontSize:11,color:"#bbb"}}>{r.bolgeler.join(" · ")}</div>}
+                </div>
+                {(tarih===bugun||tarih===dun)&&(
+                  <button onClick={()=>{if(window.confirm(`${r.hasta} için durumu "Seans" olarak değiştir?`))onDurumGuncelle(r.id,"Seans",r.odeme);}} style={{...btnSecondary,fontSize:12,padding:"4px 10px",color:"#16a34a",borderColor:"#86efac",whiteSpace:"nowrap",flexShrink:0}}>
+                    Düzelt
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        ))
+      )}
     </div>
   );
 }
