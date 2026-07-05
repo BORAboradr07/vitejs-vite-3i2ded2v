@@ -419,7 +419,8 @@ export default function App() {
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex"}}>
           {[["takvim","📅 Takvim",0],["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
             ...(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="personel"?[["rapor","📊 Rapor",0]]:[]),
-            ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi],["anket_sonuc","📊 Anket Sonuçları",0]]:[]),
+            ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
+            ["anket_sonuc","📊 Anket Sonuçları",0],
             ["gelmeyenler","🚫 Gelmeyenler",0],
             ["dashboard","📅 Boş Randevular",0]]
             .map(([k,l,badge])=>(
