@@ -1079,26 +1079,26 @@ function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSi
         <button onClick={onKapat} style={btnSecondary}>Kapat</button>
       </div>
       {/* Anket Bölümü */}
-      {r.tarih<today()&&r.durum!=="Gelmedi"&&r.tel&&(
+      {r.durum!=="Gelmedi"&&r.tel&&(
         <div style={{marginTop:14,padding:"12px 14px",background:"#f8faff",border:"1px solid #c7d7f4",borderRadius:10}}>
           <div style={{fontSize:13,fontWeight:600,color:"#3b5bdb",marginBottom:8}}>📋 Memnuniyet Anketi</div>
           {!r.anket_durum&&(
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>onAnketDurum(r.id,"onay_verildi")} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#2f9e44"}}>✅ Onay Verdi</button>
-              <button onClick={()=>onAnketDurum(r.id,"izin_vermedi")} style={{...btnSecondary,fontSize:12,padding:"6px 14px",color:"#e03131",borderColor:"#ffa8a8"}}>❌ İzin Vermedi</button>
+              <button onClick={()=>{const s=window.prompt("Anket şifresi:");if(s==="12345"){onAnketDurum(r.id,"onay_verildi");}else if(s!==null){alert("Yanlış şifre!");}}} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#2f9e44"}}>✅ Onay Verdi</button>
+              <button onClick={()=>{const s=window.prompt("Anket şifresi:");if(s==="12345"){onAnketDurum(r.id,"izin_vermedi");}else if(s!==null){alert("Yanlış şifre!");}}} style={{...btnSecondary,fontSize:12,padding:"6px 14px",color:"#e03131",borderColor:"#ffa8a8"}}>❌ İzin Vermedi</button>
             </div>
           )}
           {r.anket_durum==="onay_verildi"&&(
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
               <span style={{fontSize:12,color:"#2f9e44",fontWeight:500}}>✅ Onay verildi</span>
-              <button onClick={()=>onAnketGonder(r)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#25d366"}}>📱 Anketi WhatsApp'tan Gönder</button>
+              <button onClick={()=>{const s=window.prompt("Anket şifresi:");if(s==="12345"){onAnketGonder(r);}else if(s!==null){alert("Yanlış şifre!");}}} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#25d366"}}>📱 Anketi Gönder</button>
             </div>
           )}
           {r.anket_durum==="gonderildi"&&<span style={{fontSize:12,color:"#3b5bdb",fontWeight:500}}>📨 Anket gönderildi</span>}
           {r.anket_durum==="izin_vermedi"&&<span style={{fontSize:12,color:"#e03131",fontWeight:500}}>❌ Hasta izin vermedi</span>}
         </div>
       )}
-      {r.tarih<today()&&r.durum!=="Gelmedi"&&!r.tel&&(
+      {r.durum!=="Gelmedi"&&!r.tel&&(
         <div style={{marginTop:14,padding:"10px 14px",background:"#fff9db",border:"1px solid #ffd43b",borderRadius:10,fontSize:12,color:"#856404"}}>
           ⚠️ Anket göndermek için hastanın telefon numarası gerekli.
         </div>
