@@ -201,8 +201,17 @@ function GirisEkrani({onGiris}){
   );
 }
 
+
 export default function App() {
-  const [aktifRol,setAktifRol]       = useState("sekreter");
+  // ── Giriş state'i - tüm hook'lardan ÖNCE tanımla ──
+  const [aktifKullanici,setAktifKullanici] = useState(()=>{
+    try{const u=window.localStorage.getItem("kl_user");return u?JSON.parse(u):null;}catch{return null;}
+  });
+
+  // ── Tüm diğer state'ler ──
+  const [aktifRol,setAktifRol]       = useState(()=>{
+    try{const u=window.localStorage.getItem("kl_user");return u?JSON.parse(u).rol||"sekreter":"sekreter";}catch{return "sekreter";}
+  });
   const [aktifSekme,setAktifSekme]   = useState("takvim");
   const [seciliTarih,setSeciliTarih] = useLocalStorage("kl_tarih",today());
   const [yoneticiKilit,setYoneticiKilit] = useState(()=>{try{return window.localStorage.getItem("kl_yonetici_onay")!=="1";}catch{return true;}});
@@ -220,6 +229,30 @@ export default function App() {
   const [toast,setToast]             = useState(null);
 
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
+
+  // ── Giriş/Çıkış fonksiyonları ──
+  function kullaniciGiris(kullanici){
+    setAktifKullanici(kullanici);
+    setAktifRol(kullanici.rol||"sekreter");
+    setAktifSekme("takvim");
+    setYoneticiKilit(true);
+    setDashboardKilit(false);
+  }
+
+  function cikisYap(){
+    try{
+      window.localStorage.removeItem("kl_user");
+      window.localStorage.removeItem("kl_yonetici_onay");
+      window.localStorage.removeItem("kl_dashboard_onay");
+    }catch{}
+    setAktifKullanici(null);
+    setAktifRol("sekreter");
+    setAktifSekme("takvim");
+  }
+
+  // ── Giriş yapılmamışsa login ekranı göster ──
+  if(!aktifKullanici) return <GirisEkrani onGiris={kullaniciGiris}/>;
+  const aktifLoginName=aktifKullanici.login_name||"";
 
   useEffect(()=>{
     async function yukle(){
@@ -503,14 +536,12 @@ export default function App() {
             <span style={{fontWeight:600,fontSize:15}}>LazerKlinik</span>
             <span style={{opacity:0.3,fontSize:13,marginLeft:4}}>Randevu Sistemi</span>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,opacity:0.5}}>Rol:</span>
-            <select value={aktifRol} onChange={e=>rolDegistir(e.target.value)} style={{background:"#2d2d4e",color:"#fff",border:"1px solid #3d3d6e",borderRadius:6,padding:"4px 8px",fontSize:13}}>
-              <option value="yonetici">Yönetici</option>
-              <option value="sekreter">Sekreter</option>
-              <option value="personel">Uygulayıcı</option>
-              <option value="sorumlu">Sorumlu</option>
-            </select>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#fff",textTransform:"capitalize"}}>{aktifLoginName}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ROLLER[aktifRol]||aktifRol}</div>
+            </div>
+            <button onClick={cikisYap} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Çıkış</button>
           </div>
         </div>
       </header>
