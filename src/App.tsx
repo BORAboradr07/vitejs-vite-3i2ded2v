@@ -309,9 +309,12 @@ export default function App() {
         setRandevular(prev=>prev.map(r=>r.id===data.id?{...r,...sbData,id:data.id}:r));
         showToast("Randevu güncellendi.");
       } else {
-        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum||"Seans",odeme:data.odeme,notlar:data.notlar||"",log:[{saat:now,kullanici:ROLLER[aktifRol],islem:"Randevu oluşturuldu"}]};
+        const hastaObj2=hastalar.find(h=>h.ad?.toLowerCase().trim()===data.hasta?.toLowerCase().trim());
+        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum||"Seans",odeme:data.odeme,notlar:data.notlar||"",tel:hastaObj2?.tel||"",cinsiyet:hastaObj2?.cinsiyet||"Bayan",log:[{saat:now,kullanici:ROLLER[aktifRol],islem:"Randevu oluşturuldu"}]};
         const [ins]=await sbInsert("randevular",sbData);
-        setRandevular(prev=>[...prev,{...sbData,id:ins.id}]);
+        // hastalar tablosundan tel ve cinsiyet bilgisini al
+        const hastaObj=hastalar.find(h=>h.ad?.toLowerCase().trim()===sbData.hasta?.toLowerCase().trim());
+        setRandevular(prev=>[...prev,{...sbData,id:ins.id,tel:sbData.tel||hastaObj?.tel||"",cinsiyet:sbData.cinsiyet||hastaObj?.cinsiyet||"Bayan"}]);
         showToast("Randevu oluşturuldu.");
       }
       setModal(null);return true;
