@@ -9,6 +9,34 @@ const KASA_URL = "https://pwcyawsgjzjcydcisyvy.supabase.co";
 const KASA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3Y3lhd3NnanpqY3lkY2lzeXZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNDA4MDEsImV4cCI6MjA5NDcxNjgwMX0.gnee9oYsFpxzdb_-H-JtRC2fU0Imj2Dajybt7or9a0Y";
 const HDR = { "Content-Type":"application/json", "apikey":SB_KEY, "Authorization":"Bearer "+SB_KEY };
 
+// ── AUTH ─────────────────────────────────────────────────────────────────────
+async function sbLogin(email, sifre){
+  const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=password`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json","apikey":SB_KEY},
+    body:JSON.stringify({email,password:sifre})
+  });
+  const data=await r.json();
+  if(!r.ok) throw new Error(data.error_description||data.msg||"Giriş hatası");
+  return data;
+}
+
+async function sbLogout(token){
+  await fetch(`${SB_URL}/auth/v1/logout`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+token}
+  });
+}
+
+async function kullaniciBilgi(token){
+  const r=await fetch(`${SB_URL}/rest/v1/kullanicilar?select=login_name,rol`,{
+    headers:{"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+token}
+  });
+  if(!r.ok) throw new Error("Kullanıcı bilgisi alınamadı");
+  const data=await r.json();
+  return data[0]||null;
+}
+
 
 async function kasadaHastaVarMi(ad){
   try{
@@ -128,8 +156,72 @@ async function anketOlustur(randevu){
 }
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
+
+// ── GİRİŞ EKRANI ─────────────────────────────────────────────────────────────
+function GirisEkrani({onGiris}){
+  const [loginName,setLoginName]=useState("");
+  const [sifre,setSifre]=useState("");
+  const [hata,setHata]=useState("");
+  const [yukleniyor,setYukleniyor]=useState(false);
+
+  async function girisYap(){
+    if(!loginName.trim()||!sifre.trim()){setHata("Kullanıcı adı ve şifre gerekli.");return;}
+    setYukleniyor(true);setHata("");
+    try{
+      const email=`${loginName.toLowerCase().trim()}@klinik.local`;
+      const authData=await sbLogin(email,sifre);
+      const kullanici=await kullaniciBilgi(authData.access_token);
+      if(!kullanici){setHata("Kullanıcı bulunamadı.");setYukleniyor(false);return;}
+      onGiris({...kullanici,token:authData.access_token,userId:authData.user?.id});
+    } catch(e){setHata(e.message||"Giriş başarısız.");setYukleniyor(false);}
+  }
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f5f4f1",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',system-ui,sans-serif",padding:16}}>
+      <div style={{background:"#fff",borderRadius:20,padding:"2.5rem 2rem",width:"100%",maxWidth:380,boxShadow:"0 8px 40px rgba(0,0,0,0.1)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{width:56,height:56,background:"linear-gradient(135deg,#a78bfa,#60a5fa)",borderRadius:16,margin:"0 auto 14px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🌸</div>
+          <div style={{fontSize:18,fontWeight:700,color:"#1a1a2e"}}>LazerKlinik</div>
+          <div style={{fontSize:13,color:"#888",marginTop:4}}>Dr. Duygu Coşkun Özbakır Kliniği</div>
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#888",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Kullanıcı Adı</div>
+          <input value={loginName} onChange={e=>setLoginName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&girisYap()} placeholder="meltem, fatma, merve..." style={{width:"100%",padding:"10px 12px",border:"1.5px solid #ddd",borderRadius:10,fontSize:15,fontFamily:"inherit",outline:"none"}}/>
+        </div>
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#888",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Şifre</div>
+          <input type="password" value={sifre} onChange={e=>setSifre(e.target.value)} onKeyDown={e=>e.key==="Enter"&&girisYap()} placeholder="••••••••" style={{width:"100%",padding:"10px 12px",border:"1.5px solid #ddd",borderRadius:10,fontSize:15,fontFamily:"inherit",outline:"none"}}/>
+        </div>
+        {hata&&<div style={{background:"#fee2e2",color:"#dc2626",padding:"8px 12px",borderRadius:8,fontSize:13,marginBottom:14}}>{hata}</div>}
+        <button onClick={girisYap} disabled={yukleniyor} style={{width:"100%",padding:"12px",background:yukleniyor?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:600,cursor:yukleniyor?"not-allowed":"pointer",fontFamily:"inherit"}}>
+          {yukleniyor?"Giriş yapılıyor...":"Giriş Yap"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [aktifRol,setAktifRol]       = useState("sekreter");
+  const [girisYapildi,setGirisYapildi] = useState(()=>{
+    try{const u=window.localStorage.getItem("kl_user");return u?JSON.parse(u):null;}catch{return null;}
+  });
+
+  function kullaniciGiris(kullanici){
+    try{window.localStorage.setItem("kl_user",JSON.stringify(kullanici));}catch{}
+    setGirisYapildi(kullanici);
+  }
+
+  function cikisYap(){
+    try{window.localStorage.removeItem("kl_user");window.localStorage.removeItem("kl_yonetici_onay");window.localStorage.removeItem("kl_dashboard_onay");}catch{}
+    setGirisYapildi(null);
+  }
+
+  if(!girisYapildi) return <GirisEkrani onGiris={kullaniciGiris}/>;
+
+  const aktifRolBaslangic=girisYapildi.rol||"sekreter";
+  const aktifLoginName=girisYapildi.login_name||"";
+
+  const [aktifRol,setAktifRol]       = useState(aktifRolBaslangic);
   const [aktifSekme,setAktifSekme]   = useState("takvim");
   const [seciliTarih,setSeciliTarih] = useLocalStorage("kl_tarih",today());
   const [yoneticiKilit,setYoneticiKilit] = useState(()=>{try{return window.localStorage.getItem("kl_yonetici_onay")!=="1";}catch{return true;}});
@@ -248,7 +340,11 @@ export default function App() {
   async function durumGuncelle(id,durum,odeme){
     const now=nowTime();
     const r=randevular.find(x=>x.id===id);
-    const yeniLog=[...(r?.log||[]),{saat:now,kullanici:ROLLER[aktifRol],islem:`${durum?"Durum: "+durum:""}${odeme?" | Ödeme: "+odeme:""}`}];
+    // Ödeme değişikliği logu
+    const logMesajlar=[];
+    if(durum&&durum!==r?.durum) logMesajlar.push(`Durum: ${r?.durum||"-"} → ${durum}`);
+    if(odeme!==undefined&&odeme!==r?.odeme) logMesajlar.push(`Ödeme: ${r?.odeme||"Yok"} → ${odeme||"Yok"}`);
+    const yeniLog=[...(r?.log||[]),{saat:now,kullanici:ROLLER[aktifRol],islem:logMesajlar.join(" | ")||"Güncellendi"}];
     try{
       await sbUpdate("randevular",id,{...(durum?{durum}:{}),...(odeme!==undefined?{odeme}:{}),log:yeniLog});
       setRandevular(prev=>prev.map(x=>x.id!==id?x:{...x,...(durum?{durum}:{}),...(odeme!==undefined?{odeme}:{}),log:yeniLog}));
@@ -404,14 +500,12 @@ export default function App() {
             <span style={{fontWeight:600,fontSize:15}}>LazerKlinik</span>
             <span style={{opacity:0.3,fontSize:13,marginLeft:4}}>Randevu Sistemi</span>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,opacity:0.5}}>Rol:</span>
-            <select value={aktifRol} onChange={e=>rolDegistir(e.target.value)} style={{background:"#2d2d4e",color:"#fff",border:"1px solid #3d3d6e",borderRadius:6,padding:"4px 8px",fontSize:13}}>
-              <option value="yonetici">Yönetici</option>
-              <option value="sekreter">Sekreter</option>
-              <option value="personel">Uygulayıcı</option>
-              <option value="sorumlu">Sorumlu</option>
-            </select>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#fff"}}>{aktifLoginName}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ROLLER[aktifRol]||aktifRol}</div>
+            </div>
+            <button onClick={cikisYap} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Çıkış</button>
           </div>
         </div>
       </header>
