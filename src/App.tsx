@@ -209,6 +209,8 @@ export default function App() {
   function kullaniciGiris(kullanici){
     try{window.localStorage.setItem("kl_user",JSON.stringify(kullanici));}catch{}
     setGirisYapildi(kullanici);
+    setAktifRol(kullanici.rol||"sekreter");
+    setAktifSekme("takvim");
   }
 
   function cikisYap(){
@@ -216,13 +218,12 @@ export default function App() {
     setGirisYapildi(null);
   }
 
-  if(!girisYapildi) return <GirisEkrani onGiris={kullaniciGiris}/>;
+  const aktifLoginName=girisYapildi?.login_name||"";
 
-  const aktifRolBaslangic=girisYapildi.rol||"sekreter";
-  const aktifLoginName=girisYapildi.login_name||"";
-
-  const [aktifRol,setAktifRol]       = useState(aktifRolBaslangic);
+  const [aktifRol,setAktifRol]       = useState(girisYapildi?.rol||"sekreter");
   const [aktifSekme,setAktifSekme]   = useState("takvim");
+
+  if(!girisYapildi) return <GirisEkrani onGiris={kullaniciGiris}/>;
   const [seciliTarih,setSeciliTarih] = useLocalStorage("kl_tarih",today());
   const [yoneticiKilit,setYoneticiKilit] = useState(()=>{try{return window.localStorage.getItem("kl_yonetici_onay")!=="1";}catch{return true;}});
   const [dashboardKilit,setDashboardKilit] = useState(()=>{try{return window.localStorage.getItem("kl_dashboard_onay")!=="1";}catch{return false;}});
