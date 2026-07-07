@@ -231,7 +231,10 @@ export default function App() {
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
 
   // ── Giriş/Çıkış fonksiyonları ──
-  function kullaniciGiris(kullanici){
+function kullaniciGiris(kullanici){
+  try{window.localStorage.setItem("kl_user",JSON.stringify(kullanici));}catch{}
+  window.location.reload();
+}
     setAktifKullanici(kullanici);
     setAktifRol(kullanici.rol||"sekreter");
     setAktifSekme("takvim");
