@@ -202,28 +202,8 @@ function GirisEkrani({onGiris}){
 }
 
 export default function App() {
-  const [girisYapildi,setGirisYapildi] = useState(()=>{
-    try{const u=window.localStorage.getItem("kl_user");return u?JSON.parse(u):null;}catch{return null;}
-  });
-
-  function kullaniciGiris(kullanici){
-    try{window.localStorage.setItem("kl_user",JSON.stringify(kullanici));}catch{}
-    setGirisYapildi(kullanici);
-    setAktifRol(kullanici.rol||"sekreter");
-    setAktifSekme("takvim");
-  }
-
-  function cikisYap(){
-    try{window.localStorage.removeItem("kl_user");window.localStorage.removeItem("kl_yonetici_onay");window.localStorage.removeItem("kl_dashboard_onay");}catch{}
-    setGirisYapildi(null);
-  }
-
-  const aktifLoginName=girisYapildi?.login_name||"";
-
-  const [aktifRol,setAktifRol]       = useState(girisYapildi?.rol||"sekreter");
+  const [aktifRol,setAktifRol]       = useState("sekreter");
   const [aktifSekme,setAktifSekme]   = useState("takvim");
-
-  if(!girisYapildi) return <GirisEkrani onGiris={kullaniciGiris}/>;
   const [seciliTarih,setSeciliTarih] = useLocalStorage("kl_tarih",today());
   const [yoneticiKilit,setYoneticiKilit] = useState(()=>{try{return window.localStorage.getItem("kl_yonetici_onay")!=="1";}catch{return true;}});
   const [dashboardKilit,setDashboardKilit] = useState(()=>{try{return window.localStorage.getItem("kl_dashboard_onay")!=="1";}catch{return false;}});
@@ -501,12 +481,14 @@ export default function App() {
             <span style={{fontWeight:600,fontSize:15}}>LazerKlinik</span>
             <span style={{opacity:0.3,fontSize:13,marginLeft:4}}>Randevu Sistemi</span>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontSize:13,fontWeight:600,color:"#fff"}}>{aktifLoginName}</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ROLLER[aktifRol]||aktifRol}</div>
-            </div>
-            <button onClick={cikisYap} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Çıkış</button>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,opacity:0.5}}>Rol:</span>
+            <select value={aktifRol} onChange={e=>rolDegistir(e.target.value)} style={{background:"#2d2d4e",color:"#fff",border:"1px solid #3d3d6e",borderRadius:6,padding:"4px 8px",fontSize:13}}>
+              <option value="yonetici">Yönetici</option>
+              <option value="sekreter">Sekreter</option>
+              <option value="personel">Uygulayıcı</option>
+              <option value="sorumlu">Sorumlu</option>
+            </select>
           </div>
         </div>
       </header>
