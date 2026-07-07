@@ -177,7 +177,8 @@ function GirisEkrani({onGiris}){
       });
       const authData=await authRes.json();
       if(!authRes.ok) throw new Error("Kullanıcı adı veya şifre hatalı.");
-      const kulRes=await fetch(SB_URL+"/rest/v1/kullanicilar?select=login_name,rol",{
+      const email2=loginName.toLowerCase().trim()+"@klinik.local";
+      const kulRes=await fetch(SB_URL+"/rest/v1/kullanicilar?email=eq."+encodeURIComponent(email2)+"&select=login_name,rol",{
         headers:{"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+authData.access_token}
       });
       const kulData=await kulRes.json();
