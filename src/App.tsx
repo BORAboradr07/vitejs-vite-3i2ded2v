@@ -157,8 +157,74 @@ async function anketOlustur(randevu){
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 
+
+// ── GİRİŞ EKRANI ─────────────────────────────────────────────────────────────
+function GirisEkrani({onGiris}){
+  const [loginName,setLoginName]=useState("");
+  const [sifre,setSifre]=useState("");
+  const [hata,setHata]=useState("");
+  const [yukleniyor,setYukleniyor]=useState(false);
+
+  async function girisYap(){
+    if(!loginName.trim()||!sifre.trim()){setHata("Kullanıcı adı ve şifre gerekli.");return;}
+    setYukleniyor(true);setHata("");
+    try{
+      const email=loginName.toLowerCase().trim()+"@klinik.local";
+      const authRes=await fetch(SB_URL+"/auth/v1/token?grant_type=password",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","apikey":SB_KEY},
+        body:JSON.stringify({email,password:sifre})
+      });
+      const authData=await authRes.json();
+      if(!authRes.ok) throw new Error("Kullanıcı adı veya şifre hatalı.");
+      const kulRes=await fetch(SB_URL+"/rest/v1/kullanicilar?select=login_name,rol",{
+        headers:{"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+authData.access_token}
+      });
+      const kulData=await kulRes.json();
+      if(!kulData||kulData.length===0) throw new Error("Kullanıcı bulunamadı.");
+      const kullanici={login_name:kulData[0].login_name,rol:kulData[0].rol};
+      try{window.localStorage.setItem("kl_user",JSON.stringify(kullanici));}catch{}
+      onGiris(kullanici);
+    } catch(e){
+      setHata(e.message||"Giriş başarısız.");
+      setYukleniyor(false);
+    }
+  }
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f5f4f1",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',system-ui,sans-serif",padding:16}}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+      <div style={{background:"#fff",borderRadius:20,padding:"2.5rem 2rem",width:"100%",maxWidth:380,boxShadow:"0 8px 40px rgba(0,0,0,0.1)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{width:56,height:56,background:"linear-gradient(135deg,#a78bfa,#60a5fa)",borderRadius:16,margin:"0 auto 14px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🌸</div>
+          <div style={{fontSize:18,fontWeight:700,color:"#1a1a2e"}}>LazerKlinik</div>
+          <div style={{fontSize:13,color:"#888",marginTop:4}}>Dr. Duygu Coşkun Özbakır Kliniği</div>
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#888",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Kullanıcı Adı</div>
+          <input autoFocus value={loginName} onChange={e=>setLoginName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&girisYap()} placeholder="meltem, fatma, merve..." style={{width:"100%",padding:"11px 14px",border:"1.5px solid #ddd",borderRadius:10,fontSize:15,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+        </div>
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#888",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Şifre</div>
+          <input type="password" value={sifre} onChange={e=>setSifre(e.target.value)} onKeyDown={e=>e.key==="Enter"&&girisYap()} placeholder="••••••••" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #ddd",borderRadius:10,fontSize:15,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+        </div>
+        {hata&&<div style={{background:"#fee2e2",color:"#dc2626",padding:"10px 14px",borderRadius:8,fontSize:13,marginBottom:14}}>{hata}</div>}
+        <button onClick={girisYap} disabled={yukleniyor} style={{width:"100%",padding:"13px",background:yukleniyor?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:600,cursor:yukleniyor?"not-allowed":"pointer",fontFamily:"inherit"}}>
+          {yukleniyor?"Giriş yapılıyor...":"Giriş Yap"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [aktifRol,setAktifRol]       = useState("sekreter");
+  // Login state - localStorage'dan oku
+  const [aktifKullanici,setAktifKullanici] = useState(()=>{
+    try{const u=window.localStorage.getItem("kl_user");return u?JSON.parse(u):null;}catch{return null;}
+  });
+  const [aktifRol,setAktifRol]       = useState(()=>{
+    try{const u=window.localStorage.getItem("kl_user");const p=u?JSON.parse(u):null;return p?.rol||"sekreter";}catch{return "sekreter";}
+  });
   const [aktifSekme,setAktifSekme]   = useState("takvim");
   const [seciliTarih,setSeciliTarih] = useLocalStorage("kl_tarih",today());
   const [yoneticiKilit,setYoneticiKilit] = useState(()=>{try{return window.localStorage.getItem("kl_yonetici_onay")!=="1";}catch{return true;}});
@@ -176,6 +242,18 @@ export default function App() {
   const [toast,setToast]             = useState(null);
 
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
+
+  function kullaniciGiris(k){
+    setAktifKullanici(k);
+    setAktifRol(k.rol||"sekreter");
+    setAktifSekme("takvim");
+  }
+  function cikisYap(){
+    try{window.localStorage.removeItem("kl_user");window.localStorage.removeItem("kl_yonetici_onay");window.localStorage.removeItem("kl_dashboard_onay");}catch{}
+    setAktifKullanici(null);
+    setAktifRol("sekreter");
+    setAktifSekme("takvim");
+  }
 
 
 
@@ -441,6 +519,10 @@ export default function App() {
   const beklemeSayisi=bekleme.filter(b=>b.durum==="bekliyor").length;
   const gunIciSayisi=gunIciLog.filter(g=>(g.degTarih||g.deg_tarih)===today()).length;
 
+  // Giriş yapılmamışsa login ekranı
+  if(!aktifKullanici) return <GirisEkrani onGiris={kullaniciGiris}/>;
+  const aktifLoginName=aktifKullanici.login_name||"";
+
   if(yukleniyor) return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#f5f4f1"}}>
       <div style={{textAlign:"center"}}>
@@ -461,28 +543,26 @@ export default function App() {
             <span style={{fontWeight:600,fontSize:15}}>LazerKlinik</span>
             <span style={{opacity:0.3,fontSize:13,marginLeft:4}}>Randevu Sistemi</span>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,opacity:0.5}}>Rol:</span>
-            <select value={aktifRol} onChange={e=>rolDegistir(e.target.value)} style={{background:"#2d2d4e",color:"#fff",border:"1px solid #3d3d6e",borderRadius:6,padding:"4px 8px",fontSize:13}}>
-              <option value="yonetici">Yönetici</option>
-              <option value="sekreter">Sekreter</option>
-              <option value="personel">Uygulayıcı</option>
-              <option value="sorumlu">Sorumlu</option>
-            </select>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#fff",textTransform:"capitalize"}}>{aktifLoginName}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ROLLER[aktifRol]||aktifRol}</div>
+            </div>
+            <button onClick={cikisYap} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Çıkış</button>
           </div>
         </div>
       </header>
       <nav style={{background:"#fff",borderBottom:"1px solid #e8e6e0",padding:"0 1.5rem"}}>
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex"}}>
           {[["takvim","📅 Takvim",0],["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
-            ...(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="personel"?[["rapor","📊 Rapor",0]]:[]),
+            ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["rapor","📊 Rapor",0]]:[]),
             ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
             ["anket_sonuc","📊 Anket Sonuçları",0],
             ["gelmeyenler","🚫 Gelmeyenler",0],
             ["dashboard","📅 Boş Randevular",0]]
             .map(([k,l,badge])=>(
             <button key={k} onClick={()=>{
-              if((k==="rapor"||k==="log")&&yoneticiKilit){setSifreModal(k);}
+              if((k==="log"||k==="rapor")&&yoneticiKilit){setSifreModal(k);}
               else if(k==="anket_sonuc"&&yoneticiKilit){setSifreModal(k);}
 
               else setAktifSekme(k);
@@ -496,7 +576,7 @@ export default function App() {
         {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast}/>}
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} showToast={showToast} randevular={randevular} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle}/>}
-        {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular}/>}
+        {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular} aktifRol={aktifRol}/>}
         {aktifSekme==="anket_sonuc"&&<AnketSonucSekme/>}
         {aktifSekme==="gelmeyenler"&&<GelmeyenlerSekme randevular={randevular} aktifRol={aktifRol} onDurumGuncelle={durumGuncelle}/>}
         {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
@@ -1826,7 +1906,7 @@ function GelmeyenlerSekme({randevular,aktifRol,onDurumGuncelle}){
   );
 }
 
-function RaporSekme({seciliTarih,randevular}){
+function RaporSekme({seciliTarih,randevular,aktifRol}){
   const g=randevular.filter(r=>r.tarih===seciliTarih);
   const al=g.filter(r=>r.oda==="alex");const so=g.filter(r=>r.oda==="soprano");
   function s(list){return{seans:list.filter(r=>r.durum==="Seans").length,kontrol:list.filter(r=>r.durum==="Kontrol").length,gelmedi:list.filter(r=>r.durum==="Gelmedi").length,nakit:list.filter(r=>r.odeme==="Nakit").length,kart:list.filter(r=>r.odeme==="Kart").length,eft:list.filter(r=>r.odeme==="EFT").length,alinmadi:list.filter(r=>r.odeme==="Ödeme Alınmadı").length,belirsiz:list.filter(r=>!r.odeme&&r.durum!=="Gelmedi").length};}
@@ -1848,9 +1928,9 @@ function RaporSekme({seciliTarih,randevular}){
           </div>
         ))}
       </div>
-      <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,padding:14,marginTop:14,fontSize:13,color:"#78350f"}}>
+      {aktifRol!=="sorumlu"&&<div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,padding:14,marginTop:14,fontSize:13,color:"#78350f"}}>
         <strong>⚡ Çapraz Kontrol:</strong> Bugün toplam <strong>{al.filter(r=>r.durum!=="Gelmedi").length+so.filter(r=>r.durum!=="Gelmedi").length}</strong> işlem yapıldı.
-      </div>
+      </div>}
     </div>
   );
 }
