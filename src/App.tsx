@@ -183,7 +183,7 @@ function GirisEkrani({onGiris}){
       });
       const kulData=await kulRes.json();
       if(!kulData||kulData.length===0) throw new Error("Kullanıcı bulunamadı.");
-      const kullanici={login_name:kulData[0].login_name,rol:kulData[0].rol};
+      const kullanici={login_name:kulData[0].login_name,rol:kulData[0].rol,token:authData.access_token};
       try{window.localStorage.setItem("kl_user",JSON.stringify(kullanici));}catch{}
       onGiris(kullanici);
     } catch(e){
@@ -549,6 +549,21 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#fff",textTransform:"capitalize"}}>{aktifLoginName}</div>
               <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{ROLLER[aktifRol]||aktifRol}</div>
             </div>
+            <button onClick={async()=>{
+              const yeniSifre=window.prompt("Yeni şifrenizi girin (en az 6 karakter):");
+              if(!yeniSifre||yeniSifre.length<6){if(yeniSifre!==null)alert("Şifre en az 6 karakter olmalı!");return;}
+              const tekrar=window.prompt("Şifreyi tekrar girin:");
+              if(yeniSifre!==tekrar){alert("Şifreler eşleşmiyor!");return;}
+              try{
+                const r=await fetch(SB_URL+"/auth/v1/user",{
+                  method:"PUT",
+                  headers:{"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+(aktifKullanici?.token||"")},
+                  body:JSON.stringify({password:yeniSifre})
+                });
+                if(r.ok){alert("Şifreniz başarıyla değiştirildi!");}
+                else{alert("Şifre değiştirilemedi. Tekrar giriş yapıp deneyin.");}
+              }catch(e){alert("Hata: "+e.message);}
+            }} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>🔑 Şifre</button>
             <button onClick={cikisYap} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Çıkış</button>
           </div>
         </div>
@@ -1186,8 +1201,8 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
         </div>
       </div>
       <div style={{marginBottom:14}}><Label>Durum</Label><select value={durum} onChange={e=>{setDurum(e.target.value);setManuelSure(false);}} style={inputStyle}>{durumlar.map(d=><option key={d} value={d}>{d}</option>)}</select></div>
-      <Label>Ödeme</Label>
-      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>{ODEME_TIPLERI.map(o=><button key={o} onClick={()=>setOdeme(odeme===o?null:o)} style={chipStyle(odeme===o)}>{o}</button>)}</div>
+      {aktifRol!=="personel"&&<><Label>Ödeme</Label>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>{ODEME_TIPLERI.map(o=><button key={o} onClick={()=>setOdeme(odeme===o?null:o)} style={chipStyle(odeme===o)}>{o}</button>)}</div></>}
       <Label>Notlar</Label>
       <textarea value={notlar} onChange={e=>setNotlar(e.target.value)} rows={2} placeholder="Opsiyonel..." style={{...inputStyle,resize:"vertical"}}/>
       <div style={{display:"flex",gap:8,marginTop:16}}>
@@ -1244,8 +1259,8 @@ function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSi
       </div>
       <Label>Durum</Label>
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>{durumlar.map(d=><button key={d} onClick={()=>setDurum(d)} style={chipStyle(durum===d)}>{d}</button>)}</div>
-      <Label>Ödeme</Label>
-      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{ODEME_TIPLERI.map(o=><button key={o} onClick={()=>setOdeme(odeme===o?null:o)} style={chipStyle(odeme===o)}>{o}</button>)}</div>
+      {aktifRol!=="personel"&&<><Label>Ödeme</Label>
+      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{ODEME_TIPLERI.map(o=><button key={o} onClick={()=>setOdeme(odeme===o?null:o)} style={chipStyle(odeme===o)}>{o}</button>)}</div></>}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{onDurumGuncelle(r.id,durum,odeme);onKapat();}} style={btnPrimary}>Kaydet</button>
         {(aktifRol==="sekreter"||aktifRol==="yonetici")&&<button onClick={onDuzenle} style={btnSecondary}>Düzenle</button>}
