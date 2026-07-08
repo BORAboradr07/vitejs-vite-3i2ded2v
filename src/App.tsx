@@ -1,4 +1,4 @@
- import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
 const SB_URL = "https://ukqfxyarurvrxjtumjfm.supabase.co";
@@ -346,8 +346,8 @@ export default function App() {
         setRandevular(prev=>prev.map(r=>r.id===data.id?{...r,...sbData,id:data.id}:r));
         showToast("Randevu güncellendi.");
       } else {
-        const hastaObj2=hastalar.find(h=>h.ad?.toLowerCase().trim()===data.hasta?.toLowerCase().trim());
-        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum||"Seans",odeme:data.odeme,notlar:data.notlar||"",tel:hastaObj2?.tel||"",cinsiyet:hastaObj2?.cinsiyet||"Bayan",log:[{saat:now,kullanici:ROLLER[aktifRol],islem:"Randevu oluşturuldu"}]};
+        const hastaObj2=hastalar.find(h=>h.id===data.hastaId)||hastalar.find(h=>h.ad?.toLowerCase().trim()===data.hasta?.toLowerCase().trim());
+        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum||"Seans",odeme:data.odeme,notlar:data.notlar||"",tel:data.tel||hastaObj2?.tel||"",cinsiyet:data.cinsiyet||hastaObj2?.cinsiyet||"Bayan",log:[{saat:now,kullanici:ROLLER[aktifRol],islem:"Randevu oluşturuldu"}]};
         const [ins]=await sbInsert("randevular",sbData);
         // hastalar tablosundan tel ve cinsiyet bilgisini al
         const hastaObj=hastalar.find(h=>h.ad?.toLowerCase().trim()===sbData.hasta?.toLowerCase().trim());
@@ -1126,6 +1126,8 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
       aktifHasta=hastaFiltre.trim();
     }
     if(!aktifHasta){alert("Hasta adı girin.");return;}
+    if(!hastaTel.trim()&&!hastaId){alert("Telefon numarası zorunludur.");return;}
+    if(!hastaCinsiyet){alert("Cinsiyet seçimi zorunludur.");return;}
     if(seciliBolgeler.length===0){alert("En az bir bölge seçin.");return;}
     setKayitYapiliyor(true);
     // Düzenleme modundaysa hasta eklemeye çalışma - sadece yeni randevularda hasta kaydet
@@ -1135,7 +1137,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
         if(yeni) aktifHastaId=yeni.id;
       }
     }
-    await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar});
+    await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar,tel:hastaTel,cinsiyet:hastaCinsiyet});
     setKayitYapiliyor(false);
   }
   const filtreliHastalar=hastaFiltre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(hastaFiltre.toLowerCase())||h.hasta_id?.includes(hastaFiltre)||h.tel?.includes(hastaFiltre)):[];
