@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+ import { useState, useEffect, useCallback, useRef } from "react";
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
 const SB_URL = "https://ukqfxyarurvrxjtumjfm.supabase.co";
@@ -1734,15 +1734,24 @@ function AnketSonucSekme(){
             <span style={{fontSize:12,color:"#888"}}>{yuksekPuan.length} kişi</span>
           </div>
           {yuksekPuan.map((a,i)=>(
-            <div key={a.id} style={{padding:"12px 16px",borderBottom:i<yuksekPuan.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-              <div>
-                <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
-                <div style={{fontSize:12,color:"#888"}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?"Lazer Epilasyon":"Cilt/Karbon/Tüy"}</div>
+            <div key={a.id} style={{padding:"12px 16px",borderBottom:i<yuksekPuan.length-1?"1px solid #f5f5f2":"none"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:6}}>
+                <div>
+                  <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
+                  <div style={{fontSize:12,color:"#888"}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?"Lazer Epilasyon":"Cilt/Karbon/Tüy"}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{background:"#f0fdf4",color:"#16a34a",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
+                  <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#4285f4",whiteSpace:"nowrap"}}>Google'a Yönlendir</button>
+                </div>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <span style={{background:"#f0fdf4",color:"#16a34a",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
-                <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#4285f4",whiteSpace:"nowrap"}}>Google'a Yönlendir</button>
-              </div>
+              {a.cevaplar&&Object.keys(a.cevaplar).length>0&&(
+                <div style={{background:"#f0fdf4",borderRadius:8,padding:"8px 10px",fontSize:12,color:"#555"}}>
+                  {Object.entries(a.cevaplar).map(([k,v])=>(
+                    <div key={k} style={{marginBottom:3}}><strong>{k}:</strong> {String(v)}</div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
