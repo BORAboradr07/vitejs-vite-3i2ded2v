@@ -691,10 +691,8 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
               e.stopPropagation();
               setTooltip(null);
               const timer=setTimeout(()=>{
-                if(window.confirm("Bu randevuyu farklı bir saate taşımak istiyor musunuz?")){
-                  setSuruklenen({...r,oda:odaId});
-                  setSuruklemeY(e.clientY);
-                }
+                setSuruklenen({...r,oda:odaId});
+                setSuruklemeY(e.clientY);
               },1000);
               const cancel=()=>{clearTimeout(timer);document.removeEventListener("mouseup",cancel);document.removeEventListener("touchend",cancel);};
               document.addEventListener("mouseup",cancel);
