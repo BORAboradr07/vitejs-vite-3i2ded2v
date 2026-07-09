@@ -660,7 +660,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
         {bloklar.map((b)=>{
           const isDrYok=b.baslik==="DR_YOK";
           return isDrYok?(
-            <div key={"b"+b.id} style={{...blokStyle(b),background:"rgba(251,146,60,0.25)",border:"1px solid #fb923c"}} title="Dr. Duygu Hanım klinikte olmayacak">
+            <div key={"b"+b.id} style={{...blokStyle(b),background:"rgba(234,88,12,0.3)",border:"2px solid #ea580c"}} title="Dr. Duygu Hanım klinikte olmayacak">
               <div style={{fontSize:11,fontWeight:600,color:"#c2410c",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>🩺 Dr. Yok</div>
             </div>
           ):(
@@ -777,9 +777,15 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
         onMouseLeave={()=>{setSuruklenen(null);setHedefSaat(null);}}>
         <div style={{display:"flex",borderBottom:"2px solid #e8e6e0",background:"#f7f7f5",position:"sticky",top:0,zIndex:10}}>
           <div style={{width:LABEL_W,flexShrink:0,padding:"10px 6px",fontSize:11,color:"#aaa",textAlign:"right",paddingRight:8}}>Saat</div>
-          {[["🟢 Alex Lazer","#2d6a35"],["🟣 Soprano / Cilt / Forma","#5b3fa0"]].map(([l,c])=>(
-            <div key={l} style={{flex:1,padding:"10px 14px",borderLeft:"1px solid #e8e6e0"}}><span style={{fontSize:13,fontWeight:600,color:c}}>{l}</span></div>
-          ))}
+          {[["🟢 Alex Lazer","#2d6a35","alex"],["🟣 Soprano / Cilt / Forma","#5b3fa0","soprano"]].map(([l,c,oda])=>{
+            const drYokVar=bloklar.some(b=>b.oda===oda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK");
+            return(
+              <div key={l} style={{flex:1,padding:"10px 14px",borderLeft:"1px solid #e8e6e0"}}>
+                <span style={{fontSize:13,fontWeight:600,color:c}}>{l}</span>
+                {drYokVar&&<div style={{fontSize:11,color:"#ea580c",fontWeight:700,marginTop:2}}>🩺 Dr. Yok</div>}
+              </div>
+            );
+          })}
         </div>
         <div className="takvim-icerik" style={{display:"flex",overflowY:"auto",maxHeight:"72vh"}}>
           <div style={{width:LABEL_W,flexShrink:0,position:"relative",height:totalH}}>
@@ -1692,6 +1698,9 @@ function AnketSonucSekme(){
   const [anketler,setAnketler]=useState([]);
   const [yukleniyor,setYukleniyor]=useState(true);
   const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEAE/review";
+  const LAZER_SORULAR_METIN={s1:"Randevu ve karşılama sürecinden memnun kaldınız mı?",s2:"Personelimizin ilgi ve iletişimini nasıl değerlendirirsiniz?",s3:"İşlem sırasında kendinizi rahat ve güvende hissettiniz mi?",s4:"Mahremiyetinize yeterince özen gösterildiğini düşünüyor musunuz?",s5:"Klinik hijyenini nasıl değerlendirirsiniz?",s6:"İşlem öncesinde yeterince bilgilendirildiniz mi?",s7:"Genel memnuniyet puanı (1-10)",s8:"Tekrar aynı personelden hizmet almak ister misiniz?",s9:"Kliniğimizi yakınlarınıza tavsiye eder misiniz?",s10:"Görüş veya önerileriniz"};
+  const CILT_SORULAR_METIN={s1:"İşlem öncesinde size yeterli bilgilendirme yapıldı mı?",s2:"Personelimizin ilgisini ve iletişimini nasıl değerlendirirsiniz?",s3:"İşlem sırasında kendinizi rahat hissettiniz mi?",s4:"Klinik hijyenini nasıl değerlendirirsiniz?",s5:"İşlem sonrasında öneriler ve bakım tavsiyeleri yeterince anlatıldı mı?",s6:"Genel memnuniyet puanı (1-10)",s7:"Aynı personelden tekrar hizmet almak ister misiniz?",s8:"Kliniğimizi yakınlarınıza tavsiye eder misiniz?",s9:"Görüş, öneri veya paylaşmak istediğiniz başka bir konu"};
+  function soruMetni(anketTipi,key){const m=anketTipi==="lazer"?LAZER_SORULAR_METIN:CILT_SORULAR_METIN;return m[key]||key;}
 
   useEffect(()=>{
     async function yukle(){
@@ -1755,7 +1764,7 @@ function AnketSonucSekme(){
               {a.cevaplar&&Object.keys(a.cevaplar).length>0&&(
                 <div style={{background:"#f0fdf4",borderRadius:8,padding:"8px 10px",fontSize:12,color:"#555"}}>
                   {Object.entries(a.cevaplar).map(([k,v])=>(
-                    <div key={k} style={{marginBottom:3}}><strong>{k}:</strong> {String(v)}</div>
+                    <div key={k} style={{marginBottom:4}}><strong style={{color:"#555"}}>{soruMetni(a.anket_tipi,k)}</strong><br/><span style={{color:"#333"}}>{String(v)}</span></div>
                   ))}
                 </div>
               )}
@@ -1798,7 +1807,7 @@ function AnketSonucSekme(){
               {a.cevaplar&&Object.keys(a.cevaplar).length>0&&(
                 <div style={{background:"#f7f7f5",borderRadius:8,padding:"8px 10px",fontSize:12,color:"#555"}}>
                   {Object.entries(a.cevaplar).map(([k,v])=>(
-                    <div key={k} style={{marginBottom:3}}><strong>{k}:</strong> {v}</div>
+                    <div key={k} style={{marginBottom:4}}><strong style={{color:"#555"}}>{soruMetni(a.anket_tipi,k)}</strong><br/><span style={{color:"#333"}}>{String(v)}</span></div>
                   ))}
                 </div>
               )}
@@ -1938,9 +1947,49 @@ function GelmeyenlerSekme({randevular,aktifRol,onDurumGuncelle}){
   );
 }
 
+function benzerlik(s1,s2){
+  // Levenshtein distance based similarity
+  const a=s1.toUpperCase().replace(/[İI]/g,"I").replace(/[ĞG]/g,"G").replace(/[ŞS]/g,"S").replace(/[ÜU]/g,"U").replace(/[ÖO]/g,"O").replace(/[ÇC]/g,"C");
+  const b=s2.toUpperCase().replace(/[İI]/g,"I").replace(/[ĞG]/g,"G").replace(/[ŞS]/g,"S").replace(/[ÜU]/g,"U").replace(/[ÖO]/g,"O").replace(/[ÇC]/g,"C");
+  if(a===b) return 1;
+  const m=a.length,n=b.length;
+  const dp=Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(_,j)=>i===0?j:j===0?i:0));
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  const dist=dp[m][n];
+  const maxLen=Math.max(m,n);
+  return maxLen===0?1:(maxLen-dist)/maxLen;
+}
+
 function RaporSekme({seciliTarih,randevular,aktifRol}){
+  const KASA_URL="https://pwcyawsgjzjcydcisyvy.supabase.co";
+  const KASA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3Y3lhd3NnanpqY3lkY2lzeXZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNDA4MDEsImV4cCI6MjA5NDcxNjgwMX0.gnee9oYsFpxzdb_-H-JtRC2fU0Imj2Dajybt7or9a0Y";
+  const [kasaSonuc,setKasaSonuc]=useState(null);
+  const [kasaYukleniyor,setKasaYukleniyor]=useState(false);
+  const [kasaTarihSecim,setKasaTarihSecim]=useState("ayni");
   const g=randevular.filter(r=>r.tarih===seciliTarih);
   const al=g.filter(r=>r.oda==="alex");const so=g.filter(r=>r.oda==="soprano");
+  const gunSeanslar=g.filter(r=>r.durum==="Seans");
+  const ertesin=addDays(seciliTarih,1);
+
+  async function kasaKontrolYap(){
+    setKasaYukleniyor(true);setKasaSonuc(null);
+    const sonuc=[];
+    for(const r of gunSeanslar){
+      try{
+        const tarihler=kasaTarihSecim==="her_ikisi"?[seciliTarih,ertesin]:[seciliTarih];
+        let bulundu=false;
+        for(const t of tarihler){
+          const res=await fetch(`${KASA_URL}/rest/v1/hastalar?tarih=eq.${t}&select=ad`,{
+            headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY}
+          });
+          const data=await res.json();
+          if(data&&Array.isArray(data)&&data.some(h=>benzerlik(h.ad||"",r.hasta||"")>=0.8)){bulundu=true;break;}
+        }
+        sonuc.push({hasta:r.hasta,oda:r.oda,saat:r.saat,kasada:bulundu});
+      } catch(e){sonuc.push({hasta:r.hasta,oda:r.oda,saat:r.saat,kasada:false});}
+    }
+    setKasaSonuc(sonuc);setKasaYukleniyor(false);
+  }
   function s(list){return{seans:list.filter(r=>r.durum==="Seans").length,kontrol:list.filter(r=>r.durum==="Kontrol").length,gelmedi:list.filter(r=>r.durum==="Gelmedi").length,nakit:list.filter(r=>r.odeme==="Nakit").length,kart:list.filter(r=>r.odeme==="Kart").length,eft:list.filter(r=>r.odeme==="EFT").length,alinmadi:list.filter(r=>r.odeme==="Ödeme Alınmadı").length,belirsiz:list.filter(r=>!r.odeme&&r.durum!=="Gelmedi").length};}
   const a=s(al),so2=s(so);
   return(
@@ -1963,6 +2012,39 @@ function RaporSekme({seciliTarih,randevular,aktifRol}){
       {aktifRol!=="sorumlu"&&<div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,padding:14,marginTop:14,fontSize:13,color:"#78350f"}}>
         <strong>⚡ Çapraz Kontrol:</strong> Bugün toplam <strong>{al.filter(r=>r.durum!=="Gelmedi").length+so.filter(r=>r.durum!=="Gelmedi").length}</strong> işlem yapıldı.
       </div>}
+
+      {/* Kasa Karşılaştırması */}
+      <div style={{marginTop:16,background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.25rem"}}>
+        <div style={{fontSize:14,fontWeight:600,color:"#333",marginBottom:12}}>💰 Kasa Karşılaştırması</div>
+        <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
+          <button onClick={()=>setKasaTarihSecim("ayni")} style={{...chipStyle(kasaTarihSecim==="ayni"),fontSize:12}}>Sadece o gün kasada ara</button>
+          <button onClick={()=>setKasaTarihSecim("her_ikisi")} style={{...chipStyle(kasaTarihSecim==="her_ikisi"),fontSize:12}}>O gün + ertesi gün kasada ara</button>
+          <button onClick={kasaKontrolYap} disabled={kasaYukleniyor||gunSeanslar.length===0} style={{...btnPrimary,fontSize:12,padding:"6px 14px",marginLeft:"auto"}}>
+            {kasaYukleniyor?"Kontrol ediliyor...":"Kasayı Kontrol Et"}
+          </button>
+        </div>
+        {gunSeanslar.length===0&&<div style={{fontSize:13,color:"#aaa"}}>Bu günde seans kaydı yok.</div>}
+        {kasaSonuc&&(
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#888",marginBottom:8,padding:"0 4px"}}>
+              <span>HASTA</span><span>DURUM</span>
+            </div>
+            {kasaSonuc.map((s,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:s.kasada?"#f0fdf4":"#fff0f0",border:`1px solid ${s.kasada?"#bbf7d0":"#fca5a5"}`,borderRadius:10,marginBottom:6}}>
+                <div>
+                  <div style={{fontWeight:600,fontSize:14}}>{s.hasta}</div>
+                  <div style={{fontSize:12,color:"#888"}}>{s.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · {s.saat}</div>
+                </div>
+                <div style={{fontSize:20}}>{s.kasada?"✅":"⚠️"}</div>
+              </div>
+            ))}
+            <div style={{marginTop:10,padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,fontSize:13,color:"#92400e"}}>
+              ✅ Kasada: <strong>{kasaSonuc.filter(s=>s.kasada).length}</strong> &nbsp;|&nbsp;
+              ⚠️ Kasada yok: <strong>{kasaSonuc.filter(s=>!s.kasada).length}</strong>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
