@@ -661,7 +661,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
         {bloklar.map((b)=>{
           const isDrYok=b.baslik==="DR_YOK";
           return isDrYok?(
-            <div key={"b"+b.id} style={{...blokStyle(b),background:"rgba(234,88,12,0.3)",border:"2px solid #ea580c"}} title="Dr. Duygu Hanım klinikte olmayacak">
+            <div key={"b"+b.id} style={{...blokStyle(b),background:"rgba(234,88,12,0.3)",border:"2px solid #ea580c",pointerEvents:"none",cursor:"default"}} title="Dr. Duygu Hanım klinikte olmayacak">
               <div style={{fontSize:11,fontWeight:600,color:"#c2410c",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>🩺 Dr. Yok</div>
             </div>
           ):(
