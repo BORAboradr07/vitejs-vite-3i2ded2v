@@ -319,7 +319,8 @@ export default function App() {
     const drYokVarMi=bloklar.filter(b=>b.baslik==="DR_YOK"&&b.tarih===tarihKontrol)
       .some(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return saatMin<be&&bitisMin>bb;});
     if(drYokVarMi){
-      if(!window.confirm("⚠️ Bu zaman aralığında Dr. Duygu Hanım klinikte olmayacak. Yine de randevu oluşturmak istiyor musunuz?")) return false;
+      showToast("⚠️ Bu saatte Dr. Duygu Hanım klinikte olmayacak.","error");
+      // Engellemiyoruz, sadece uyarı veriyoruz
     }
     const cakisma=cakismaVar(data.oda,tarihKontrol,data.saat,data.sure,data.id);
     if(cakisma){
@@ -782,7 +783,11 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
             return(
               <div key={l} style={{flex:1,padding:"10px 14px",borderLeft:"1px solid #e8e6e0"}}>
                 <span style={{fontSize:13,fontWeight:600,color:c}}>{l}</span>
-                {drYokVar&&<div style={{fontSize:11,color:"#ea580c",fontWeight:700,marginTop:2}}>🩺 Dr. Yok</div>}
+                {drYokVar&&(()=>{
+              const drBloklar=bloklar.filter(b=>b.oda===oda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK");
+              const saatler=drBloklar.map(b=>`${b.saat}-${minToTime(timeToMin(b.saat)+b.sure)}`).join(", ");
+              return <div style={{fontSize:11,color:"#ea580c",fontWeight:700,marginTop:2}}>🩺 Dr. Yok {saatler?"("+saatler+")":""}</div>;
+            })()}
               </div>
             );
           })}
@@ -2026,18 +2031,42 @@ function RaporSekme({seciliTarih,randevular,aktifRol}){
         {gunSeanslar.length===0&&<div style={{fontSize:13,color:"#aaa"}}>Bu günde seans kaydı yok.</div>}
         {kasaSonuc&&(
           <div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#888",marginBottom:8,padding:"0 4px"}}>
-              <span>HASTA</span><span>DURUM</span>
-            </div>
-            {kasaSonuc.map((s,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:s.kasada?"#f0fdf4":"#fff0f0",border:`1px solid ${s.kasada?"#bbf7d0":"#fca5a5"}`,borderRadius:10,marginBottom:6}}>
-                <div>
-                  <div style={{fontWeight:600,fontSize:14}}>{s.hasta}</div>
-                  <div style={{fontSize:12,color:"#888"}}>{s.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · {s.saat}</div>
+            {/* Kasada olmayan blok */}
+            {kasaSonuc.filter(s=>!s.kasada).length>0&&(
+              <div style={{marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div style={{fontSize:13,fontWeight:600,color:"#dc2626"}}>⚠️ Kasada Kaydı Olmayan ({kasaSonuc.filter(s=>!s.kasada).length} kişi)</div>
+                  <button onClick={()=>{
+                    const liste=kasaSonuc.filter(s=>!s.kasada).map(s=>`${s.hasta} (${s.oda==="alex"?"Alex":"Soprano"} ${s.saat})`).join("\n");
+                    navigator.clipboard.writeText(liste).then(()=>alert("Panoya kopyalandı!"));
+                  }} style={{...btnSecondary,fontSize:11,padding:"4px 10px"}}>📋 Panoya Kopyala</button>
                 </div>
-                <div style={{fontSize:20}}>{s.kasada?"✅":"⚠️"}</div>
+                {kasaSonuc.filter(s=>!s.kasada).map((s,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:"#fff0f0",border:"1px solid #fca5a5",borderRadius:10,marginBottom:6}}>
+                    <div>
+                      <div style={{fontWeight:600,fontSize:14}}>{s.hasta}</div>
+                      <div style={{fontSize:12,color:"#888"}}>{s.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · {s.saat}</div>
+                    </div>
+                    <div style={{fontSize:20}}>⚠️</div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            {/* Kasada olan blok */}
+            {kasaSonuc.filter(s=>s.kasada).length>0&&(
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:"#16a34a",marginBottom:8}}>✅ Kasada Kayıtlı ({kasaSonuc.filter(s=>s.kasada).length} kişi)</div>
+                {kasaSonuc.filter(s=>s.kasada).map((s,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,marginBottom:6}}>
+                    <div>
+                      <div style={{fontWeight:600,fontSize:14}}>{s.hasta}</div>
+                      <div style={{fontSize:12,color:"#888"}}>{s.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · {s.saat}</div>
+                    </div>
+                    <div style={{fontSize:20}}>✅</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{marginTop:10,padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,fontSize:13,color:"#92400e"}}>
               ✅ Kasada: <strong>{kasaSonuc.filter(s=>s.kasada).length}</strong> &nbsp;|&nbsp;
               ⚠️ Kasada yok: <strong>{kasaSonuc.filter(s=>!s.kasada).length}</strong>
