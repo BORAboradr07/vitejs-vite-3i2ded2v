@@ -653,17 +653,14 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
   const [bosPanel,setBosPanel]=useState(false);
   const [blokPanel,setBlokPanel]=useState(false);
   const [hastaAraPanel,setHastaAraPanel]=useState(false);
-  const [tooltip,setTooltip]=useState(null);
   const [drYokPanel,setDrYokPanel]=useState(false);
   const [kasaPanel,setKasaPanel]=useState(false);
   const [kasaSifre,setKasaSifre]=useState(false);
-  const [suruklenen,setSuruklenen]=useState(null);
-  const [suruklemeY,setSuruklemeY]=useState(null);
-  const [hedefSaat,setHedefSaat]=useState(null);
   const [kumePopup,setKumePopup]=useState(null);
   function prevDay(){setSeciliTarih(addDays(seciliTarih,-1));}
   function nextDay(){setSeciliTarih(addDays(seciliTarih,1));}
-  const PX=1,LABEL_W=52,START=9*60,END=20*60,TOTAL=END-START,totalH=TOTAL*PX;
+  const START=9*60,END=20*60,TOTAL=END-START;
+  const STRIP_H=320;
 
   function ayniHastaBirlestir(liste){
     // Aynı hastanın aynı zaman aralığına denk gelen farklı işlem (bölge) kayıtlarını
@@ -699,50 +696,6 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
     }
     return gruplar;
   }
-  function randevuDuzeni(liste){
-    // Çakışan randevuları tespit edip yan yana sütunlara böler (Google Takvim mantığı)
-    // Ayrıca her çakışma kümesini (aynı anda üst üste gelen randevu grubunu) de döndürür
-    // NOT: kısa randevuların ekranda en az 18dk'lık görsel yer kaplaması (min-height) da
-    // hesaba katılıyor, yoksa görsel olarak çakışan ama "süre" bazında çakışmayan kartlar
-    // birbirinin üstüne biner (görünmez kalır).
-    const evs=liste.map(r=>({r,b:timeToMin(r.saat),e:timeToMin(r.saat)+Math.max(r.sure,18)})).sort((a,b)=>a.b-b.b||a.e-b.e);
-    const sonuc=new Map();
-    const kumeler=[];
-    let grup=[],grupBitis=-Infinity;
-    function grubuIsle(g){
-      const kolonlar=[];
-      g.forEach(ev=>{
-        let yerlesti=false;
-        for(const kol of kolonlar){
-          if(kol[kol.length-1].e<=ev.b){kol.push(ev);yerlesti=true;break;}
-        }
-        if(!yerlesti)kolonlar.push([ev]);
-      });
-      const toplamKolon=kolonlar.length;
-      kolonlar.forEach((kol,ki)=>{kol.forEach(ev=>sonuc.set(ev.r.id,{col:ki,cols:toplamKolon}));});
-      if(g.length>=3)kumeler.push(g.map(ev=>ev.r));
-    }
-    evs.forEach(ev=>{
-      if(grup.length&&ev.b>=grupBitis){grubuIsle(grup);grup=[];grupBitis=-Infinity;}
-      grup.push(ev);
-      grupBitis=Math.max(grupBitis,ev.e);
-    });
-    if(grup.length)grubuIsle(grup);
-    return {duzen:sonuc,kumeler};
-  }
-  function randevuStyle(r,duzen){
-    const top=(timeToMin(r.saat)-START)*PX,height=Math.max(r.sure*PX-2,18);
-    const renk=islemRenk(r.bolgeler,r.oda,r.durum);
-    const d=duzen?.get(r.id)||{col:0,cols:1};
-    const genislik=100/d.cols;
-    const left=`calc(${d.col*genislik}% + 2px)`;
-    const width=`calc(${genislik}% - 4px)`;
-    return{position:"absolute",top,left,width,height,background:renk.bg,border:`1px solid ${renk.brd}`,borderRadius:6,padding:"3px 7px",cursor:"pointer",overflow:"hidden",zIndex:d.cols>1?3:2};
-  }
-  function blokStyle(b){
-    const top=(timeToMin(b.saat)-START)*PX,height=Math.max(b.sure*PX-2,18);
-    return{position:"absolute",top,left:2,right:2,height,background:"repeating-linear-gradient(45deg,#888,#888 4px,#aaa 4px,#aaa 8px)",border:"1px solid #666",borderRadius:6,padding:"3px 7px",cursor:"pointer",overflow:"hidden",zIndex:2,opacity:0.85};
-  }
   function bosluklariBul(randevular,bloklar){
     const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
     const bosluklar=[];
@@ -752,83 +705,85 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
       imlec=Math.max(imlec,m.e);
     });
     if(imlec<END) bosluklar.push({b:imlec,e:END});
-    return bosluklar.filter(bo=>bo.e-bo.b>0&&bo.e-bo.b<60);
+    return bosluklar.filter(bo=>bo.e-bo.b>0);
   }
   function renderOda(randevular,bloklar,odaId){
-    const bosluklar=bosluklariBul(randevular,bloklar);
     const birlesik=ayniHastaBirlestir(randevular);
-    const {duzen,kumeler}=randevuDuzeni(birlesik);
+    const bosluklar=bosluklariBul(randevular,bloklar);
+    const renkOda=odaId==="alex"?"#2d6a35":"#5b3fa0";
+
+    // Tek zaman çizelgesi: randevular + bloklar + boşluklar, hepsi saate göre sıralı
+    const satirlar=[
+      ...birlesik.map(u=>({tip:"randevu",b:timeToMin(u.saat),e:timeToMin(u.saat)+u.sure,veri:u})),
+      ...bloklar.map(b=>({tip:b.baslik==="DR_YOK"?"dryok":"blok",b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure,veri:b})),
+      ...bosluklar.map(bo=>({tip:"bosluk",b:bo.b,e:bo.e,veri:bo})),
+    ].sort((a,b)=>a.b-b.b||a.e-b.e);
+
+    const toplamMesgul=satirlar.filter(s=>s.tip!=="bosluk").reduce((s,x)=>s+(x.e-x.b),0);
+    const doluluk=Math.round((toplamMesgul/TOTAL)*100);
+
     return(
-      <div style={{flex:1,position:"relative"}}>
-        {Array.from({length:TOTAL/15},(_,i)=>{const min=START+i*15;const isHour=min%60===0;const isHalf=min%60===30;return<div key={i} style={{position:"absolute",top:i*15,left:0,right:0,height:15,borderTop:isHour?"1px solid #c8c8c0":isHalf?"1px dashed #ddddd8":"1px solid #efefec",background:isHour?"#f8f8f6":"transparent",boxSizing:"border-box"}}/>;},)}
-        {Array.from({length:TOTAL/15},(_,i)=>{const t=minToTime(START+i*15);return<div key={"c"+i} onClick={()=>onYeniRandevu(odaId,t)} title={`${t} — yeni randevu`} style={{position:"absolute",top:i*15,left:0,right:0,height:15,zIndex:1,cursor:"pointer"}}/>;},)}
-        {bloklar.map((b)=>{
-          const isDrYok=b.baslik==="DR_YOK";
-          return isDrYok?(
-            <div key={"b"+b.id} style={{...blokStyle(b),background:"rgba(234,88,12,0.3)",border:"2px solid #ea580c"}} title="Dr. Duygu Hanım klinikte olmayacak">
-              <div style={{fontSize:11,fontWeight:600,color:"#c2410c",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>🩺 Dr. Yok</div>
-            </div>
-          ):(
-            <div key={"b"+b.id} style={blokStyle(b)} onClick={()=>{if(window.confirm(`"${b.baslik}" bloğunu sil?`))blokSil(b.id);}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>🔒 {b.baslik}</div>
-            </div>
-          );
-        })}
-        {bosluklar.map((bo,i)=>{
-          const top=(bo.b-START)*PX,height=bo.e-bo.b;
-          return(
-            <div key={"bo"+i} style={{position:"absolute",top,left:2,right:2,height,background:"rgba(251,191,36,0.18)",border:"1px dashed #f59e0b",borderRadius:4,zIndex:1,pointerEvents:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {height>=12&&<span style={{fontSize:9,color:"#92400e",fontWeight:600}}>{bo.e-bo.b}dk boş</span>}
-            </div>
-          );
-        })}
-        {suruklenen&&suruklenen.oda===odaId&&hedefSaat&&(
-          <div style={{position:"absolute",top:(timeToMin(hedefSaat)-START)*PX,left:2,right:2,height:Math.max(suruklenen.sure*PX-2,18),background:"rgba(99,102,241,0.2)",border:"2px dashed #6366f1",borderRadius:6,zIndex:10,pointerEvents:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{fontSize:12,color:"#4338ca",fontWeight:600}}>{hedefSaat}</span>
+      <div>
+        <div style={{fontSize:11,color:"#888",background:"#fff",border:"1px solid #eee",borderRadius:8,padding:"5px 10px",marginBottom:8,display:"inline-block"}}>
+          Bugün: <b style={{color:renkOda}}>%{doluluk} dolu</b> ({Math.floor(toplamMesgul/60)}s {toplamMesgul%60}dk dolu / {Math.floor((TOTAL-toplamMesgul)/60)}s {(TOTAL-toplamMesgul)%60}dk boş)
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          {/* Doluluk şeridi: orantılı, sadece renk */}
+          <div style={{width:14,borderRadius:7,overflow:"hidden",background:"#e9e7e1",display:"flex",flexDirection:"column",height:STRIP_H,flexShrink:0}}>
+            {satirlar.map((s,i)=>{
+              const sure=s.e-s.b;
+              let bg="#e9e7e1",baslik=`${minToTime(s.b)}-${minToTime(s.e)} boş`;
+              if(s.tip==="randevu"){bg=renkOda;baslik=`${minToTime(s.b)}-${minToTime(s.e)} ${s.veri.hasta}`;}
+              else if(s.tip==="dryok"){bg="#ea580c";baslik=`${minToTime(s.b)}-${minToTime(s.e)} Dr. Yok`;}
+              else if(s.tip==="blok"){bg="#888";baslik=`${minToTime(s.b)}-${minToTime(s.e)} ${s.veri.baslik}`;}
+              return <div key={i} title={baslik} style={{flexGrow:sure,flexBasis:0,minHeight:sure>0?1:0,background:bg,borderBottom:"1px solid #fff"}}/>;
+            })}
           </div>
-        )}
-        {birlesik.map(u=>(
-          <div key={u.id} style={{...randevuStyle(u,duzen),opacity:(u.list.length===1&&suruklenen?.id===u.list[0].id)?0.4:1,cursor:u.list.length===1?"grab":"pointer"}}
-            onClick={e=>{
-              e.stopPropagation();
-              if(suruklenen)return;
-              if(u.list.length===1) onRandevuTikla(u.list[0]);
-              else setKumePopup({liste:u.list});
-            }}
-            onMouseEnter={e=>{if(!suruklenen&&u.list.length===1)setTooltip({r:u.list[0],x:e.clientX,y:e.clientY});}}
-            onMouseLeave={()=>setTooltip(null)}
-            onMouseDown={e=>{
-              if(u.list.length!==1)return;
-              e.stopPropagation();
-              setTooltip(null);
-              const timer=setTimeout(()=>{
-                setSuruklenen({...u.list[0],oda:odaId});
-                setSuruklemeY(e.clientY);
-              },1000);
-              const cancel=()=>{clearTimeout(timer);document.removeEventListener("mouseup",cancel);document.removeEventListener("touchend",cancel);};
-              document.addEventListener("mouseup",cancel);
-              document.addEventListener("touchend",cancel);
-            }}>
-            <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
-              {u.tel&&<div style={{width:8,height:8,borderRadius:"50%",background:"#60a5fa",flexShrink:0,marginTop:3}}/>}
-              <div style={{fontSize:12,fontWeight:600,color:"#fff",lineHeight:1.3,overflow:"hidden",wordBreak:"break-word",flex:1}}>{u.hasta}</div>
-              {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",color:"#fff",borderRadius:8,padding:"1px 6px",flexShrink:0,fontWeight:700,whiteSpace:"nowrap"}}>{u.list.length} işlem</span>}
-            </div>
-            {u.sure>=25&&u.bolgeler?.length>0&&<div style={{fontSize:10,color:"rgba(255,255,255,0.85)",overflow:"hidden",wordBreak:"break-word"}}>{u.bolgeler.slice(0,3).join(" · ")}{u.bolgeler.length>3?` +${u.bolgeler.length-3}`:""}</div>}
-            {u.sure>=20&&<div style={{fontSize:10,color:"rgba(255,255,255,0.7)"}}>{u.saat} · {u.sure}dk{u.odeme?` · ${u.odeme}`:""}</div>}
+          {/* Liste */}
+          <div style={{flex:1,minWidth:0}}>
+            {satirlar.map((s,i)=>{
+              if(s.tip==="bosluk"){
+                return(
+                  <div key={"bo"+i} onClick={()=>onYeniRandevu(odaId,minToTime(s.b))} style={{display:"flex",alignItems:"center",gap:8,padding:"3px 2px",marginBottom:5,color:"#a4820f",fontSize:11,fontStyle:"italic",cursor:"pointer"}}>
+                    <div style={{flex:1,borderTop:"2px dashed #d9c98a"}}/>
+                    <div>{s.e-s.b}dk boş · {minToTime(s.b)}</div>
+                    <div style={{flex:1,borderTop:"2px dashed #d9c98a"}}/>
+                  </div>
+                );
+              }
+              if(s.tip==="dryok"){
+                return(
+                  <div key={"dy"+i} style={{padding:"8px 10px",marginBottom:5,borderRadius:8,background:"rgba(234,88,12,0.12)",border:"2px solid #ea580c"}} title="Dr. Duygu Hanım klinikte olmayacak">
+                    <div style={{fontSize:12,fontWeight:600,color:"#c2410c"}}>🩺 Dr. Yok — {minToTime(s.b)}-{minToTime(s.e)}</div>
+                  </div>
+                );
+              }
+              if(s.tip==="blok"){
+                return(
+                  <div key={"bl"+i} onClick={()=>{if(window.confirm(`"${s.veri.baslik}" bloğunu sil?`))blokSil(s.veri.id);}} style={{padding:"8px 10px",marginBottom:5,borderRadius:8,background:"repeating-linear-gradient(45deg,#888,#888 4px,#aaa 4px,#aaa 8px)",border:"1px solid #666",cursor:"pointer"}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"#fff"}}>🔒 {s.veri.baslik} — {minToTime(s.b)}-{minToTime(s.e)}</div>
+                  </div>
+                );
+              }
+              const u=s.veri;
+              const renk=islemRenk(u.bolgeler,u.oda,u.durum);
+              return(
+                <div key={u.id} onClick={()=>{if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",marginBottom:5,borderRadius:8,background:renk.bg,border:`1px solid ${renk.brd}`,cursor:"pointer"}}>
+                  {u.tel&&<div style={{width:8,height:8,borderRadius:"50%",background:"#60a5fa",flexShrink:0}}/>}
+                  <div style={{fontSize:11,fontWeight:700,color:"#fff",width:42,flexShrink:0}}>{u.saat}</div>
+                  <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {u.hasta}
+                    {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",borderRadius:8,padding:"1px 6px",marginLeft:6,fontWeight:700}}>{u.list.length} işlem</span>}
+                    {u.bolgeler?.length>0&&<span style={{fontSize:10,color:"rgba(255,255,255,0.8)",marginLeft:6}}>{u.bolgeler.slice(0,3).join(" · ")}{u.bolgeler.length>3?` +${u.bolgeler.length-3}`:""}</span>}
+                  </div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.85)",flexShrink:0}}>{u.sure}dk{u.odeme?` · ${u.odeme}`:""}</div>
+                  {u.durum&&<span style={{fontSize:10,fontWeight:700,color:"#fff",flexShrink:0}}>{u.durum==="Gelmedi"?"❌":u.durum==="Kontrol"?"⏳":"✔"}</span>}
+                </div>
+              );
+            })}
           </div>
-        ))}
-        {kumeler.map((k,ki)=>{
-          const topStart=Math.min(...k.map(r=>timeToMin(r.saat)))-START;
-          return(
-            <div key={"kume"+ki}
-              onClick={e=>{e.stopPropagation();setKumePopup({liste:k.flatMap(u=>u.list).sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat))});}}
-              title={`${k.length} randevu üst üste — tümünü gör`}
-              style={{position:"absolute",top:topStart+1,right:3,width:18,height:18,borderRadius:"50%",background:"#4338ca",color:"#fff",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:20,boxShadow:"0 1px 4px rgba(0,0,0,0.35)"}}>
-              {k.length}
-            </div>
-          );
-        })}
+        </div>
       </div>
     );
   }
@@ -869,55 +824,21 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
         {[{l:"Alex",v:alexR.length,c:"#2d6a35"},{l:"Soprano",v:sopR.length,c:"#5b3fa0"},{l:"Gelmedi",v:[...alexR,...sopR].filter(r=>r.durum==="Gelmedi").length,c:"#b45309"},{l:"Toplam",v:alexR.length+sopR.length,c:"#555"}]
           .map(s=><div key={s.l} style={{flex:1,background:"#fff",border:"1px solid #e8e6e0",borderRadius:10,padding:"8px 12px"}}><div style={{fontSize:11,color:"#888"}}>{s.l}</div><div style={{fontSize:20,fontWeight:600,color:s.c}}>{s.v}</div></div>)}
       </div>
-      {tooltip&&(
-        <div style={{position:"fixed",top:tooltip.y+12,left:tooltip.x+12,background:"#1a1a2e",color:"#fff",borderRadius:10,padding:"10px 14px",fontSize:12,zIndex:9999,pointerEvents:"none",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",maxWidth:220}}>
-          <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>{tooltip.r.hasta}</div>
-          <div style={{color:"#a5b4fc",marginBottom:2}}>⏰ {tooltip.r.saat} — {minToTime(timeToMin(tooltip.r.saat)+tooltip.r.sure)}</div>
-          <div style={{color:"#94a3b8",marginBottom:2}}>{tooltip.r.oda==="alex"?"🟢 Alex Lazer":"🟣 Soprano/Cilt/Forma"}</div>
-          {tooltip.r.bolgeler?.length>0&&<div style={{color:"#cbd5e1"}}>{tooltip.r.bolgeler.join(" · ")}</div>}
-          {tooltip.r.durum&&<div style={{marginTop:4,color:tooltip.r.durum==="Gelmedi"?"#fca5a5":tooltip.r.durum==="Kontrol"?"#fcd34d":"#86efac"}}>{tooltip.r.durum}</div>}
-        </div>
-      )}
-      <div 
-        style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}
-        onMouseMove={e=>{
-          if(!suruklenen) return;
-          const grid=e.currentTarget.querySelector(".takvim-icerik");
-          if(!grid) return;
-          const rect=grid.getBoundingClientRect();
-          const y=e.clientY-rect.top+grid.scrollTop;
-          const dakika=Math.round(y/PX/5)*5+START;
-          const yeniSaat=minToTime(Math.max(START,Math.min(END-suruklenen.sure,dakika)));
-          setHedefSaat(yeniSaat);
-        }}
-        onMouseUp={async e=>{
-          if(!suruklenen||!hedefSaat) {setSuruklenen(null);setHedefSaat(null);return;}
-          if(hedefSaat!==suruklenen.saat){
-            const ok=await onRandevuTasi(suruklenen,hedefSaat);
-          }
-          setSuruklenen(null);setHedefSaat(null);
-        }}
-        onMouseLeave={()=>{setSuruklenen(null);setHedefSaat(null);}}>
-        <div style={{display:"flex",borderBottom:"2px solid #e8e6e0",background:"#f7f7f5",position:"sticky",top:0,zIndex:10}}>
-          <div style={{width:LABEL_W,flexShrink:0,padding:"10px 6px",fontSize:11,color:"#aaa",textAlign:"right",paddingRight:8}}>Saat</div>
+      <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+        <div style={{display:"flex",borderBottom:"2px solid #e8e6e0",background:"#f7f7f5"}}>
           {[["🟢 Alex Lazer","#2d6a35","alex"],["🟣 Soprano / Cilt / Forma","#5b3fa0","soprano"]].map(([l,c,oda])=>{
             const drYokVar=bloklar.some(b=>b.oda===oda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK");
             return(
-              <div key={l} style={{flex:1,padding:"10px 14px",borderLeft:"1px solid #e8e6e0"}}>
+              <div key={l} style={{flex:1,padding:"10px 14px",borderLeft:oda==="soprano"?"1px solid #e8e6e0":"none"}}>
                 <span style={{fontSize:13,fontWeight:600,color:c}}>{l}</span>
                 {drYokVar&&<div style={{fontSize:11,color:"#ea580c",fontWeight:700,marginTop:2}}>🩺 Dr. Yok</div>}
               </div>
             );
           })}
         </div>
-        <div className="takvim-icerik" style={{display:"flex",overflowY:"auto",maxHeight:"72vh"}}>
-          <div style={{width:LABEL_W,flexShrink:0,position:"relative",height:totalH}}>
-            {Array.from({length:TOTAL/60},(_,i)=>(
-              <div key={i} style={{position:"absolute",top:i*60-7,width:"100%",textAlign:"right",paddingRight:6,fontSize:10,color:"#bbb",fontWeight:500,userSelect:"none"}}>{minToTime(START+i*60)}</div>
-            ))}
-          </div>
-          <div style={{flex:1,borderLeft:"1px solid #e8e6e0",position:"relative",height:totalH}}>{renderOda(alexR,gunB.filter(b=>b.oda==="alex"),"alex")}</div>
-          <div style={{flex:1,borderLeft:"1px solid #e8e6e0",position:"relative",height:totalH}}>{renderOda(sopR,gunB.filter(b=>b.oda==="soprano"),"soprano")}</div>
+        <div style={{display:"flex",overflowY:"auto",maxHeight:"72vh"}}>
+          <div style={{flex:1,padding:"10px 12px"}}>{renderOda(alexR,gunB.filter(b=>b.oda==="alex"),"alex")}</div>
+          <div style={{flex:1,borderLeft:"1px solid #e8e6e0",padding:"10px 12px"}}>{renderOda(sopR,gunB.filter(b=>b.oda==="soprano"),"soprano")}</div>
         </div>
       </div>
       {kumePopup&&(
