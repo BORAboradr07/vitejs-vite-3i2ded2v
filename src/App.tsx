@@ -49,9 +49,20 @@ async function kasadaHastaVarMi(ad){
 }
 
 async function sbGet(tablo, params=""){
-  const r = await fetch(`${SB_URL}/rest/v1/${tablo}?${params}&order=id.asc`, {headers:{...HDR,"Prefer":"return=representation"}});
-  if(!r.ok) throw new Error(await r.text());
-  return r.json();
+  const SAYFA=1000;
+  let tumKayitlar=[];
+  let bas=0;
+  while(true){
+    const r = await fetch(`${SB_URL}/rest/v1/${tablo}?${params}&order=id.asc`, {
+      headers:{...HDR,"Prefer":"return=representation","Range-Unit":"items","Range":`${bas}-${bas+SAYFA-1}`}
+    });
+    if(!r.ok) throw new Error(await r.text());
+    const parca = await r.json();
+    tumKayitlar = tumKayitlar.concat(parca);
+    if(parca.length < SAYFA) break;
+    bas += SAYFA;
+  }
+  return tumKayitlar;
 }
 async function sbInsert(tablo, data){
   const r = await fetch(`${SB_URL}/rest/v1/${tablo}`, {method:"POST", headers:{...HDR,"Prefer":"return=representation"}, body:JSON.stringify(data)});
@@ -293,7 +304,7 @@ export default function App() {
     const yB=timeToMin(saat),yE=yB+sure;
     const rc=randevular.filter(r=>r.oda===oda&&r.tarih===tarih&&r.id!==excludeId)
       .find(r=>{const b=timeToMin(r.saat),e=b+r.sure;return yB<e&&yE>b;});
-    const bc=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih)
+    const bc=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih&&b.baslik!=="DR_YOK")
       .find(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return yB<be&&yE>bb;});
     if(bc) return {tip:"blok",mesaj:`⛔ Bu saat bloklu: "${bc.baslik}" (${bc.saat}, ${bc.sure} dk).`};
     if(rc){
@@ -647,14 +658,47 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
   const [suruklenen,setSuruklenen]=useState(null);
   const [suruklemeY,setSuruklemeY]=useState(null);
   const [hedefSaat,setHedefSaat]=useState(null);
+  const [kumePopup,setKumePopup]=useState(null);
   function prevDay(){setSeciliTarih(addDays(seciliTarih,-1));}
   function nextDay(){setSeciliTarih(addDays(seciliTarih,1));}
   const PX=1,LABEL_W=52,START=9*60,END=20*60,TOTAL=END-START,totalH=TOTAL*PX;
 
-  function randevuStyle(r){
+  function randevuDuzeni(liste){
+    // Çakışan randevuları tespit edip yan yana sütunlara böler (Google Takvim mantığı)
+    // Ayrıca her çakışma kümesini (aynı anda üst üste gelen randevu grubunu) de döndürür
+    const evs=liste.map(r=>({r,b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})).sort((a,b)=>a.b-b.b||a.e-b.e);
+    const sonuc=new Map();
+    const kumeler=[];
+    let grup=[],grupBitis=-Infinity;
+    function grubuIsle(g){
+      const kolonlar=[];
+      g.forEach(ev=>{
+        let yerlesti=false;
+        for(const kol of kolonlar){
+          if(kol[kol.length-1].e<=ev.b){kol.push(ev);yerlesti=true;break;}
+        }
+        if(!yerlesti)kolonlar.push([ev]);
+      });
+      const toplamKolon=kolonlar.length;
+      kolonlar.forEach((kol,ki)=>{kol.forEach(ev=>sonuc.set(ev.r.id,{col:ki,cols:toplamKolon}));});
+      if(g.length>=3)kumeler.push(g.map(ev=>ev.r));
+    }
+    evs.forEach(ev=>{
+      if(grup.length&&ev.b>=grupBitis){grubuIsle(grup);grup=[];grupBitis=-Infinity;}
+      grup.push(ev);
+      grupBitis=Math.max(grupBitis,ev.e);
+    });
+    if(grup.length)grubuIsle(grup);
+    return {duzen:sonuc,kumeler};
+  }
+  function randevuStyle(r,duzen){
     const top=(timeToMin(r.saat)-START)*PX,height=Math.max(r.sure*PX-2,18);
     const renk=islemRenk(r.bolgeler,r.oda,r.durum);
-    return{position:"absolute",top,left:2,right:2,height,background:renk.bg,border:`1px solid ${renk.brd}`,borderRadius:6,padding:"3px 7px",cursor:"pointer",overflow:"hidden",zIndex:2};
+    const d=duzen?.get(r.id)||{col:0,cols:1};
+    const genislik=100/d.cols;
+    const left=`calc(${d.col*genislik}% + 2px)`;
+    const width=`calc(${genislik}% - 4px)`;
+    return{position:"absolute",top,left,width,height,background:renk.bg,border:`1px solid ${renk.brd}`,borderRadius:6,padding:"3px 7px",cursor:"pointer",overflow:"hidden",zIndex:d.cols>1?3:2};
   }
   function blokStyle(b){
     const top=(timeToMin(b.saat)-START)*PX,height=Math.max(b.sure*PX-2,18);
@@ -673,6 +717,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
   }
   function renderOda(randevular,bloklar,odaId){
     const bosluklar=bosluklariBul(randevular,bloklar);
+    const {duzen,kumeler}=randevuDuzeni(randevular);
     return(
       <div style={{flex:1,position:"relative"}}>
         {Array.from({length:TOTAL/15},(_,i)=>{const min=START+i*15;const isHour=min%60===0;const isHalf=min%60===30;return<div key={i} style={{position:"absolute",top:i*15,left:0,right:0,height:15,borderTop:isHour?"1px solid #c8c8c0":isHalf?"1px dashed #ddddd8":"1px solid #efefec",background:isHour?"#f8f8f6":"transparent",boxSizing:"border-box"}}/>;},)}
@@ -703,7 +748,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
           </div>
         )}
         {randevular.map(r=>(
-          <div key={r.id} style={{...randevuStyle(r),opacity:suruklenen?.id===r.id?0.4:1,cursor:"grab"}}
+          <div key={r.id} style={{...randevuStyle(r,duzen),opacity:suruklenen?.id===r.id?0.4:1,cursor:"grab"}}
             onClick={e=>{if(!suruklenen)onRandevuTikla(r);e.stopPropagation();}}
             onMouseEnter={e=>{if(!suruklenen)setTooltip({r,x:e.clientX,y:e.clientY});}}
             onMouseLeave={()=>setTooltip(null)}
@@ -726,6 +771,17 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
             {r.sure>=20&&<div style={{fontSize:10,color:"rgba(255,255,255,0.7)"}}>{r.saat} · {r.sure}dk{r.odeme?` · ${r.odeme}`:""}</div>}
           </div>
         ))}
+        {kumeler.map((k,ki)=>{
+          const topStart=Math.min(...k.map(r=>timeToMin(r.saat)))-START;
+          return(
+            <div key={"kume"+ki}
+              onClick={e=>{e.stopPropagation();setKumePopup({liste:[...k].sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat))});}}
+              title={`${k.length} randevu üst üste — tümünü gör`}
+              style={{position:"absolute",top:topStart+1,right:3,width:18,height:18,borderRadius:"50%",background:"#4338ca",color:"#fff",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:20,boxShadow:"0 1px 4px rgba(0,0,0,0.35)"}}>
+              {k.length}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -817,6 +873,25 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
           <div style={{flex:1,borderLeft:"1px solid #e8e6e0",position:"relative",height:totalH}}>{renderOda(sopR,gunB.filter(b=>b.oda==="soprano"),"soprano")}</div>
         </div>
       </div>
+      {kumePopup&&(
+        <div onClick={()=>setKumePopup(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.25)",zIndex:200,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"12vh"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:16,width:300,maxHeight:"60vh",overflowY:"auto",boxShadow:"0 10px 40px rgba(0,0,0,0.3)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <span style={{fontWeight:700,fontSize:14}}>Bu saatteki randevular ({kumePopup.liste.length})</span>
+              <span onClick={()=>setKumePopup(null)} style={{cursor:"pointer",color:"#999",fontSize:16,padding:"0 4px"}}>✕</span>
+            </div>
+            {kumePopup.liste.map(r=>(
+              <div key={r.id} onClick={()=>{setKumePopup(null);onRandevuTikla(r);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 10px",borderRadius:8,marginBottom:6,background:"#f5f4f1",cursor:"pointer"}}>
+                <div>
+                  <div style={{fontWeight:600,fontSize:13}}>{r.hasta}</div>
+                  <div style={{fontSize:11,color:"#888"}}>{r.saat} · {r.sure}dk{r.odeme?` · ${r.odeme}`:""}</div>
+                </div>
+                <span style={{fontSize:11,fontWeight:600,color:r.durum==="Gelmedi"?"#dc2626":r.durum==="Kontrol"?"#b45309":"#16a34a"}}>{r.durum}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
