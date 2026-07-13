@@ -404,8 +404,10 @@ export default function App() {
       if(yeniSure>(r?.sure||0)){
         const cakisma=cakismaVar(r.oda,r.tarih,r.saat,yeniSure,id);
         if(cakisma){
-          if(cakisma.tip==="uyari"||cakisma.tip==="randevu"){
-            if(!window.confirm("⚠️ Yeni süre bir sonraki randevuyla çakışıyor. Yine de devam etmek istiyor musunuz?")) return;
+          if(cakisma.tip==="uyari"){
+            if(!window.confirm(cakisma.mesaj)) return;
+          } else {
+            showToast(cakisma.mesaj,"error");return;
           }
         }
       }
@@ -663,10 +665,47 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
   function nextDay(){setSeciliTarih(addDays(seciliTarih,1));}
   const PX=1,LABEL_W=52,START=9*60,END=20*60,TOTAL=END-START,totalH=TOTAL*PX;
 
+  function ayniHastaBirlestir(liste){
+    // Aynı hastanın aynı zaman aralığına denk gelen farklı işlem (bölge) kayıtlarını
+    // tek bir görsel karta birleştirir (örn. "Aslı Sıla - Yarım Kol" ve "Aslı Sıla - T.Bacak" aynı saatte ise)
+    const items=liste.map(r=>({r,b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure}));
+    const n=items.length,used=new Array(n).fill(false),gruplar=[];
+    for(let i=0;i<n;i++){
+      if(used[i])continue;
+      let grup=[items[i]];used[i]=true;
+      let genisledi=true;
+      while(genisledi){
+        genisledi=false;
+        for(let j=0;j<n;j++){
+          if(used[j])continue;
+          const aday=items[j];
+          const cakisiyor=grup.some(g=>g.r.hasta===aday.r.hasta&&aday.b<g.e&&aday.e>g.b);
+          if(cakisiyor){grup.push(aday);used[j]=true;genisledi=true;}
+        }
+      }
+      const b=Math.min(...grup.map(g=>g.b)),e=Math.max(...grup.map(g=>g.e));
+      const ilk=grup[0].r;
+      const bolgelerSeti=[...new Set(grup.flatMap(g=>g.r.bolgeler||[]))];
+      gruplar.push({
+        id:grup.map(g=>g.r.id).join("-"),
+        hasta:ilk.hasta,oda:ilk.oda,
+        saat:minToTime(b),sure:e-b,
+        bolgeler:bolgelerSeti,
+        tel:ilk.tel,
+        durum:grup.length===1?ilk.durum:(grup.some(g=>g.r.durum==="Gelmedi")?"Gelmedi":ilk.durum),
+        odeme:grup.length===1?ilk.odeme:undefined,
+        list:grup.map(g=>g.r).sort((x,y)=>timeToMin(x.saat)-timeToMin(y.saat))
+      });
+    }
+    return gruplar;
+  }
   function randevuDuzeni(liste){
     // Çakışan randevuları tespit edip yan yana sütunlara böler (Google Takvim mantığı)
     // Ayrıca her çakışma kümesini (aynı anda üst üste gelen randevu grubunu) de döndürür
-    const evs=liste.map(r=>({r,b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})).sort((a,b)=>a.b-b.b||a.e-b.e);
+    // NOT: kısa randevuların ekranda en az 18dk'lık görsel yer kaplaması (min-height) da
+    // hesaba katılıyor, yoksa görsel olarak çakışan ama "süre" bazında çakışmayan kartlar
+    // birbirinin üstüne biner (görünmez kalır).
+    const evs=liste.map(r=>({r,b:timeToMin(r.saat),e:timeToMin(r.saat)+Math.max(r.sure,18)})).sort((a,b)=>a.b-b.b||a.e-b.e);
     const sonuc=new Map();
     const kumeler=[];
     let grup=[],grupBitis=-Infinity;
@@ -717,7 +756,8 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
   }
   function renderOda(randevular,bloklar,odaId){
     const bosluklar=bosluklariBul(randevular,bloklar);
-    const {duzen,kumeler}=randevuDuzeni(randevular);
+    const birlesik=ayniHastaBirlestir(randevular);
+    const {duzen,kumeler}=randevuDuzeni(birlesik);
     return(
       <div style={{flex:1,position:"relative"}}>
         {Array.from({length:TOTAL/15},(_,i)=>{const min=START+i*15;const isHour=min%60===0;const isHalf=min%60===30;return<div key={i} style={{position:"absolute",top:i*15,left:0,right:0,height:15,borderTop:isHour?"1px solid #c8c8c0":isHalf?"1px dashed #ddddd8":"1px solid #efefec",background:isHour?"#f8f8f6":"transparent",boxSizing:"border-box"}}/>;},)}
@@ -747,16 +787,22 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
             <span style={{fontSize:12,color:"#4338ca",fontWeight:600}}>{hedefSaat}</span>
           </div>
         )}
-        {randevular.map(r=>(
-          <div key={r.id} style={{...randevuStyle(r,duzen),opacity:suruklenen?.id===r.id?0.4:1,cursor:"grab"}}
-            onClick={e=>{if(!suruklenen)onRandevuTikla(r);e.stopPropagation();}}
-            onMouseEnter={e=>{if(!suruklenen)setTooltip({r,x:e.clientX,y:e.clientY});}}
+        {birlesik.map(u=>(
+          <div key={u.id} style={{...randevuStyle(u,duzen),opacity:(u.list.length===1&&suruklenen?.id===u.list[0].id)?0.4:1,cursor:u.list.length===1?"grab":"pointer"}}
+            onClick={e=>{
+              e.stopPropagation();
+              if(suruklenen)return;
+              if(u.list.length===1) onRandevuTikla(u.list[0]);
+              else setKumePopup({liste:u.list});
+            }}
+            onMouseEnter={e=>{if(!suruklenen&&u.list.length===1)setTooltip({r:u.list[0],x:e.clientX,y:e.clientY});}}
             onMouseLeave={()=>setTooltip(null)}
             onMouseDown={e=>{
+              if(u.list.length!==1)return;
               e.stopPropagation();
               setTooltip(null);
               const timer=setTimeout(()=>{
-                setSuruklenen({...r,oda:odaId});
+                setSuruklenen({...u.list[0],oda:odaId});
                 setSuruklemeY(e.clientY);
               },1000);
               const cancel=()=>{clearTimeout(timer);document.removeEventListener("mouseup",cancel);document.removeEventListener("touchend",cancel);};
@@ -764,18 +810,19 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
               document.addEventListener("touchend",cancel);
             }}>
             <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
-              {r.tel&&<div style={{width:8,height:8,borderRadius:"50%",background:"#60a5fa",flexShrink:0,marginTop:3}}/>}
-              <div style={{fontSize:12,fontWeight:600,color:"#fff",lineHeight:1.3,overflow:"hidden",wordBreak:"break-word",flex:1}}>{r.hasta}</div>
+              {u.tel&&<div style={{width:8,height:8,borderRadius:"50%",background:"#60a5fa",flexShrink:0,marginTop:3}}/>}
+              <div style={{fontSize:12,fontWeight:600,color:"#fff",lineHeight:1.3,overflow:"hidden",wordBreak:"break-word",flex:1}}>{u.hasta}</div>
+              {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",color:"#fff",borderRadius:8,padding:"1px 6px",flexShrink:0,fontWeight:700,whiteSpace:"nowrap"}}>{u.list.length} işlem</span>}
             </div>
-            {r.sure>=25&&r.bolgeler?.length>0&&<div style={{fontSize:10,color:"rgba(255,255,255,0.85)",overflow:"hidden",wordBreak:"break-word"}}>{r.bolgeler.slice(0,3).join(" · ")}{r.bolgeler.length>3?` +${r.bolgeler.length-3}`:""}</div>}
-            {r.sure>=20&&<div style={{fontSize:10,color:"rgba(255,255,255,0.7)"}}>{r.saat} · {r.sure}dk{r.odeme?` · ${r.odeme}`:""}</div>}
+            {u.sure>=25&&u.bolgeler?.length>0&&<div style={{fontSize:10,color:"rgba(255,255,255,0.85)",overflow:"hidden",wordBreak:"break-word"}}>{u.bolgeler.slice(0,3).join(" · ")}{u.bolgeler.length>3?` +${u.bolgeler.length-3}`:""}</div>}
+            {u.sure>=20&&<div style={{fontSize:10,color:"rgba(255,255,255,0.7)"}}>{u.saat} · {u.sure}dk{u.odeme?` · ${u.odeme}`:""}</div>}
           </div>
         ))}
         {kumeler.map((k,ki)=>{
           const topStart=Math.min(...k.map(r=>timeToMin(r.saat)))-START;
           return(
             <div key={"kume"+ki}
-              onClick={e=>{e.stopPropagation();setKumePopup({liste:[...k].sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat))});}}
+              onClick={e=>{e.stopPropagation();setKumePopup({liste:k.flatMap(u=>u.list).sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat))});}}
               title={`${k.length} randevu üst üste — tümünü gör`}
               style={{position:"absolute",top:topStart+1,right:3,width:18,height:18,borderRadius:"50%",background:"#4338ca",color:"#fff",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:20,boxShadow:"0 1px 4px rgba(0,0,0,0.35)"}}>
               {k.length}
