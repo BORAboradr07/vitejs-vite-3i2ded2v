@@ -654,6 +654,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
   const [blokPanel,setBlokPanel]=useState(false);
   const [hastaAraPanel,setHastaAraPanel]=useState(false);
   const [drYokPanel,setDrYokPanel]=useState(false);
+  const [aktifOda,setAktifOda]=useState("alex");
   const [kasaPanel,setKasaPanel]=useState(false);
   const [kasaSifre,setKasaSifre]=useState(false);
   const [kumePopup,setKumePopup]=useState(null);
@@ -753,8 +754,8 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
               }
               if(s.tip==="dryok"){
                 return(
-                  <div key={"dy"+i} style={{padding:"8px 10px",marginBottom:5,borderRadius:8,background:"rgba(234,88,12,0.12)",border:"2px solid #ea580c"}} title="Dr. Duygu Hanım klinikte olmayacak">
-                    <div style={{fontSize:12,fontWeight:600,color:"#c2410c"}}>🩺 Dr. Yok — {minToTime(s.b)}-{minToTime(s.e)}</div>
+                  <div key={"dy"+i} onClick={()=>onYeniRandevu(odaId,minToTime(s.b))} style={{padding:"8px 10px",marginBottom:5,borderRadius:8,background:"rgba(234,88,12,0.12)",border:"2px solid #ea580c",cursor:"pointer"}} title="Dr. Duygu Hanım klinikte olmayacak — tıkla, yine de randevu oluşturabilirsin">
+                    <div style={{fontSize:12,fontWeight:600,color:"#c2410c"}}>🩺 Dr. Yok — {minToTime(s.b)}-{minToTime(s.e)} <span style={{fontWeight:400,color:"#c2740c"}}>(tıkla → yine de randevu oluştur)</span></div>
                   </div>
                 );
               }
@@ -824,21 +825,25 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
         {[{l:"Alex",v:alexR.length,c:"#2d6a35"},{l:"Soprano",v:sopR.length,c:"#5b3fa0"},{l:"Gelmedi",v:[...alexR,...sopR].filter(r=>r.durum==="Gelmedi").length,c:"#b45309"},{l:"Toplam",v:alexR.length+sopR.length,c:"#555"}]
           .map(s=><div key={s.l} style={{flex:1,background:"#fff",border:"1px solid #e8e6e0",borderRadius:10,padding:"8px 12px"}}><div style={{fontSize:11,color:"#888"}}>{s.l}</div><div style={{fontSize:20,fontWeight:600,color:s.c}}>{s.v}</div></div>)}
       </div>
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        {[["alex","🟢 Alex Lazer","#2d6a35"],["soprano","🟣 Soprano / Cilt / Forma","#5b3fa0"]].map(([key,label,color])=>(
+          <button key={key} onClick={()=>setAktifOda(key)} style={{flex:1,padding:"10px 14px",borderRadius:10,border:aktifOda===key?`2px solid ${color}`:"1px solid #ddd",background:aktifOda===key?color+"14":"#f7f7f5",color:aktifOda===key?color:"#777",fontWeight:aktifOda===key?700:500,fontSize:13,cursor:"pointer"}}>{label}</button>
+        ))}
+      </div>
       <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
-        <div style={{display:"flex",borderBottom:"2px solid #e8e6e0",background:"#f7f7f5"}}>
-          {[["🟢 Alex Lazer","#2d6a35","alex"],["🟣 Soprano / Cilt / Forma","#5b3fa0","soprano"]].map(([l,c,oda])=>{
-            const drYokVar=bloklar.some(b=>b.oda===oda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK");
-            return(
-              <div key={l} style={{flex:1,padding:"10px 14px",borderLeft:oda==="soprano"?"1px solid #e8e6e0":"none"}}>
-                <span style={{fontSize:13,fontWeight:600,color:c}}>{l}</span>
-                {drYokVar&&<div style={{fontSize:11,color:"#ea580c",fontWeight:700,marginTop:2}}>🩺 Dr. Yok</div>}
-              </div>
-            );
-          })}
-        </div>
-        <div style={{display:"flex",overflowY:"auto",maxHeight:"72vh"}}>
-          <div style={{flex:1,padding:"10px 12px"}}>{renderOda(alexR,gunB.filter(b=>b.oda==="alex"),"alex")}</div>
-          <div style={{flex:1,borderLeft:"1px solid #e8e6e0",padding:"10px 12px"}}>{renderOda(sopR,gunB.filter(b=>b.oda==="soprano"),"soprano")}</div>
+        {(()=>{
+          const drYokVar=bloklar.some(b=>b.oda===aktifOda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK");
+          const renkOda=aktifOda==="alex"?"#2d6a35":"#5b3fa0";
+          return drYokVar&&(
+            <div style={{padding:"8px 14px",background:"#fff7ed",borderBottom:"1px solid #fed7aa"}}>
+              <span style={{fontSize:11,color:"#ea580c",fontWeight:700}}>🩺 Dr. Yok bugün {aktifOda==="alex"?"Alex":"Soprano"} için</span>
+            </div>
+          );
+        })()}
+        <div style={{padding:"12px"}}>
+          {aktifOda==="alex"
+            ?renderOda(alexR,gunB.filter(b=>b.oda==="alex"),"alex")
+            :renderOda(sopR,gunB.filter(b=>b.oda==="soprano"),"soprano")}
         </div>
       </div>
       {kumePopup&&(
