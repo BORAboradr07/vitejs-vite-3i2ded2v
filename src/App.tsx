@@ -1940,7 +1940,9 @@ function AnketSonucSekme({aktifRol}){
     });
     return [...map.values()]
       .map(g=>({tarih:g.tarih,toplam:g.hastalar.size,gonderilen:g.gonderilen.size,telsiz:g.telsiz.size}))
-      .sort((a,b)=>b.tarih.localeCompare(a.tarih));
+      .filter(g=>g.tarih<=today())
+      .sort((a,b)=>b.tarih.localeCompare(a.tarih))
+      .slice(0,20);
   })();
 
   const sirali=[...anketler].sort((a,b)=>(b.tamamlama_tarih||"").localeCompare(a.tamamlama_tarih||""));
@@ -1982,7 +1984,7 @@ function AnketSonucSekme({aktifRol}){
 
       <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
         <div style={{padding:"12px 16px",background:"#f7f7f5",borderBottom:"1px solid #e8e6e0"}}>
-          <span style={{fontWeight:600,fontSize:14}}>📅 Günlük Anket Gönderim İstatistiği</span>
+          <span style={{fontWeight:600,fontSize:14}}>📅 Günlük Anket Gönderim İstatistiği (bugün dahil son 20 gün)</span>
         </div>
         {istatistikYukleniyor?(
           <div style={{padding:24,textAlign:"center",color:"#aaa",fontSize:13}}>Yükleniyor...</div>
