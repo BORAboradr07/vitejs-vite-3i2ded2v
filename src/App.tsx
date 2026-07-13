@@ -1103,9 +1103,10 @@ function BlokPanel({bloklar,blokEkle,blokSil,seciliTarih,showToast,onKapat}){
       const odalar=oda==="ikisi"?["alex","soprano"]:[oda];
       odalar.forEach(o=>yeniBloklar.push({oda:o,tarih:seciliTarih,saat,sure,baslik:baslik.trim()}));
     } else {
-      for(let i=0;i<60;i++){
+      const gun=tekrar==="3ay"||tekrar==="3ayhergün"?90:60;
+      for(let i=0;i<gun;i++){
         const t=addDays(seciliTarih,i);const dow=dayOfWeek(t);
-        if(tekrar==="haftaici"&&(dow===0||dow===6))continue;
+        if((tekrar==="haftaici"||tekrar==="3ay")&&(dow===0||dow===6))continue;
         const odalar=oda==="ikisi"?["alex","soprano"]:[oda];
         odalar.forEach(o=>yeniBloklar.push({oda:o,tarih:t,saat,sure,baslik:baslik.trim()}));
       }
@@ -1125,15 +1126,48 @@ function BlokPanel({bloklar,blokEkle,blokSil,seciliTarih,showToast,onKapat}){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
         <div><Label>Başlangıç</Label><select value={saat} onChange={e=>setSaat(e.target.value)} style={inputStyle}>{SAATLER.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
         <div><Label>Süre (dk)</Label><input type="number" min={15} max={480} step={15} value={sure} onChange={e=>setSure(Number(e.target.value))} style={inputStyle}/></div>
-        <div><Label>Tekrar</Label><select value={tekrar} onChange={e=>setTekrar(e.target.value)} style={inputStyle}><option value="tek">Sadece bugün</option><option value="haftaici">60 gün hafta içi</option><option value="hergün">60 gün her gün</option></select></div>
+        <div><Label>Tekrar</Label><select value={tekrar} onChange={e=>setTekrar(e.target.value)} style={inputStyle}><option value="tek">Sadece bugün</option><option value="haftaici">60 gün hafta içi</option><option value="3ay">3 ay hafta içi</option><option value="hergün">60 gün her gün</option><option value="3ayhergün">3 ay her gün</option></select></div>
       </div>
       <button onClick={ekle} style={{...btnPrimary,background:"#dc2626",marginBottom:14}}>Bloğu Ekle</button>
-      {gunBloklar.length>0&&(
-        <div>
+      {/* Mevcut bloklar - Alex */}
+      {bloklar.filter(b=>b.oda==="alex"&&b.tarih>=today()).length>0&&(
+        <div style={{marginTop:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#2d6a35",marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>🟢 Alex — Gelecek Bloklar</div>
+          {bloklar.filter(b=>b.oda==="alex"&&b.tarih>=today()).sort((a,b)=>a.tarih.localeCompare(b.tarih)).slice(0,10).map(b=>(
+            <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:"#f0fdf4",borderRadius:8,marginBottom:4,fontSize:13,border:"1px solid #bbf7d0"}}>
+              <span>{b.tarih} · {b.baslik} · {b.saat} · {b.sure}dk</span>
+              <button onClick={()=>{if(window.confirm(`"${b.baslik}" bloğunu sil?`))blokSil(b.id);}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+          ))}
+          {bloklar.filter(b=>b.oda==="alex"&&b.tarih>=today()).length>10&&(
+            <div style={{fontSize:12,color:"#888",textAlign:"center"}}>...ve {bloklar.filter(b=>b.oda==="alex"&&b.tarih>=today()).length-10} blok daha</div>
+          )}
+          <button onClick={()=>{if(window.confirm("Alex'teki TÜM gelecek blokları silmek istiyorsunuz?"))bloklar.filter(b=>b.oda==="alex"&&b.tarih>=today()).forEach(b=>blokSil(b.id));}} style={{...btnSecondary,fontSize:11,padding:"4px 10px",color:"#dc2626",borderColor:"#fca5a5",marginTop:6}}>Alex bloklarını temizle</button>
+        </div>
+      )}
+      {/* Mevcut bloklar - Soprano */}
+      {bloklar.filter(b=>b.oda==="soprano"&&b.tarih>=today()).length>0&&(
+        <div style={{marginTop:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#5b3fa0",marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>🟣 Soprano — Gelecek Bloklar</div>
+          {bloklar.filter(b=>b.oda==="soprano"&&b.tarih>=today()).sort((a,b)=>a.tarih.localeCompare(b.tarih)).slice(0,10).map(b=>(
+            <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:"#f5f3ff",borderRadius:8,marginBottom:4,fontSize:13,border:"1px solid #c4b5fd"}}>
+              <span>{b.tarih} · {b.baslik} · {b.saat} · {b.sure}dk</span>
+              <button onClick={()=>{if(window.confirm(`"${b.baslik}" bloğunu sil?`))blokSil(b.id);}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+          ))}
+          {bloklar.filter(b=>b.oda==="soprano"&&b.tarih>=today()).length>10&&(
+            <div style={{fontSize:12,color:"#888",textAlign:"center"}}>...ve {bloklar.filter(b=>b.oda==="soprano"&&b.tarih>=today()).length-10} blok daha</div>
+          )}
+          <button onClick={()=>{if(window.confirm("Soprano'daki TÜM gelecek blokları silmek istiyorsunuz?"))bloklar.filter(b=>b.oda==="soprano"&&b.tarih>=today()).forEach(b=>blokSil(b.id));}} style={{...btnSecondary,fontSize:11,padding:"4px 10px",color:"#dc2626",borderColor:"#fca5a5",marginTop:6}}>Soprano bloklarını temizle</button>
+        </div>
+      )}
+      {/* Bu günün blokları */}
+      {gunBloklar.filter(b=>b.baslik!=="DR_YOK").length>0&&(
+        <div style={{marginTop:14}}>
           <div style={{fontSize:12,fontWeight:600,color:"#999",marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>Bu günün blokları</div>
-          {gunBloklar.map(b=>(
+          {gunBloklar.filter(b=>b.baslik!=="DR_YOK").map(b=>(
             <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:"#f7f7f5",borderRadius:8,marginBottom:4,fontSize:13}}>
-              <span>🔒 {b.baslik} · {b.oda==="ikisi"?"Her ikisi":b.oda==="alex"?"Alex":"Soprano"} · {b.saat} · {b.sure}dk</span>
+              <span>🔒 {b.baslik} · {b.oda==="alex"?"Alex":"Soprano"} · {b.saat} · {b.sure}dk</span>
               <button onClick={()=>blokSil(b.id)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16}}>✕</button>
             </div>
           ))}
@@ -1352,7 +1386,7 @@ function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSi
       <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{ODEME_TIPLERI.map(o=><button key={o} onClick={()=>setOdeme(odeme===o?null:o)} style={chipStyle(odeme===o)}>{o}</button>)}</div></>}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{onDurumGuncelle(r.id,durum,odeme);onKapat();}} style={btnPrimary}>Kaydet</button>
-        {(aktifRol==="sekreter"||aktifRol==="yonetici")&&<button onClick={onDuzenle} style={btnSecondary}>Düzenle</button>}
+        {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={onDuzenle} style={btnSecondary}>Düzenle</button>}
         {aktifRol==="personel"&&<button onClick={()=>setHastaEdit(true)} style={btnSecondary}>Hasta Adını Düzenle</button>}
         <button onClick={()=>{if(window.confirm("Bu randevu silinecek. Emin misiniz?"))onSil(r.id);}} style={{...btnSecondary,color:"#dc2626",borderColor:"#dc2626"}}>Sil</button>
         <button onClick={onKapat} style={btnSecondary}>Kapat</button>
