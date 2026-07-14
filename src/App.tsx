@@ -484,6 +484,31 @@ export default function App() {
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
 
+  async function hastaGuncelle(hasta,yeniAd,yeniTel,yeniCinsiyet){
+    try{
+      const eskiAd=hasta.ad;
+      await sbUpdate("hastalar",hasta.id,{ad:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet});
+      setHastalar(prev=>prev.map(h=>h.id===hasta.id?{...h,ad:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet}:h));
+
+      // Bu hastaya ait tüm randevu kayıtlarındaki ad/telefon/cinsiyeti de güncelle
+      // (hasta_id varsa ondan eşleştir, yoksa eski isimden eşleştir — eski kayıtlar için)
+      const filtre=hasta.hasta_id
+        ?`hasta_id=eq.${encodeURIComponent(hasta.hasta_id)}`
+        :`hasta=eq.${encodeURIComponent(eskiAd)}`;
+      const r=await fetch(`${SB_URL}/rest/v1/randevular?${filtre}`,{
+        method:"PATCH",
+        headers:{...HDR,"Prefer":"return=representation"},
+        body:JSON.stringify({hasta:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet})
+      });
+      if(!r.ok) throw new Error(await r.text());
+      const guncellenen=await r.json();
+      const guncelIdSet=new Set(guncellenen.map(g=>g.id));
+      setRandevular(prev=>prev.map(rr=>guncelIdSet.has(rr.id)?{...rr,hasta:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet}:rr));
+      showToast(`Hasta bilgileri güncellendi${guncellenen.length?` (${guncellenen.length} randevu kaydı da güncellendi)`:""}.`);
+      return true;
+    }catch(e){showToast("Hata: "+e.message,"error");return false;}
+  }
+
   async function hastaEkleDB(ad,tel,cinsiyet="Bayan"){
     try{
       // Önce mevcut hastalar listesinde (state'ten, sorgu atmadan) ara
@@ -640,7 +665,7 @@ export default function App() {
       </nav>
       <div style={{maxWidth:1200,margin:"0 auto",padding:"1.25rem 1.5rem"}}>
         {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast}/>}
-        {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} showToast={showToast} randevular={randevular} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil}/>}
+        {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} hastaGuncelle={hastaGuncelle} aktifRol={aktifRol} showToast={showToast} randevular={randevular} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle}/>}
         {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular} aktifRol={aktifRol}/>}
         {aktifSekme==="anket_sonuc"&&<AnketSonucSekme aktifRol={aktifRol}/>}
@@ -1627,7 +1652,7 @@ function BeklemeKarti({b,onRandevuyaCevir,onSil,aktifRol,siraNo}){
 }
 
 // ── HASTALAR ─────────────────────────────────────────────────────────────────
-function HastalarSekme({hastalar,hastaEkleDB,aktifRol,showToast,randevular,onRandevuDuzenle,onRandevuSil}){
+function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,randevular,onRandevuDuzenle,onRandevuSil}){
   const [filtre,setFiltre]=useState("");
   const [form,setForm]=useState(null);
   const [seciliHasta,setSeciliHasta]=useState(null);
@@ -1673,7 +1698,11 @@ function HastalarSekme({hastalar,hastaEkleDB,aktifRol,showToast,randevular,onRan
             </div>
             {seciliHasta.hasta_id&&<div style={{fontSize:12,color:"#888",marginBottom:8}}>ID: <strong>#{seciliHasta.hasta_id}</strong></div>}
             <div style={{display:"flex",gap:8}}>
-              <button onClick={async()=>{showToast("Hasta bilgileri güncellendi.");setSeciliHasta({...seciliHasta,ad:duzenAd,tel:duzenTel,cinsiyet:duzenCinsiyet});}} style={btnPrimary}>Kaydet</button>
+              <button onClick={async()=>{
+                if(!duzenAd.trim()){showToast("Ad soyad boş olamaz.","error");return;}
+                const ok=await hastaGuncelle(seciliHasta,duzenAd.trim(),duzenTel.trim(),duzenCinsiyet);
+                if(ok)setSeciliHasta(prev=>({...prev,ad:duzenAd.trim(),tel:duzenTel.trim(),cinsiyet:duzenCinsiyet}));
+              }} style={btnPrimary}>Kaydet</button>
               <button onClick={()=>setSeciliHasta(null)} style={btnSecondary}>İptal</button>
             </div>
           </div>
