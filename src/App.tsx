@@ -1352,7 +1352,7 @@ const sureBtnStyle={width:32,height:32,border:"1px solid #ddd",borderRadius:8,ba
 // ── RANDEVU FORM ─────────────────────────────────────────────────────────────
 function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duzenleme}){
   const [oda,setOda]=useState(basData.oda||"alex");
-  const [hasta,setHasta]=useState(basData.hasta||"");const [hastaId,setHastaId]=useState(basData.hastaId||null);const [hastaTel,setHastaTel]=useState("");const [hastaCinsiyet,setHastaCinsiyet]=useState("Bayan");
+  const [hasta,setHasta]=useState(basData.hasta||"");const [hastaId,setHastaId]=useState(basData.hastaId||null);const [hastaTel,setHastaTel]=useState(basData.tel||"");const [hastaCinsiyet,setHastaCinsiyet]=useState(basData.cinsiyet||"Bayan");
   const [tarih,setTarih]=useState(basData.tarih||today());const [saat,setSaat]=useState(basData.saat||"09:00");
   const [seciliBolgeler,setSeciliBolgeler]=useState(basData.bolgeler||[]);
   const [sure,setSure]=useState(basData.sure||15);const [manuelSure,setManuelSure]=useState(!!basData.sure);
