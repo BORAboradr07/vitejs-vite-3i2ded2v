@@ -108,7 +108,7 @@ const ISLEM_KATEGORI = {"Karbon":"karbon","Cilt Bakımı":"cilt","Forma":"forma"
 const RENK = {
   alex:      {bg:"#2d6a35",brd:"#3d8a47",label:"Alex Lazer (Yeşil)"},
   soprano:   {bg:"#5b3fa0",brd:"#7a55c8",label:"Soprano Lazer (Mor)"},
-  cilt:      {bg:"#b91c1c",brd:"#dc2626",label:"Cilt Bakımı (Kırmızı)"},
+  cilt:      {bg:"#d6336c",brd:"#e8578a",label:"Cilt Bakımı (Pembe)"},
   karbon:    {bg:"#1a1a1a",brd:"#444444",label:"Karbon (Siyah)"},
   tuysarart: {bg:"#a07c10",brd:"#c9a020",label:"Tüy Sarartma (Sarı)"},
   gelmedi:   {bg:"#7a3f3f",brd:"#9b5050",label:"Gelmedi"},
@@ -132,6 +132,18 @@ function formatDate(d){const dt=new Date(d+"T00:00:00");return dt.toLocaleDateSt
 function formatDateShort(d){const dt=new Date(d+"T00:00:00");return dt.toLocaleDateString("tr-TR",{weekday:"short",day:"numeric",month:"short"});}
 function nowTime(){return new Date().toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"});}
 function dayOfWeek(d){return new Date(d+"T00:00:00").getDay();}
+
+function dilimSayisi(sure){
+  if(sure>=90) return 4;
+  if(sure>60) return 3;
+  if(sure>30) return 2;
+  return 1;
+}
+function dilimSayisiBosluk(sure){
+  if(sure>150) return 6;
+  if(sure>90) return 5;
+  return dilimSayisi(sure);
+}
 
 function islemRenk(bolgeler,oda,durum){
   if(durum==="Gelmedi") return RENK.gelmedi;
@@ -719,16 +731,22 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
     if(imlec<END) bosluklar.push({b:imlec,e:END});
     return bosluklar.filter(bo=>bo.e-bo.b>0);
   }
+  function drYokAraligi(oda){
+    return bloklar.filter(b=>b.oda===oda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK")
+      .map(b=>`${b.saat}-${minToTime(timeToMin(b.saat)+b.sure)}`)
+      .join(", ");
+  }
   function renderOda(randevular,bloklar,odaId){
     const pazarMi=new Date(seciliTarih+"T00:00:00").getDay()===0;
+    const gercekBloklar=bloklar.filter(b=>b.baslik!=="DR_YOK");
     const birlesik=ayniHastaBirlestir(randevular);
-    const bosluklar=bosluklariBul(randevular,bloklar);
+    const bosluklar=bosluklariBul(randevular,gercekBloklar);
     const renkOda=odaId==="alex"?"#2d6a35":"#5b3fa0";
 
-    // Tek zaman çizelgesi: randevular + bloklar + boşluklar, hepsi saate göre sıralı
+    // Tek zaman çizelgesi: randevular + bloklar + boşluklar, hepsi saate göre sıralı (Dr. Yok dahil değil — sadece bilgilendirme amaçlı ayrı gösteriliyor)
     const satirlar=[
       ...birlesik.map(u=>({tip:"randevu",b:timeToMin(u.saat),e:timeToMin(u.saat)+u.sure,veri:u})),
-      ...bloklar.map(b=>({tip:b.baslik==="DR_YOK"?"dryok":"blok",b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure,veri:b})),
+      ...gercekBloklar.map(b=>({tip:"blok",b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure,veri:b})),
       ...bosluklar.map(bo=>({tip:"bosluk",b:bo.b,e:bo.e,veri:bo})),
     ].sort((a,b)=>a.b-b.b||a.e-b.e);
 
@@ -743,7 +761,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
           </div>
         ):(
           <div style={{fontSize:11,color:"#888",background:"#fff",border:"1px solid #eee",borderRadius:8,padding:"5px 10px",marginBottom:8,display:"inline-block"}}>
-            Bugün: <b style={{color:renkOda}}>%{doluluk} dolu</b> ({Math.floor(toplamMesgul/60)}s {toplamMesgul%60}dk dolu / {Math.floor((TOTAL-toplamMesgul)/60)}s {(TOTAL-toplamMesgul)%60}dk boş)
+            Bugün: <b style={{color:renkOda}}>%{doluluk} dolu</b> ({Math.floor(toplamMesgul/60)}s {toplamMesgul%60}dk dolu / <b style={{fontSize:13,color:"#333"}}>{Math.floor((TOTAL-toplamMesgul)/60)}s {(TOTAL-toplamMesgul)%60}dk boş</b>)
           </div>
         )}
         <div style={{display:"flex",gap:10}}>
@@ -753,7 +771,6 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
               const sure=s.e-s.b;
               let bg="#e9e7e1",baslik=`${minToTime(s.b)}-${minToTime(s.e)} boş`;
               if(s.tip==="randevu"){bg=renkOda;baslik=`${minToTime(s.b)}-${minToTime(s.e)} ${s.veri.hasta}`;}
-              else if(s.tip==="dryok"){bg="#ea580c";baslik=`${minToTime(s.b)}-${minToTime(s.e)} Dr. Yok`;}
               else if(s.tip==="blok"){bg="#888";baslik=`${minToTime(s.b)}-${minToTime(s.e)} ${s.veri.baslik}`;}
               return <div key={i} title={baslik} style={{flexGrow:sure,flexBasis:0,minHeight:sure>0?1:0,background:bg,borderBottom:"1px solid #fff"}}/>;
             })}
@@ -771,18 +788,19 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                     </div>
                   );
                 }
+                const bosSure=s.e-s.b;
+                const bosEtiket=`${bosSure}dk boş · ${minToTime(s.b)}`;
+                const uzunMu=bosSure>=60;
                 return(
-                  <div key={"bo"+i} onClick={()=>onYeniRandevu(odaId,minToTime(s.b))} style={{display:"flex",alignItems:"center",gap:8,padding:"3px 2px",marginBottom:5,color:"#a4820f",fontSize:11,fontStyle:"italic",cursor:"pointer"}}>
+                  <div key={"bo"+i} onClick={()=>onYeniRandevu(odaId,minToTime(s.b))} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",marginBottom:5,borderRadius:6,background:"#fff8dc",cursor:"pointer"}}>
                     <div style={{flex:1,borderTop:"2px dashed #d9c98a"}}/>
-                    <div>{s.e-s.b}dk boş · {minToTime(s.b)}</div>
+                    <span style={{display:"inline-flex",gap:2,flexShrink:0}}>
+                      {Array.from({length:dilimSayisiBosluk(bosSure)}).map((_,di)=>(
+                        <span key={di} style={{width:5,height:11,background:"#000",opacity:0.55,borderRadius:1}}/>
+                      ))}
+                    </span>
+                    <div style={{color:"#000",fontWeight:700,fontSize:11}}>{uzunMu?`★★ ${bosEtiket} ★★`:bosEtiket}</div>
                     <div style={{flex:1,borderTop:"2px dashed #d9c98a"}}/>
-                  </div>
-                );
-              }
-              if(s.tip==="dryok"){
-                return(
-                  <div key={"dy"+i} onClick={()=>onYeniRandevu(odaId,minToTime(s.b))} style={{padding:"8px 10px",marginBottom:5,borderRadius:8,background:"rgba(234,88,12,0.12)",border:"2px solid #ea580c",cursor:"pointer"}} title="Dr. Duygu Hanım klinikte olmayacak — tıkla, yine de randevu oluşturabilirsin">
-                    <div style={{fontSize:12,fontWeight:600,color:"#c2410c"}}>🩺 Dr. Yok — {minToTime(s.b)}-{minToTime(s.e)} <span style={{fontWeight:400,color:"#c2740c"}}>(tıkla → yine de randevu oluştur)</span></div>
                   </div>
                 );
               }
@@ -805,6 +823,11 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                     {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",borderRadius:8,padding:"1px 6px",marginLeft:6,fontWeight:700}}>{u.list.length} işlem</span>}
                     {u.bolgeler?.length>0&&<span style={{fontSize:10,color:"rgba(255,255,255,0.8)",marginLeft:6}}>{u.bolgeler.slice(0,3).join(" · ")}{u.bolgeler.length>3?` +${u.bolgeler.length-3}`:""}</span>}
                   </div>
+                  <span style={{display:"inline-flex",gap:2,flexShrink:0}}>
+                    {Array.from({length:dilimSayisi(u.sure)}).map((_,di)=>(
+                      <span key={di} style={{width:5,height:11,background:"rgba(255,255,255,0.9)",borderRadius:1}}/>
+                    ))}
+                  </span>
                   <div style={{fontSize:10,color:"rgba(255,255,255,0.85)",flexShrink:0}}>{u.sure}dk{u.odeme?` · ${u.odeme}`:""}</div>
                   {u.durum&&<span style={{fontSize:10,fontWeight:700,color:"#fff",flexShrink:0}}>{u.durum==="Gelmedi"?"❌":u.durum==="Kontrol"?"⏳":"✔"}</span>}
                 </div>
@@ -863,8 +886,11 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
             {(()=>{
               const drYokVar=bloklar.some(b=>b.oda===aktifOda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK");
               return drYokVar&&(
-                <div style={{padding:"8px 14px",background:"#fff7ed",borderBottom:"1px solid #fed7aa"}}>
-                  <span style={{fontSize:11,color:"#ea580c",fontWeight:700}}>🩺 Dr. Yok bugün {aktifOda==="alex"?"Alex":"Soprano"} için</span>
+                <div style={{padding:"10px 14px",background:"#fff1f0",borderBottom:"1px solid #fecaca"}}>
+                  <div style={{fontSize:16,fontWeight:800,color:"#dc2626",display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:20}}>🚫</span>Dr. Yok
+                    <span style={{fontWeight:600,fontSize:13,color:"#b91c1c"}}>({drYokAraligi(aktifOda)})</span>
+                  </div>
                 </div>
               );
             })()}
@@ -883,7 +909,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
               <div key={oda} style={{flex:1,background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
                 <div style={{padding:"10px 14px",borderBottom:"2px solid #e8e6e0",background:"#f7f7f5"}}>
                   <span style={{fontSize:13,fontWeight:600,color}}>{label}</span>
-                  {drYokVar&&<div style={{fontSize:11,color:"#ea580c",fontWeight:700,marginTop:2}}>🩺 Dr. Yok</div>}
+                  {drYokVar&&<div style={{fontSize:15,fontWeight:800,color:"#dc2626",marginTop:4,display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:18}}>🚫</span>Dr. Yok <span style={{fontWeight:600,fontSize:12,color:"#b91c1c"}}>({drYokAraligi(oda)})</span></div>}
                 </div>
                 <div style={{padding:"12px"}}>{renderOda(liste,gunB.filter(b=>b.oda===oda),oda)}</div>
               </div>
@@ -1490,14 +1516,14 @@ function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSi
           <div style={{fontSize:13,fontWeight:600,color:"#3b5bdb",marginBottom:8}}>📋 Memnuniyet Anketi</div>
           {!r.anket_durum&&(
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>{const s=window.prompt("Anket şifresi:");if(s==="SON26"){onAnketDurum(r.id,"onay_verildi");}else if(s!==null){alert("Yanlış şifre!");}}} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#2f9e44"}}>✅ Onay Verdi</button>
-              <button onClick={()=>{const s=window.prompt("Anket şifresi:");if(s==="SON26"){onAnketDurum(r.id,"izin_vermedi");}else if(s!==null){alert("Yanlış şifre!");}}} style={{...btnSecondary,fontSize:12,padding:"6px 14px",color:"#e03131",borderColor:"#ffa8a8"}}>❌ İzin Vermedi</button>
+              <button onClick={()=>onAnketDurum(r.id,"onay_verildi")} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#2f9e44"}}>✅ Onay Verdi</button>
+              <button onClick={()=>onAnketDurum(r.id,"izin_vermedi")} style={{...btnSecondary,fontSize:12,padding:"6px 14px",color:"#e03131",borderColor:"#ffa8a8"}}>❌ İzin Vermedi</button>
             </div>
           )}
           {r.anket_durum==="onay_verildi"&&(
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
               <span style={{fontSize:12,color:"#2f9e44",fontWeight:500}}>✅ Onay verildi</span>
-              <button onClick={()=>{const s=window.prompt("Anket şifresi:");if(s==="SON26"){onAnketGonder(r);}else if(s!==null){alert("Yanlış şifre!");}}} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#25d366"}}>📱 Anketi Gönder</button>
+              <button onClick={()=>onAnketGonder(r)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#25d366"}}>📱 Anketi Gönder</button>
             </div>
           )}
           {r.anket_durum==="gonderildi"&&<span style={{fontSize:12,color:"#3b5bdb",fontWeight:500}}>📨 Anket gönderildi</span>}
