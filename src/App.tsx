@@ -401,16 +401,28 @@ export default function App() {
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
 
-  async function hastaAdDuzenle(id, yeniAd){
+  async function randevuHastaBilgisiDuzenle(r,yeniAd,yeniTel){
+    const ad=yeniAd.trim(),tel=yeniTel.trim();
+    if(!ad){showToast("Ad soyad boş olamaz.","error");return false;}
+    // Bu hastanın "hastalar" tablosunda kaydı var mı? (hasta_id ya da isimle eşleştir)
+    const hastaKaydi=hastalar.find(h=>h.hasta_id&&r.hasta_id&&h.hasta_id===r.hasta_id)
+      ||hastalar.find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
+    if(hastaKaydi){
+      // Varsa: hastalar tablosu + bu hastaya ait TÜM randevu kayıtları birlikte güncellenir
+      const ok=await hastaGuncelle(hastaKaydi,ad,tel,hastaKaydi.cinsiyet||"Bayan");
+      if(ok)setModal(null);
+      return ok;
+    }
+    // Yoksa (hastalar tablosunda kaydı yoksa): sadece bu randevu kaydını güncelle
     const now=nowTime();
-    const r=randevular.find(x=>x.id===id);
-    const yeniLog=[...(r?.log||[]),{saat:now,kullanici:ROLLER[aktifRol],islem:`Hasta adı değiştirildi: "${r?.hasta}" → "${yeniAd}"`}];
+    const yeniLog=[...(r?.log||[]),{saat:now,kullanici:ROLLER[aktifRol],islem:`Hasta bilgisi değiştirildi: "${r?.hasta}" → "${ad}"`}];
     try{
-      await sbUpdate("randevular",id,{hasta:yeniAd,log:yeniLog});
-      setRandevular(prev=>prev.map(x=>x.id!==id?x:{...x,hasta:yeniAd,log:yeniLog}));
-      showToast("Hasta adı güncellendi.");
+      await sbUpdate("randevular",r.id,{hasta:ad,tel,log:yeniLog});
+      setRandevular(prev=>prev.map(x=>x.id!==r.id?x:{...x,hasta:ad,tel,log:yeniLog}));
+      showToast("Hasta bilgileri güncellendi.");
       setModal(null);
-    } catch(e){showToast("Hata: "+e.message,"error");}
+      return true;
+    }catch(e){showToast("Hata: "+e.message,"error");return false;}
   }
 
   // ✅ DÜZELTME: Eksik olan fonksiyon başlığı geri eklendi
@@ -676,7 +688,7 @@ export default function App() {
       {modal&&(
         <ModalWrapper onClose={()=>setModal(null)}>
           {modal.tip==="yeni"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={async(data)=>{const ok=await randevuKaydet(data);if(ok&&modal.beklemdeId)await beklemeRandevuAlindi(modal.beklemdeId);}} onIptal={()=>setModal(null)}/>}
-          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={hastaAdDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle}/>}
+          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={randevuHastaBilgisiDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle}/>}
           {modal.tip==="duzenle"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={randevuKaydet} onIptal={()=>setModal(null)} duzenleme/>}
         </ModalWrapper>
       )}
@@ -1462,6 +1474,7 @@ function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSi
   const [durum,setDurum]=useState(r.durum);const [odeme,setOdeme]=useState(r.odeme);
   const [hastaEdit,setHastaEdit]=useState(false);
   const [yeniHastaAd,setYeniHastaAd]=useState(r.hasta);
+  const [yeniHastaTel,setYeniHastaTel]=useState(r.tel||"");
   const [bolgeEdit,setBolgeEdit]=useState(false);
   const [seciliBolgeler,setSeciliBolgeler]=useState(r.bolgeler||[]);
   const durumlar=r.oda==="alex"?DURUMLAR_ALEX:DURUMLAR_SOPRANO;
@@ -1480,11 +1493,13 @@ function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSi
       </div>
       {hastaEdit&&(
         <div style={{background:"#f7f7f5",borderRadius:10,padding:12,marginBottom:14,border:"1.5px solid #a5b4fc"}}>
-          <Label>Hasta Adını Düzenle</Label>
-          <input value={yeniHastaAd} onChange={e=>setYeniHastaAd(e.target.value)} style={{...inputStyle,marginBottom:8}}/>
+          <Label>Hasta Bilgilerini Düzenle</Label>
+          <input value={yeniHastaAd} onChange={e=>setYeniHastaAd(e.target.value)} placeholder="Ad Soyad" style={{...inputStyle,marginBottom:8}}/>
+          <input value={yeniHastaTel} onChange={e=>setYeniHastaTel(e.target.value)} placeholder="Telefon" style={{...inputStyle,marginBottom:8}}/>
+          <div style={{fontSize:11,color:"#888",marginBottom:8}}>Bu bilgiler hastanın tüm geçmiş/gelecek randevu kayıtlarında da güncellenecek.</div>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>{onHastaDuzenle(r.id,yeniHastaAd);setHastaEdit(false);}} style={btnPrimary}>Kaydet</button>
-            <button onClick={()=>{setHastaEdit(false);setYeniHastaAd(r.hasta);}} style={btnSecondary}>İptal</button>
+            <button onClick={()=>onHastaDuzenle(r,yeniHastaAd,yeniHastaTel)} style={btnPrimary}>Kaydet</button>
+            <button onClick={()=>{setHastaEdit(false);setYeniHastaAd(r.hasta);setYeniHastaTel(r.tel||"");}} style={btnSecondary}>İptal</button>
           </div>
         </div>
       )}
@@ -1531,7 +1546,7 @@ function RandevuDetay({randevu:r,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSi
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{onDurumGuncelle(r.id,durum,odeme);onKapat();}} style={btnPrimary}>Kaydet</button>
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={onDuzenle} style={btnSecondary}>Düzenle</button>}
-        {aktifRol==="personel"&&<button onClick={()=>setHastaEdit(true)} style={btnSecondary}>Hasta Adını Düzenle</button>}
+        {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={()=>setHastaEdit(true)} style={btnSecondary}>👤 Hasta Bilgilerini Düzenle</button>}
         <button onClick={()=>{if(window.confirm("Bu randevu silinecek. Emin misiniz?"))onSil(r.id);}} style={{...btnSecondary,color:"#dc2626",borderColor:"#dc2626"}}>Sil</button>
         <button onClick={onKapat} style={btnSecondary}>Kapat</button>
       </div>
