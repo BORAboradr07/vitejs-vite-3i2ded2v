@@ -126,7 +126,12 @@ for(let h=9;h<=20;h++) for(let m=0;m<60;m+=5){if(h===20&&m>0)break;SAATLER.push(
 
 function timeToMin(t){const[h,m]=t.split(":").map(Number);return h*60+m;}
 function minToTime(m){return `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;}
-function today(){return new Date().toISOString().slice(0,10);}
+function today(){
+  // Türkiye saat dilimine göre "bugün" — UTC bazlı toISOString() gece 00:00-03:00 arası yanlış gün verebiliyordu
+  const parcalar=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Istanbul",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const y=parcalar.find(p=>p.type==="year").value,m=parcalar.find(p=>p.type==="month").value,d=parcalar.find(p=>p.type==="day").value;
+  return `${y}-${m}-${d}`;
+}
 function addDays(d,n){const[y,mo,dy]=d.split("-").map(Number);const dt=new Date(y,mo-1,dy);dt.setDate(dt.getDate()+n);return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;}
 function formatDate(d){const dt=new Date(d+"T00:00:00");return dt.toLocaleDateString("tr-TR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});}
 function formatDateShort(d){const dt=new Date(d+"T00:00:00");return dt.toLocaleDateString("tr-TR",{weekday:"short",day:"numeric",month:"short"});}
@@ -496,26 +501,32 @@ export default function App() {
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
 
-  async function hastaGuncelle(hasta,yeniAd,yeniTel,yeniCinsiyet){
+  async function hastaGuncelle(hasta,yeniAd,yeniTel,yeniCinsiyet,yeniHastaId){
     try{
       const eskiAd=hasta.ad;
-      await sbUpdate("hastalar",hasta.id,{ad:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet});
-      setHastalar(prev=>prev.map(h=>h.id===hasta.id?{...h,ad:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet}:h));
+      const eskiHastaId=hasta.hasta_id;
+      const hastaIdDegisti=yeniHastaId!==undefined&&yeniHastaId!==eskiHastaId;
+      const guncelAlanlar={ad:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet};
+      if(hastaIdDegisti)guncelAlanlar.hasta_id=yeniHastaId;
+      await sbUpdate("hastalar",hasta.id,guncelAlanlar);
+      setHastalar(prev=>prev.map(h=>h.id===hasta.id?{...h,...guncelAlanlar}:h));
 
-      // Bu hastaya ait tüm randevu kayıtlarındaki ad/telefon/cinsiyeti de güncelle
-      // (hasta_id varsa ondan eşleştir, yoksa eski isimden eşleştir — eski kayıtlar için)
-      const filtre=hasta.hasta_id
-        ?`hasta_id=eq.${encodeURIComponent(hasta.hasta_id)}`
+      // Bu hastaya ait tüm randevu kayıtlarındaki ad/telefon/cinsiyet/hasta_id bilgisini de güncelle
+      // (eski hasta_id varsa ondan eşleştir, yoksa eski isimden eşleştir — eski kayıtlar için)
+      const filtre=eskiHastaId
+        ?`hasta_id=eq.${encodeURIComponent(eskiHastaId)}`
         :`hasta=eq.${encodeURIComponent(eskiAd)}`;
+      const randevuAlanlar={hasta:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet};
+      if(hastaIdDegisti)randevuAlanlar.hasta_id=yeniHastaId;
       const r=await fetch(`${SB_URL}/rest/v1/randevular?${filtre}`,{
         method:"PATCH",
         headers:{...HDR,"Prefer":"return=representation"},
-        body:JSON.stringify({hasta:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet})
+        body:JSON.stringify(randevuAlanlar)
       });
       if(!r.ok) throw new Error(await r.text());
       const guncellenen=await r.json();
       const guncelIdSet=new Set(guncellenen.map(g=>g.id));
-      setRandevular(prev=>prev.map(rr=>guncelIdSet.has(rr.id)?{...rr,hasta:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet}:rr));
+      setRandevular(prev=>prev.map(rr=>guncelIdSet.has(rr.id)?{...rr,...randevuAlanlar}:rr));
       showToast(`Hasta bilgileri güncellendi${guncellenen.length?` (${guncellenen.length} randevu kaydı da güncellendi)`:""}.`);
       return true;
     }catch(e){showToast("Hata: "+e.message,"error");return false;}
@@ -1760,26 +1771,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
           {hastaRandevular.length===0&&<div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>Bu hastanın randevusu bulunamadı.</div>}
         </div>
       ):(
-        <div 
-        style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}
-        onMouseMove={e=>{
-          if(!suruklenen) return;
-          const grid=e.currentTarget.querySelector(".takvim-icerik");
-          if(!grid) return;
-          const rect=grid.getBoundingClientRect();
-          const y=e.clientY-rect.top+grid.scrollTop;
-          const dakika=Math.round(y/PX/5)*5+START;
-          const yeniSaat=minToTime(Math.max(START,Math.min(END-suruklenen.sure,dakika)));
-          setHedefSaat(yeniSaat);
-        }}
-        onMouseUp={async e=>{
-          if(!suruklenen||!hedefSaat) {setSuruklenen(null);setHedefSaat(null);return;}
-          if(hedefSaat!==suruklenen.saat){
-            const ok=await onRandevuTasi(suruklenen,hedefSaat);
-          }
-          setSuruklenen(null);setHedefSaat(null);
-        }}
-        onMouseLeave={()=>{setSuruklenen(null);setHedefSaat(null);}}>
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
           {filtreliHastalar.length===0&&<div style={{padding:20,color:"#aaa",textAlign:"center"}}>Hasta bulunamadı.</div>}
           {filtreliHastalar.map((h,i)=>(
             <div key={h.id} onClick={()=>{setSeciliHasta(h);setDuzenAd(h.ad);setDuzenTel(h.tel||"");setDuzenCinsiyet(h.cinsiyet||"Bayan");}} style={{padding:"12px 16px",borderBottom:i<filtreliHastalar.length-1?"1px solid #f0f0ec":"none",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}
@@ -2120,26 +2112,7 @@ function AnketSonucSekme({aktifRol}){
       )}
 
       {!sekreterModu&&(filtre==="hepsi"||filtre==="dusuk")&&dusukPuan.length>0&&(
-        <div 
-        style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}
-        onMouseMove={e=>{
-          if(!suruklenen) return;
-          const grid=e.currentTarget.querySelector(".takvim-icerik");
-          if(!grid) return;
-          const rect=grid.getBoundingClientRect();
-          const y=e.clientY-rect.top+grid.scrollTop;
-          const dakika=Math.round(y/PX/5)*5+START;
-          const yeniSaat=minToTime(Math.max(START,Math.min(END-suruklenen.sure,dakika)));
-          setHedefSaat(yeniSaat);
-        }}
-        onMouseUp={async e=>{
-          if(!suruklenen||!hedefSaat) {setSuruklenen(null);setHedefSaat(null);return;}
-          if(hedefSaat!==suruklenen.saat){
-            const ok=await onRandevuTasi(suruklenen,hedefSaat);
-          }
-          setSuruklenen(null);setHedefSaat(null);
-        }}
-        onMouseLeave={()=>{setSuruklenen(null);setHedefSaat(null);}}>
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
           <div style={{padding:"12px 16px",background:"#fff0f0",borderBottom:"1px solid #fca5a5"}}>
             <span style={{fontWeight:600,color:"#dc2626"}}>📋 Geri Bildirim Gerektirenler (8 ve altı)</span>
           </div>
@@ -2193,26 +2166,7 @@ function GelmeyenlerSekme({randevular,aktifRol,onDurumGuncelle}){
         {hastaGelmeyenler.length===0?(
           <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>Bu isimde gelmeyen hasta bulunamadı.</div>
         ):(
-          <div 
-        style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}
-        onMouseMove={e=>{
-          if(!suruklenen) return;
-          const grid=e.currentTarget.querySelector(".takvim-icerik");
-          if(!grid) return;
-          const rect=grid.getBoundingClientRect();
-          const y=e.clientY-rect.top+grid.scrollTop;
-          const dakika=Math.round(y/PX/5)*5+START;
-          const yeniSaat=minToTime(Math.max(START,Math.min(END-suruklenen.sure,dakika)));
-          setHedefSaat(yeniSaat);
-        }}
-        onMouseUp={async e=>{
-          if(!suruklenen||!hedefSaat) {setSuruklenen(null);setHedefSaat(null);return;}
-          if(hedefSaat!==suruklenen.saat){
-            const ok=await onRandevuTasi(suruklenen,hedefSaat);
-          }
-          setSuruklenen(null);setHedefSaat(null);
-        }}
-        onMouseLeave={()=>{setSuruklenen(null);setHedefSaat(null);}}>
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
             <div style={{padding:"12px 16px",background:"#fee2e2",borderBottom:"1px solid #fca5a5"}}>
               <span style={{fontWeight:600,color:"#dc2626"}}>{hastaGelmeyenler[0]?.hasta}</span>
               <span style={{fontSize:13,color:"#888",marginLeft:8}}>toplam <strong>{hastaGelmeyenler.length}</strong> kez gelmedi</span>
@@ -2453,50 +2407,12 @@ function LogSekme({randevular,silLog,gunIciLog}){
       )}
       {aktifTab==="gunici"&&(bugunGunIci.length===0?<div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>✅ Bugün gün içi değişiklik yok.</div>:(
         <><div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#92400e"}}>⚠️ Bugün <strong>{bugunGunIci.length}</strong> randevu değiştirildi.</div>
-        <div 
-        style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}
-        onMouseMove={e=>{
-          if(!suruklenen) return;
-          const grid=e.currentTarget.querySelector(".takvim-icerik");
-          if(!grid) return;
-          const rect=grid.getBoundingClientRect();
-          const y=e.clientY-rect.top+grid.scrollTop;
-          const dakika=Math.round(y/PX/5)*5+START;
-          const yeniSaat=minToTime(Math.max(START,Math.min(END-suruklenen.sure,dakika)));
-          setHedefSaat(yeniSaat);
-        }}
-        onMouseUp={async e=>{
-          if(!suruklenen||!hedefSaat) {setSuruklenen(null);setHedefSaat(null);return;}
-          if(hedefSaat!==suruklenen.saat){
-            const ok=await onRandevuTasi(suruklenen,hedefSaat);
-          }
-          setSuruklenen(null);setHedefSaat(null);
-        }}
-        onMouseLeave={()=>{setSuruklenen(null);setHedefSaat(null);}}>{bugunGunIci.map((g,i)=>{const es=g.eskiSaat||g.eski_saat;const ys=g.yeniSaat||g.yeni_saat;const esu=g.eskiSure||g.eski_sure;const ysu=g.yeniSure||g.yeni_sure;return(<div key={g.id} style={{padding:"12px 16px",borderBottom:i<bugunGunIci.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",gap:10}}><div><div style={{fontWeight:600,fontSize:14,marginBottom:2}}>{g.hasta}</div><div style={{fontSize:12,color:"#666"}}>{g.oda==="alex"?"Alex":"Soprano"} · Saat: <b>{es}</b>→<b>{ys}</b> · Süre: <b>{esu}dk</b>→<b>{ysu}dk</b></div></div><div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:600,color:"#6366f1"}}>{g.kullanic}</div><div style={{fontSize:11,color:"#aaa"}}>{g.degSaat||g.deg_saat}</div></div></div>);})}</div></>
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>{bugunGunIci.map((g,i)=>{const es=g.eskiSaat||g.eski_saat;const ys=g.yeniSaat||g.yeni_saat;const esu=g.eskiSure||g.eski_sure;const ysu=g.yeniSure||g.yeni_sure;return(<div key={g.id} style={{padding:"12px 16px",borderBottom:i<bugunGunIci.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",gap:10}}><div><div style={{fontWeight:600,fontSize:14,marginBottom:2}}>{g.hasta}</div><div style={{fontSize:12,color:"#666"}}>{g.oda==="alex"?"Alex":"Soprano"} · Saat: <b>{es}</b>→<b>{ys}</b> · Süre: <b>{esu}dk</b>→<b>{ysu}dk</b></div></div><div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:600,color:"#6366f1"}}>{g.kullanic}</div><div style={{fontSize:11,color:"#aaa"}}>{g.degSaat||g.deg_saat}</div></div></div>);})}</div></>
       ))}
       {aktifTab==="islem"&&(<div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>{tumLog.length===0&&<div style={{padding:20,color:"#aaa",textAlign:"center"}}>Log yok.</div>}{tumLog.map((l,i)=>(<div key={i} style={{display:"flex",gap:12,padding:"10px 16px",borderBottom:"1px solid #f5f5f2",fontSize:13}}><span style={{color:"#aaa",minWidth:40}}>{l.saat}</span><span style={{color:"#6366f1",minWidth:70,fontWeight:500}}>{l.kullanici}</span><span style={{color:"#888",minWidth:60}}>{l.hasta}</span><span style={{color:"#444"}}>{l.islem}</span><span style={{marginLeft:"auto",color:"#bbb",fontSize:11}}>{l.tarih}</span></div>))}</div>)}
       {aktifTab==="silme"&&(silLog.length===0?<div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>🗑️ Silinmiş randevu yok.</div>:(
         <><div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#9a3412"}}>⚠️ Toplam <strong>{silLog.length}</strong> randevu silinmiş.</div>
-        <div 
-        style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}
-        onMouseMove={e=>{
-          if(!suruklenen) return;
-          const grid=e.currentTarget.querySelector(".takvim-icerik");
-          if(!grid) return;
-          const rect=grid.getBoundingClientRect();
-          const y=e.clientY-rect.top+grid.scrollTop;
-          const dakika=Math.round(y/PX/5)*5+START;
-          const yeniSaat=minToTime(Math.max(START,Math.min(END-suruklenen.sure,dakika)));
-          setHedefSaat(yeniSaat);
-        }}
-        onMouseUp={async e=>{
-          if(!suruklenen||!hedefSaat) {setSuruklenen(null);setHedefSaat(null);return;}
-          if(hedefSaat!==suruklenen.saat){
-            const ok=await onRandevuTasi(suruklenen,hedefSaat);
-          }
-          setSuruklenen(null);setHedefSaat(null);
-        }}
-        onMouseLeave={()=>{setSuruklenen(null);setHedefSaat(null);}}>{silLog.map((s,i)=>{const rt=s.randevuTarih||s.randevu_tarih;const rs=s.randevuSaat||s.randevu_saat;const st=s.silTarih||s.sil_tarih;const ss=s.silSaat||s.sil_saat;return(<div key={s.id} style={{padding:"12px 16px",borderBottom:i<silLog.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",gap:10}}><div><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}><span style={{fontWeight:600,fontSize:14,color:"#dc2626"}}>{s.hasta}</span><span style={{background:"#fee2e2",color:"#dc2626",fontSize:11,padding:"1px 7px",borderRadius:20}}>Silindi</span></div><div style={{fontSize:12,color:"#666"}}>{s.oda==="alex"?"Alex":"Soprano"} · {rt} {rs} · {s.sure}dk{s.durum?" · "+s.durum:""}{s.odeme?" · "+s.odeme:""}</div>{s.bolgeler?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>{s.bolgeler.map(b=><span key={b} style={{background:"#f3f4f6",color:"#6b7280",fontSize:11,padding:"1px 7px",borderRadius:20}}>{b}</span>)}</div>}</div><div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:600,color:"#6366f1"}}>{s.kullanic}</div><div style={{fontSize:11,color:"#aaa"}}>{st} {ss}</div></div></div>);})}</div></>
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>{silLog.map((s,i)=>{const rt=s.randevuTarih||s.randevu_tarih;const rs=s.randevuSaat||s.randevu_saat;const st=s.silTarih||s.sil_tarih;const ss=s.silSaat||s.sil_saat;return(<div key={s.id} style={{padding:"12px 16px",borderBottom:i<silLog.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",gap:10}}><div><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}><span style={{fontWeight:600,fontSize:14,color:"#dc2626"}}>{s.hasta}</span><span style={{background:"#fee2e2",color:"#dc2626",fontSize:11,padding:"1px 7px",borderRadius:20}}>Silindi</span></div><div style={{fontSize:12,color:"#666"}}>{s.oda==="alex"?"Alex":"Soprano"} · {rt} {rs} · {s.sure}dk{s.durum?" · "+s.durum:""}{s.odeme?" · "+s.odeme:""}</div>{s.bolgeler?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>{s.bolgeler.map(b=><span key={b} style={{background:"#f3f4f6",color:"#6b7280",fontSize:11,padding:"1px 7px",borderRadius:20}}>{b}</span>)}</div>}</div><div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:600,color:"#6366f1"}}>{s.kullanic}</div><div style={{fontSize:11,color:"#aaa"}}>{st} {ss}</div></div></div>);})}</div></>
       ))}
     </div>
   );
