@@ -374,7 +374,7 @@ export default function App() {
             setGunIciLog(prev=>[{...gl,id:ins.id,degTarih:gl.deg_tarih,degSaat:gl.deg_saat,kullanic:gl.kullanic,eskiSaat:gl.eski_saat,eskiSure:gl.eski_sure,yeniSaat:gl.yeni_saat,yeniSure:gl.yeni_sure},...prev]);
           }
         }catch(logErr){console.warn("Log kaydedilemedi:",logErr);}
-        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum,odeme:data.odeme,notlar:data.notlar||"",log:yeniLog};
+        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum,odeme:data.odeme,notlar:data.notlar||"",tel:data.tel,cinsiyet:data.cinsiyet,log:yeniLog};
         await sbUpdate("randevular",data.id,sbData);
         setRandevular(prev=>prev.map(r=>r.id===data.id?{...r,...sbData,id:data.id}:r));
         showToast("Randevu güncellendi.");
@@ -410,7 +410,7 @@ export default function App() {
     const ad=yeniAd.trim(),tel=yeniTel.trim();
     if(!ad){showToast("Ad soyad boş olamaz.","error");return false;}
     // Bu hastanın "hastalar" tablosunda kaydı var mı? (hasta_id ya da isimle eşleştir)
-    const hastaKaydi=hastalar.find(h=>h.hasta_id&&r.hasta_id&&h.hasta_id===r.hasta_id)
+    const hastaKaydi=hastalar.find(h=>h.hasta_id&&r.hasta_id&&String(h.hasta_id)===String(r.hasta_id))
       ||hastalar.find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
     if(hastaKaydi){
       // Varsa: hastalar tablosu + bu hastaya ait TÜM randevu kayıtları birlikte güncellenir
@@ -516,10 +516,10 @@ export default function App() {
       setHastalar(prev=>prev.map(h=>h.id===hasta.id?{...h,...guncelAlanlar}:h));
 
       // Bu hastaya ait tüm randevu kayıtlarındaki ad/telefon/cinsiyet/hasta_id bilgisini de güncelle
-      // (eski hasta_id varsa ondan eşleştir, yoksa eski isimden eşleştir — eski kayıtlar için)
-      const filtre=eskiHastaId
-        ?`hasta_id=eq.${encodeURIComponent(eskiHastaId)}`
-        :`hasta=eq.${encodeURIComponent(eskiAd)}`;
+      // hasta_id VEYA isimle eşleşen TÜM kayıtları yakala (tip uyuşmazlığı / eski kayıtlar için çift güvence)
+      const orParcalar=[`hasta.eq.${encodeURIComponent(eskiAd)}`];
+      if(eskiHastaId)orParcalar.push(`hasta_id.eq.${encodeURIComponent(eskiHastaId)}`);
+      const filtre=`or=(${orParcalar.join(",")})`;
       const randevuAlanlar={hasta:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet};
       if(hastaIdDegisti)randevuAlanlar.hasta_id=yeniHastaId;
       const r=await fetch(`${SB_URL}/rest/v1/randevular?${filtre}`,{
