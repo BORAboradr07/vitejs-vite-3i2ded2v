@@ -508,7 +508,11 @@ export default function App() {
       const hastaIdDegisti=yeniHastaId!==undefined&&yeniHastaId!==eskiHastaId;
       const guncelAlanlar={ad:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet};
       if(hastaIdDegisti)guncelAlanlar.hasta_id=yeniHastaId;
-      await sbUpdate("hastalar",hasta.id,guncelAlanlar);
+      const hastaSonuc=await sbUpdate("hastalar",hasta.id,guncelAlanlar);
+      if(!hastaSonuc||hastaSonuc.length===0){
+        showToast("⚠️ Güncelleme veritabanına yazılamadı (0 satır etkilendi). RLS/yetki kısıtlaması olabilir — lütfen bana bildir.","error");
+        return false;
+      }
       setHastalar(prev=>prev.map(h=>h.id===hasta.id?{...h,...guncelAlanlar}:h));
 
       // Bu hastaya ait tüm randevu kayıtlarındaki ad/telefon/cinsiyet/hasta_id bilgisini de güncelle
