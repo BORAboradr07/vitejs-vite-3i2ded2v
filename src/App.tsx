@@ -515,23 +515,30 @@ export default function App() {
       }
       setHastalar(prev=>prev.map(h=>h.id===hasta.id?{...h,...guncelAlanlar}:h));
 
-      // Bu hastaya ait tüm randevu kayıtlarındaki ad/telefon/cinsiyet/hasta_id bilgisini de güncelle
-      // hasta_id VEYA isimle eşleşen TÜM kayıtları yakala (tip uyuşmazlığı / eski kayıtlar için çift güvence)
-      const orParcalar=[`hasta.eq.${encodeURIComponent(eskiAd)}`];
-      if(eskiHastaId)orParcalar.push(`hasta_id.eq.${encodeURIComponent(eskiHastaId)}`);
-      const filtre=`or=(${orParcalar.join(",")})`;
+      // Bu hastaya ait tüm randevu kayıtlarını güncelle: önce isimle, sonra (varsa) hasta_id ile — iki ayrı, basit istek
       const randevuAlanlar={hasta:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet};
       if(hastaIdDegisti)randevuAlanlar.hasta_id=yeniHastaId;
-      const r=await fetch(`${SB_URL}/rest/v1/randevular?${filtre}`,{
+      const guncellenenIdSeti=new Set();
+      // 1) İsimle eşleşenler
+      const r1=await fetch(`${SB_URL}/rest/v1/randevular?hasta=eq.${encodeURIComponent(eskiAd)}`,{
         method:"PATCH",
         headers:{...HDR,"Prefer":"return=representation"},
         body:JSON.stringify(randevuAlanlar)
       });
-      if(!r.ok) throw new Error(await r.text());
-      const guncellenen=await r.json();
-      const guncelIdSet=new Set(guncellenen.map(g=>g.id));
-      setRandevular(prev=>prev.map(rr=>guncelIdSet.has(rr.id)?{...rr,...randevuAlanlar}:rr));
-      showToast(`Hasta bilgileri güncellendi${guncellenen.length?` (${guncellenen.length} randevu kaydı da güncellendi)`:""}.`);
+      if(!r1.ok) throw new Error(await r1.text());
+      (await r1.json()).forEach(g=>guncellenenIdSeti.add(g.id));
+      // 2) hasta_id ile eşleşenler (varsa, isim eşleşmesinde yakalanmamış olabilecekleri de yakalar)
+      if(eskiHastaId){
+        const r2=await fetch(`${SB_URL}/rest/v1/randevular?hasta_id=eq.${encodeURIComponent(eskiHastaId)}`,{
+          method:"PATCH",
+          headers:{...HDR,"Prefer":"return=representation"},
+          body:JSON.stringify(randevuAlanlar)
+        });
+        if(!r2.ok) throw new Error(await r2.text());
+        (await r2.json()).forEach(g=>guncellenenIdSeti.add(g.id));
+      }
+      setRandevular(prev=>prev.map(rr=>guncellenenIdSeti.has(rr.id)?{...rr,...randevuAlanlar}:rr));
+      showToast(`Hasta bilgileri güncellendi${guncellenenIdSeti.size?` (${guncellenenIdSeti.size} randevu kaydı da güncellendi)`:""}.`);
       return true;
     }catch(e){showToast("Hata: "+e.message,"error");return false;}
   }
