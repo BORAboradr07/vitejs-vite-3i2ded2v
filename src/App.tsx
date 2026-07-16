@@ -141,6 +141,25 @@ for(let h=9;h<=20;h++) for(let m=0;m<60;m+=5){if(h===20&&m>0)break;SAATLER.push(
 
 function timeToMin(t){const[h,m]=t.split(":").map(Number);return h*60+m;}
 function minToTime(m){return `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;}
+function randevuBitisMs(r){
+  return new Date(`${r.tarih}T${r.saat}:00`).getTime()+(r.sure||0)*60000;
+}
+function bildirimGorunurMu(r,aktifRol){
+  // Uygulayıcı: her zaman görür.
+  if(aktifRol==="personel")return true;
+  // Sekreter: bu uyarılar onunla ilgili değil.
+  if(aktifRol==="sekreter")return false;
+  // Yönetici / Sorumlu (ve "owner" = yönetici kabul edildi): kademeli görünürlük
+  const bugun=today();
+  if(r.tarih<bugun)return true; // randevu günü tamamen geçmiş, ertesi güne taşınmış — artık herkese (yönetici/sorumlu) görünür
+  if(r.tarih===bugun){
+    const suan=Date.now();
+    const saat18=new Date(`${bugun}T18:00:00`).getTime();
+    if(suan<saat18)return false; // saat 18:00'dan önce yönetici/sorumluyu meşgul etme
+    return (suan-randevuBitisMs(r))/(1000*60*60)>=1.5; // işlem bitişinden 1.5 saat geçmiş mi
+  }
+  return false;
+}
 function odaKapanisSaat(oda){
   // Alex: son işlem 19:15'te bitecek şekilde; Soprano: son işlem 19:00'da bitecek şekilde
   return oda==="alex"?19*60+15:19*60;
@@ -274,7 +293,7 @@ export default function App() {
     try{const u=window.localStorage.getItem("kl_user");const p=u?JSON.parse(u):null;return p?.rol||"sekreter";}catch{return "sekreter";}
   });
   const [aktifSekme,setAktifSekme]   = useState("takvim");
-  const [seciliTarih,setSeciliTarih] = useLocalStorage("kl_tarih",today());
+  const [seciliTarih,setSeciliTarih] = useState(today());
   const [yoneticiKilit,setYoneticiKilit] = useState(()=>{try{return window.localStorage.getItem("kl_yonetici_onay")!=="1";}catch{return true;}});
   const [dashboardKilit,setDashboardKilit] = useState(()=>{try{return window.localStorage.getItem("kl_dashboard_onay")!=="1";}catch{return false;}});
   const [sifreModal,setSifreModal]   = useState(null);
@@ -310,9 +329,9 @@ export default function App() {
 
 
   useEffect(()=>{
-    async function yukle(){
+    async function yukle(sessiz){
       try{
-        setYukleniyor(true);
+        if(!sessiz)setYukleniyor(true);
         const [r,h,b,sl,gl,bl]=await Promise.all([
           sbGet("randevular"),
           sbGet("hastalar"),
@@ -329,10 +348,15 @@ export default function App() {
         setSilLog(sl.map(x=>({...x,bolgeler:x.bolgeler||[]})));
         setGunIciLog(gl.map(x=>({...x,bolgeler:x.bolgeler||[]})));
         setBloklar(bl);
-      } catch(e){ showToast("Veriler yüklenemedi: "+e.message,"error"); }
-      finally{ setYukleniyor(false); }
+      } catch(e){ if(!sessiz)showToast("Veriler yüklenemedi: "+e.message,"error"); }
+      finally{ if(!sessiz)setYukleniyor(false); }
     }
-    yukle();
+    yukle(false);
+    // Sekme uzun süre açık kalabildiği için (özellikle uygulayıcılarda) arka planda sessizce tazele
+    const interval=setInterval(()=>yukle(true),3*60*1000); // 3 dakikada bir
+    function gorunurlukDegisti(){ if(document.visibilityState==="visible") yukle(true); }
+    document.addEventListener("visibilitychange",gorunurlukDegisti);
+    return()=>{clearInterval(interval);document.removeEventListener("visibilitychange",gorunurlukDegisti);};
   },[]);
 
   const gunR    = randevular.filter(r=>r.tarih===seciliTarih);
@@ -692,6 +716,7 @@ export default function App() {
   }
 
   const beklemeSayisi=bekleme.filter(b=>b.durum==="bekliyor").length;
+  const bildirimSayisi=randevular.filter(r=>r.tarih<=today()&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&bildirimGorunurMu(r,aktifRol)).length;
   const gunIciSayisi=gunIciLog.filter(g=>(g.degTarih||g.deg_tarih)===today()).length;
 
   // Giriş yapılmamışsa login ekranı
@@ -744,7 +769,7 @@ export default function App() {
       </header>
       <nav style={{background:"#fff",borderBottom:"1px solid #e8e6e0",padding:"0 1.5rem"}}>
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex"}}>
-          {[["takvim","📅 Takvim",0],["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
+          {[["takvim","📅 Takvim",0],...(aktifRol!=="sekreter"?[["bildirimler","🔔 Bildirimler",bildirimSayisi]]:[]),["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
             ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["rapor","📊 Rapor",0]]:[]),
             ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
             ["anket_sonuc","📊 Anket Sonuçları",0],
@@ -764,6 +789,7 @@ export default function App() {
       </nav>
       <div style={{maxWidth:1200,margin:"0 auto",padding:"1.25rem 1.5rem"}}>
         {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast} epilasyonDurum={epilasyonDurum}/>}
+        {aktifSekme==="bildirimler"&&<BildirimlerSekme randevular={randevular} hastalar={hastalar} aktifRol={aktifRol} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} hastaGuncelle={hastaGuncelle} aktifRol={aktifRol} showToast={showToast} randevular={randevular} silLog={silLog} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil} onEpilasyonAc={(hasta)=>setEpilasyonModal({hasta,randevu:null})}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle}/>}
         {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular} aktifRol={aktifRol}/>}
@@ -1221,20 +1247,19 @@ function KasaKontrolPanel({gunRandevular,seciliTarih,onKapat}){
 
   async function kontrol(){
     setYukleniyor(true);
-    const sonuc=[];
-    for(const r of seanslar){
-      try{
-        const res=await fetch(`${KASA_URL}/rest/v1/hastalar?tarih=eq.${seciliTarih}&select=id,ad`,{
-          headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY}
-        });
-        const data=await res.json();
-        const kasada=data&&data.some(h=>benzerlik(h.ad||"",r.hasta||"")>=0.7);
-        sonuc.push({hasta:r.hasta,oda:r.oda,saat:r.saat,kasada});
-      } catch(e){
-        sonuc.push({hasta:r.hasta,oda:r.oda,saat:r.saat,kasada:false});
-      }
+    const ertesiGun=addDays(seciliTarih,1);
+    const gunler=ertesiGun<=today()?[seciliTarih,ertesiGun]:[seciliTarih];
+    try{
+      const istekler=gunler.map(g=>fetch(`${KASA_URL}/rest/v1/hastalar?tarih=eq.${g}&select=id,ad`,{
+        headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY}
+      }).then(r=>r.json()));
+      const sonuclarListesi=await Promise.all(istekler);
+      const tumKasaKayitlari=sonuclarListesi.flat().filter(Boolean);
+      const sonuc=seanslar.map(r=>({hasta:r.hasta,oda:r.oda,saat:r.saat,kasada:tumKasaKayitlari.some(h=>benzerlik(h.ad||"",r.hasta||"")>=0.7)}));
+      setSonuclar(sonuc);
+    } catch(e){
+      setSonuclar(seanslar.map(r=>({hasta:r.hasta,oda:r.oda,saat:r.saat,kasada:false})));
     }
-    setSonuclar(sonuc);
     setYukleniyor(false);
   }
 
@@ -1244,7 +1269,7 @@ function KasaKontrolPanel({gunRandevular,seciliTarih,onKapat}){
   return(
     <div style={{background:"#fff",border:"1.5px solid #fcd34d",borderRadius:12,padding:"1.25rem",marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{fontSize:15,fontWeight:600,color:"#92400e"}}>🔎 Kontrol — {seciliTarih}</div>
+        <div style={{fontSize:15,fontWeight:600,color:"#92400e"}}>🔎 Kontrol — {seciliTarih}{addDays(seciliTarih,1)<=today()?` (+ ${addDays(seciliTarih,1)} kasası da aranıyor)`:""}</div>
         <button onClick={onKapat} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"#aaa"}}>✕</button>
       </div>
       {seanslar.length===0?(
@@ -1557,7 +1582,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
           </div>
           {hasta&&(
             <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
-              <input value={hasta} onChange={e=>setHasta(e.target.value)} style={{...inputStyle,fontSize:13,color:"#4338ca",background:"#eef0ff",border:"1px solid #a5b4fc"}} placeholder="Hasta adını düzenle..."/>
+              <input value={hasta} onChange={e=>setHasta(e.target.value.toLocaleUpperCase("tr"))} style={{...inputStyle,fontSize:13,color:"#4338ca",background:"#eef0ff",border:"1px solid #a5b4fc"}} placeholder="Hasta adını düzenle..."/>
               <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
               <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
               {hastaTel&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}><span style={{fontSize:12,color:"#888"}}>📞</span><a href={`https://wa.me/90${hastaTel.replace(/[^0-9]/g,"").slice(-10)}`} target="_blank" style={{fontSize:14,fontWeight:600,color:"#16a34a",textDecoration:"none"}}>{hastaTel}</a></div>}
@@ -1568,7 +1593,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
               <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>"{hastaFiltre}" listede yok — bilgileri girin:</div>
               <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
               <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
-              <button onClick={()=>{setHasta(hastaFiltre);setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12}}>✓ Bu isimle devam et</button>
+              <button onClick={()=>{setHasta(hastaFiltre.toLocaleUpperCase("tr"));setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12}}>✓ Bu isimle devam et</button>
             </div>
           )}
         </div>
@@ -1589,7 +1614,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
           <SureKontrol sure={sure} setSure={handleSureChange}/>
         </div>
       </div>
-      <div style={{marginBottom:14}}><Label>Durum</Label><select value={durum} onChange={e=>{setDurum(e.target.value);setManuelSure(false);}} style={inputStyle}>{durumlar.map(d=><option key={d} value={d}>{d}</option>)}</select></div>
+      <div style={{marginBottom:14}}><Label>Durum</Label>{aktifRol==="sekreter"?<div style={{...inputStyle,background:"#f5f5f2",color:"#888"}}>{durum} (salt okunur)</div>:<select value={durum} onChange={e=>{setDurum(e.target.value);setManuelSure(false);}} style={inputStyle}>{durumlar.map(d=><option key={d} value={d}>{d}</option>)}</select>}</div>
       {aktifRol!=="personel"&&<><Label>Ödeme</Label>
       <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>{ODEME_TIPLERI.map(o=><button key={o} onClick={()=>setOdeme(odeme===o?null:o)} style={chipStyle(odeme===o)}>{o}</button>)}</div></>}
       <Label>Notlar</Label>
@@ -1628,7 +1653,7 @@ function RandevuDetay({randevu:r,hastalar,aktifRol,onDuzenle,onDurumGuncelle,onK
       {hastaEdit&&(
         <div style={{background:"#f7f7f5",borderRadius:10,padding:12,marginBottom:14,border:"1.5px solid #a5b4fc"}}>
           <Label>Hasta Bilgilerini Düzenle</Label>
-          <input value={yeniHastaAd} onChange={e=>setYeniHastaAd(e.target.value)} placeholder="Ad Soyad" style={{...inputStyle,marginBottom:8}}/>
+          <input value={yeniHastaAd} onChange={e=>setYeniHastaAd(e.target.value.toLocaleUpperCase("tr"))} placeholder="Ad Soyad" style={{...inputStyle,marginBottom:8}}/>
           <input value={yeniHastaTel} onChange={e=>setYeniHastaTel(e.target.value)} placeholder="Telefon" style={{...inputStyle,marginBottom:8}}/>
           <div style={{fontSize:11,color:"#888",marginBottom:8}}>Bu bilgiler hastanın tüm geçmiş/gelecek randevu kayıtlarında da güncellenecek.</div>
           <div style={{display:"flex",gap:8}}>
@@ -1674,7 +1699,11 @@ function RandevuDetay({randevu:r,hastalar,aktifRol,onDuzenle,onDurumGuncelle,onK
         </div>}
       </div>
       <Label>Durum</Label>
-      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>{durumlar.map(d=><button key={d} onClick={()=>setDurum(d)} style={chipStyle(durum===d)}>{d}</button>)}</div>
+      {aktifRol==="sekreter"?(
+        <div style={{marginBottom:12}}><span style={{...chipStyle(true),cursor:"default",opacity:0.85}}>{durum} (salt okunur)</span></div>
+      ):(
+        <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>{durumlar.map(d=><button key={d} onClick={()=>setDurum(d)} style={chipStyle(durum===d)}>{d}</button>)}</div>
+      )}
       {aktifRol!=="personel"&&<><Label>Ödeme</Label>
       <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{ODEME_TIPLERI.map(o=><button key={o} onClick={()=>setOdeme(odeme===o?null:o)} style={chipStyle(odeme===o)}>{o}</button>)}</div></>}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1997,7 +2026,7 @@ function BeklemeListesi({bekleme,aktifRol,showToast,onRandevuyaCevir,onSil,onEkl
         <div style={{background:"#fff",border:"1.5px solid #a5b4fc",borderRadius:12,padding:"1.25rem",marginBottom:16}}>
           <div style={{fontSize:14,fontWeight:600,color:"#4338ca",marginBottom:14}}>📋 Yeni Bekleme Kaydı</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-            <div><Label>Ad Soyad *</Label><input value={ad} onChange={e=>setAd(e.target.value)} placeholder="Hasta adı" style={inputStyle}/></div>
+            <div><Label>Ad Soyad *</Label><input value={ad} onChange={e=>setAd(e.target.value.toLocaleUpperCase("tr"))} placeholder="Hasta adı" style={inputStyle}/></div>
             <div><Label>Telefon *</Label><input value={tel} onChange={e=>setTel(e.target.value)} placeholder="0532 ..." style={inputStyle}/></div>
           </div>
           <Label>Oda</Label>
@@ -2053,6 +2082,99 @@ function BeklemeKarti({b,onRandevuyaCevir,onSil,aktifRol,siraNo}){
 }
 
 // ── HASTALAR ─────────────────────────────────────────────────────────────────
+function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasyonAc}){
+  const bugun=today();
+  const durumEksik=randevular
+    .filter(r=>r.tarih<=bugun&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&bildirimGorunurMu(r,aktifRol))
+    .sort((a,b)=>a.tarih.localeCompare(b.tarih)||a.saat.localeCompare(b.saat));
+
+  const [epilasyonEksik,setEpilasyonEksik]=useState([]);
+  const [yukleniyor,setYukleniyor]=useState(true);
+
+  useEffect(()=>{
+    let iptal=false;
+    async function yukle(){
+      setYukleniyor(true);
+      const adaylar=randevular.filter(r=>r.tarih<=bugun&&r.durum!=="Gelmedi");
+      const adlar=[...new Set(adaylar.map(r=>r.hasta?.toLowerCase().trim()).filter(Boolean))];
+      const idMap={};
+      hastalar.forEach(h=>{const k=h.ad?.toLowerCase().trim();if(k&&adlar.includes(k))idMap[k]=h.id;});
+      const idler=[...new Set(Object.values(idMap))];
+      if(idler.length===0){if(!iptal){setEpilasyonEksik([]);setYukleniyor(false);}return;}
+      try{
+        const ziyaretler=await sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id`);
+        if(iptal)return;
+        const doluSet=new Set(ziyaretler.map(z=>z.hasta_id));
+        const eksikAdSeti=new Set(Object.entries(idMap).filter(([ad,id])=>!doluSet.has(id)).map(([ad])=>ad));
+        const eksikRandevular=adaylar.filter(r=>eksikAdSeti.has(r.hasta?.toLowerCase().trim()));
+        const map=new Map();
+        eksikRandevular.forEach(r=>{
+          const k=r.hasta?.toLowerCase().trim();
+          if(!map.has(k)||r.tarih>map.get(k).tarih)map.set(k,r);
+        });
+        setEpilasyonEksik([...map.values()].filter(r=>bildirimGorunurMu(r,aktifRol)).sort((a,b)=>a.tarih.localeCompare(b.tarih)));
+      }catch(e){if(!iptal)setEpilasyonEksik([]);}
+      if(!iptal)setYukleniyor(false);
+    }
+    yukle();
+    return()=>{iptal=true;};
+  },[randevular,hastalar]);
+
+  return(
+    <div>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>🔔 Bildirimler</h2>
+      {(aktifRol==="yonetici"||aktifRol==="sorumlu")&&(
+        <div style={{fontSize:12,color:"#888",background:"#f7f7f5",border:"1px solid #e8e6e0",borderRadius:8,padding:"8px 12px",marginBottom:16}}>
+          ℹ️ Burada sadece saat 18:00'dan sonra, işlem bitişinin üzerinden 1.5 saat geçmiş hâlâ tamamlanmamış kayıtlar ile önceki günden kalan eksikler gösterilir. Erken saatlerdeki eksikler önce Uygulayıcı'ya görünür.
+        </div>
+      )}
+
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:14,fontWeight:600,color:"#b45309",marginBottom:8}}>⏳ Durum İşaretlenmemiş ({durumEksik.length})</div>
+        {durumEksik.length===0?(
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.5rem",textAlign:"center",color:"#aaa",fontSize:13}}>Hepsi işaretlenmiş 👍</div>
+        ):(
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+            {durumEksik.map((r,i)=>(
+              <div key={r.id} onClick={()=>onRandevuTikla(r)} style={{padding:"10px 16px",borderBottom:i<durumEksik.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",gap:10}}>
+                <div>
+                  <div style={{fontWeight:500,fontSize:13}}>{r.hasta}</div>
+                  <div style={{fontSize:12,color:"#888"}}>{r.tarih} · {r.saat} · {r.oda==="alex"?"Alex":"Soprano"}</div>
+                </div>
+                <span style={{fontSize:11,color:"#b45309",background:"#fef3c7",padding:"2px 8px",borderRadius:20,flexShrink:0,whiteSpace:"nowrap"}}>İşaretlenmedi</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div style={{fontSize:14,fontWeight:600,color:"#6366f1",marginBottom:8}}>📋 Epilasyon Kartı Eksik ({yukleniyor?"…":epilasyonEksik.length})</div>
+        {yukleniyor?(
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.5rem",textAlign:"center",color:"#aaa",fontSize:13}}>Kontrol ediliyor...</div>
+        ):epilasyonEksik.length===0?(
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.5rem",textAlign:"center",color:"#aaa",fontSize:13}}>Hepsi tamam 👍</div>
+        ):(
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+            {epilasyonEksik.map((r,i)=>{
+              const hastaKaydi=hastalar.find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
+              return(
+                <div key={r.id} onClick={()=>hastaKaydi&&onEpilasyonAc(hastaKaydi,r)} style={{padding:"10px 16px",borderBottom:i<epilasyonEksik.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",gap:10}}>
+                  <div>
+                    <div style={{fontWeight:500,fontSize:13}}>{r.hasta}</div>
+                    <div style={{fontSize:12,color:"#888"}}>Son randevu: {r.tarih} · {r.oda==="alex"?"Alex":"Soprano"}</div>
+                  </div>
+                  <span style={{fontSize:11,color:"#6366f1",background:"#eef0ff",padding:"2px 8px",borderRadius:20,flexShrink:0,whiteSpace:"nowrap"}}>Kart eksik</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,randevular,silLog,onRandevuDuzenle,onRandevuSil,onEpilasyonAc}){
   const [filtre,setFiltre]=useState("");
   const [form,setForm]=useState(null);
@@ -2088,7 +2210,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
       <input value={filtre} onChange={e=>setFiltre(e.target.value)} placeholder="İsim, ID veya telefon ile ara..." style={{...inputStyle,marginBottom:12}}/>
       {form==="yeni"&&(
         <div style={{background:"#fff",border:"1px solid #e0ddd5",borderRadius:10,padding:14,marginBottom:12}}>
-          <input value={ad} onChange={e=>setAd(e.target.value)} placeholder="Ad Soyad *" style={{...inputStyle,marginBottom:8}}/>
+          <input value={ad} onChange={e=>setAd(e.target.value.toLocaleUpperCase("tr"))} placeholder="Ad Soyad *" style={{...inputStyle,marginBottom:8}}/>
           <input value={tel} onChange={e=>setTel(e.target.value)} placeholder="Telefon" style={{...inputStyle,marginBottom:8}}/>
           <div style={{display:"flex",gap:6,marginBottom:10}}>
             {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setCinsiyet(c)} style={{...chipStyle(cinsiyet===c),flex:1}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
@@ -2112,7 +2234,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
               )}
             </div>
             <div style={{fontSize:15,fontWeight:600,marginBottom:12,color:"#333"}}>Hasta Bilgileri</div>
-            <input value={duzenAd} onChange={e=>setDuzenAd(e.target.value)} style={{...inputStyle,marginBottom:8}}/>
+            <input value={duzenAd} onChange={e=>setDuzenAd(e.target.value.toLocaleUpperCase("tr"))} style={{...inputStyle,marginBottom:8}}/>
             <input value={duzenTel} onChange={e=>setDuzenTel(e.target.value)} placeholder="Telefon" style={{...inputStyle,marginBottom:8}}/>
             <div style={{display:"flex",gap:6,marginBottom:12}}>
               {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setDuzenCinsiyet(c)} style={{...chipStyle(duzenCinsiyet===c),flex:1}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
@@ -2857,7 +2979,7 @@ function SifreModal({hedef,aktifRol,onBasari,onKapat}){
   const [sifre,setSifre]=useState("");const [hata,setHata]=useState(false);const [deneme,setDeneme]=useState(0);
   useEffect(()=>{const fn=e=>{if(e.key==="Escape")onKapat();};window.addEventListener("keydown",fn);return()=>window.removeEventListener("keydown",fn);},[]);
   function kontrol(){
-    const dogruSifre=hedef==="dashboard"&&aktifRol==="sorumlu"?"5555":hedef==="anket_sonuc"?"SON26":"SON26";
+    const dogruSifre=(hedef==="dashboard"||hedef==="anket_sonuc")&&aktifRol==="sorumlu"?"5555":hedef==="anket_sonuc"?"SON26":"SON26";
     if(sifre===dogruSifre){setHata(false);onBasari();}else{setHata(true);setDeneme(d=>d+1);setSifre("");}
   }
   const baslik=hedef==="rapor"?"📊 Rapor":hedef==="log"?"📋 Log":hedef==="anket_sonuc"?"📊 Anket Sonuçları":"📅 Boş Randevular";
