@@ -892,12 +892,12 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                     <div style={{color:"#000",fontWeight:700,fontSize:11,flex:1}}>{uzunMu?`★★ ${bosSure}dk boş ★★`:`${bosSure}dk boş`}</div>
                     {(()=>{
                       const digerOda=odaId==="alex"?"soprano":"alex";
-                      const digerAdi=odaId==="alex"?"Soprano":"Alex";
-                      const digerIkon=odaId==="alex"?"🟣":"🟢";
+                      const kisaAd=odaId==="alex"?"Sop":"Alex";
                       const dd=digerOdaDurumu(minToTime(s.b),digerOda);
+                      const doluMu=dd.durum!=="bos";
                       return(
-                        <span style={{fontSize:9,padding:"2px 7px",borderRadius:10,flexShrink:0,whiteSpace:"nowrap",background:dd.durum==="bos"?"#dcfce7":"#f3f4f6",color:dd.durum==="bos"?"#166534":"#555"}}>
-                          {digerIkon} {digerAdi}: {dd.durum==="bos"?"boş":dd.metin}
+                        <span style={{background:doluMu?"#dc2626":"#2563eb",color:"#fff",fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:999,flexShrink:0,whiteSpace:"nowrap"}} title={doluMu?`${kisaAd} — ${minToTime(s.b)}: ${dd.metin}`:`${kisaAd} — ${minToTime(s.b)}: boş`}>
+                          {kisaAd} {doluMu?"D":"B"}
                         </span>
                       );
                     })()}
@@ -929,17 +929,16 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                       <span key={di} style={{width:5,height:11,background:"rgba(255,255,255,0.9)",borderRadius:1}}/>
                     ))}
                   </span>
-                  <div style={{fontSize:10,color:"rgba(255,255,255,0.85)",flexShrink:0}}>{u.sure}dk{u.odeme?` · ${u.odeme}`:""}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>{u.sure}dk{u.odeme?` · ${u.odeme}`:""}</div>
                   {u.durum&&<span style={{fontSize:10,fontWeight:700,color:"#fff",flexShrink:0}}>{u.durum==="Gelmedi"?"❌":u.durum==="Kontrol"?"⏳":"✔"}</span>}
                   {(()=>{
                     const digerOda=odaId==="alex"?"soprano":"alex";
-                    const digerAdi=odaId==="alex"?"Soprano":"Alex";
-                    const digerIkon=odaId==="alex"?"🟣":"🟢";
+                    const kisaAd=odaId==="alex"?"Sop":"Alex";
                     const dd=digerOdaDurumu(u.saat,digerOda);
-                    const renkStil=dd.durum==="bos"?{background:"rgba(255,255,255,0.22)",color:"#fff"}:{background:"rgba(0,0,0,0.28)",color:"#fff"};
+                    const doluMu=dd.durum!=="bos";
                     return(
-                      <span style={{...renkStil,fontSize:9,padding:"2px 7px",borderRadius:10,flexShrink:0,whiteSpace:"nowrap"}} title={`${digerAdi} — ${u.saat}`}>
-                        {digerIkon} {digerAdi}: {dd.durum==="bos"?"boş":dd.metin}
+                      <span style={{background:doluMu?"#dc2626":"#2563eb",color:"#fff",fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:999,flexShrink:0,whiteSpace:"nowrap"}} title={doluMu?`${kisaAd} — ${u.saat}: ${dd.metin}`:`${kisaAd} — ${u.saat}: boş`}>
+                        {kisaAd} {doluMu?"D":"B"}
                       </span>
                     );
                   })()}
