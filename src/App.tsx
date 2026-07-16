@@ -996,11 +996,14 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
               }
               const u=s.veri;
               const renk=islemRenk(u.bolgeler,u.oda,u.durum);
-              const gecikmisEksik=u.list.some(r=>r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&(Date.now()-randevuBitisMs(r))/(1000*60*60)>=1.5);
+              const gecikti1_5Saat=r=>(Date.now()-randevuBitisMs(r))/(1000*60*60)>=1.5;
+              const durumEksikVar=u.list.some(r=>r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&gecikti1_5Saat(r));
+              const epilasyonEksikVar=u.list.some(r=>r.tarih>=EPILASYON_UYARI_BASLANGIC&&r.durum!=="Gelmedi"&&epilasyonDurum?.[r.hasta?.toLowerCase().trim()]!=="yesil"&&gecikti1_5Saat(r));
+              const gecikmisEksik=durumEksikVar||epilasyonEksikVar;
               return(
                 <div key={u.id} onClick={()=>{if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",marginBottom:5,borderRadius:8,background:renk.bg,border:gecikmisEksik?"3px solid #dc2626":`1px solid ${renk.brd}`,boxShadow:gecikmisEksik?"0 0 0 2px rgba(220,38,38,0.25)":"none",cursor:"pointer"}}>
-                  {gecikmisEksik&&<span title="İşlem bitişinin üzerinden 1.5 saatten fazla geçti, durum hâlâ işaretlenmemiş" style={{fontSize:13,flexShrink:0}}>⚠️</span>}
+                  {gecikmisEksik&&<span title={[durumEksikVar&&"Durum (Seans/Kontrol/Gelmedi) hâlâ işaretlenmemiş",epilasyonEksikVar&&"Epilasyon kartı hâlâ doldurulmamış"].filter(Boolean).join(" · ")} style={{fontSize:13,flexShrink:0}}>⚠️</span>}
                   {u.tel&&<div style={{width:8,height:8,borderRadius:"50%",background:"#60a5fa",flexShrink:0}}/>}
                   <div style={{fontSize:11,fontWeight:700,color:"#fff",width:42,flexShrink:0}}>{u.saat}</div>
                   <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",display:"flex",alignItems:"center",gap:6}}>
@@ -2085,6 +2088,7 @@ function BeklemeKarti({b,onRandevuyaCevir,onSil,aktifRol,siraNo}){
 
 // ── HASTALAR ─────────────────────────────────────────────────────────────────
 const BILDIRIM_TAKIP_BASLANGIC="2026-07-16"; // Bu tarihten önceki eksik işaretlemeler artık bildirime dahil edilmiyor (birikmiş eski kayıtları temizlemek için)
+const EPILASYON_UYARI_BASLANGIC="2026-07-20"; // Pazartesi — personel bu haftayı epilasyon kartı doldurmaya alışmak için kullansın, bu tarihten itibaren eksik kart da kırmızı çerçeveye dahil olsun
 function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasyonAc}){
   const bugun=today();
   const durumEksik=randevular
@@ -3011,7 +3015,7 @@ function ModalWrapper({children,onClose}){
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:"1.5rem",width:"100%",maxWidth:560,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-        {children}a
+        {children}
       </div>
     </div>
   );
