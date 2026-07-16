@@ -941,6 +941,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                     </span>
                     <div style={{color:"#000",fontWeight:700,fontSize:11,flex:1}}>{uzunMu?`★★ ${bosSure}dk boş ★★`:`${bosSure}dk boş`}</div>
                     {(()=>{
+                      if(mobil)return null;
                       const digerOda=odaId==="alex"?"soprano":"alex";
                       const kisaAd=odaId==="alex"?"Sop":"Alex";
                       const dd=digerOdaDurumu(minToTime(s.b),digerOda);
@@ -983,6 +984,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                   <div style={{fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>{u.sure}dk{u.odeme?` · ${u.odeme}`:""}</div>
                   {u.durum&&<span style={{fontSize:10,fontWeight:700,color:"#fff",flexShrink:0}}>{u.durum==="Gelmedi"?"❌":u.durum==="Kontrol"?"⏳":"✔"}</span>}
                   {(()=>{
+                    if(mobil)return null;
                     const digerOda=odaId==="alex"?"soprano":"alex";
                     const kisaAd=odaId==="alex"?"Sop":"Alex";
                     const dd=digerOdaDurumu(u.saat,digerOda);
