@@ -705,7 +705,7 @@ export default function App() {
   );
 
   return(
-    <div style={{minHeight:"100vh",background:"#f5f4f1",fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+    <div style={{minHeight:"100vh",background:"#f5f4f1",fontFamily:"'DM Sans',system-ui,sans-serif",overflowX:"hidden",maxWidth:"100vw"}}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
       <header style={{background:"#1a1a2e",color:"#fff",padding:"0 1.5rem"}}>
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
@@ -797,11 +797,14 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
   const [hastaAraPanel,setHastaAraPanel]=useState(false);
   const [drYokPanel,setDrYokPanel]=useState(false);
   const [aktifOda,setAktifOda]=useState("alex");
-  const [mobil,setMobil]=useState(typeof window!=="undefined"&&window.innerWidth<680);
+  const [mobil,setMobil]=useState(typeof window!=="undefined"&&window.matchMedia("(max-width: 680px)").matches);
   useEffect(()=>{
-    const fn=()=>setMobil(window.innerWidth<680);
-    window.addEventListener("resize",fn);
-    return()=>window.removeEventListener("resize",fn);
+    if(typeof window==="undefined")return;
+    const mq=window.matchMedia("(max-width: 680px)");
+    const fn=()=>setMobil(mq.matches);
+    fn();
+    mq.addEventListener?mq.addEventListener("change",fn):mq.addListener(fn);
+    return()=>{mq.removeEventListener?mq.removeEventListener("change",fn):mq.removeListener(fn);};
   },[]);
   const [kasaPanel,setKasaPanel]=useState(false);
   const [kasaSifre,setKasaSifre]=useState(false);
@@ -967,11 +970,10 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                   style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",marginBottom:5,borderRadius:8,background:renk.bg,border:`1px solid ${renk.brd}`,cursor:"pointer"}}>
                   {u.tel&&<div style={{width:8,height:8,borderRadius:"50%",background:"#60a5fa",flexShrink:0}}/>}
                   <div style={{fontSize:11,fontWeight:700,color:"#fff",width:42,flexShrink:0}}>{u.saat}</div>
-                  <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",display:"flex",alignItems:"center",gap:6}}>
                     {(()=>{const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];const renkNokta=ed==="yesil"?"#22c55e":ed==="sari"?"#eab308":"#ffffff55";const baslikNokta=ed==="yesil"?"Epilasyon kartı var (dijital seans girilmiş)":ed==="sari"?"Sadece kağıt kart fotoğrafı/notu var":"Epilasyon kartı yok — arşivden dosya gerekebilir";return <span title={baslikNokta} style={{width:7,height:7,minWidth:7,borderRadius:"50%",background:renkNokta,flexShrink:0}}/>;})()}
-                    <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.hasta}</span>
-                    {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",borderRadius:8,padding:"1px 6px",marginLeft:6,fontWeight:700}}>{u.list.length} işlem</span>}
-                    {u.bolgeler?.length>0&&<span style={{fontSize:10,color:"rgba(255,255,255,0.8)",marginLeft:6}}>{u.bolgeler.slice(0,3).join(" · ")}{u.bolgeler.length>3?` +${u.bolgeler.length-3}`:""}</span>}
+                    <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.hasta}</span>
+                    {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",borderRadius:8,padding:"1px 6px",fontWeight:700,flexShrink:0}}>{u.list.length} işlem</span>}
                   </div>
                   <span style={{display:"inline-flex",gap:2,flexShrink:0}}>
                     {Array.from({length:dilimSayisi(u.sure)}).map((_,di)=>(
@@ -1009,7 +1011,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
           <button onClick={()=>setSeciliTarih(today())} style={{...navBtnStyle,color:seciliTarih===today()?"#6366f1":"#444",fontWeight:seciliTarih===today()?600:400}}>Bugün</button>
           <div style={{fontWeight:600,fontSize:15}}>{formatDate(seciliTarih)}</div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <input type="date" value={seciliTarih} onChange={e=>setSeciliTarih(e.target.value)} style={{border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:13,fontFamily:"inherit"}}/>
           <button onClick={()=>{setHastaAraPanel(p=>!p);setBosPanel(false);setBlokPanel(false);}} style={{...navBtnStyle,background:hastaAraPanel?"#eef0ff":"#f0f0ed",color:hastaAraPanel?"#4338ca":"#444",border:hastaAraPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>👤 Hasta Ara</button>
           <button onClick={()=>{setBosPanel(p=>!p);setBlokPanel(false);setHastaAraPanel(false);}} style={{...navBtnStyle,background:bosPanel?"#eef0ff":"#f0f0ed",color:bosPanel?"#4338ca":"#444",border:bosPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>🔍 Boş Randevu Bul</button>
