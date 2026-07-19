@@ -481,6 +481,7 @@ export default function App() {
     // Ödeme değişikliği logu
     const logMesajlar=[];
     if(durum&&durum!==r?.durum) logMesajlar.push(`Durum: ${r?.durum||"-"} → ${durum}`);
+    else if(durum) logMesajlar.push(`Durum: ${durum} (onaylandı)`);
     if(odeme!==undefined&&odeme!==r?.odeme) logMesajlar.push(`Ödeme: ${r?.odeme||"Yok"} → ${odeme||"Yok"}`);
     const yeniLog=[...(r?.log||[]),{saat:now,kullanici:kullaniciEtiket(),islem:logMesajlar.join(" | ")||"Güncellendi"}];
     try{
@@ -2654,7 +2655,7 @@ function AnketSonucSekme({aktifRol}){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:6}}>
                 <div>
                   <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
-                  <div style={{fontSize:12,color:"#888"}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?"Lazer Epilasyon":"Cilt/Karbon/Tüy"}{a.randevu_tarih&&<span style={{marginLeft:6,color:"#6366f1"}}>| Randevu: {a.randevu_tarih}</span>}</div>
+                  <div style={{fontSize:12,color:"#888"}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}{a.anket_tipi!=="lazer"&&a.oda&&<span style={{color:"#aaa"}}> ({a.oda==="alex"?"Alex":"Soprano"})</span>}{a.randevu_tarih&&<span style={{marginLeft:6,color:"#6366f1"}}>| Randevu: {a.randevu_tarih}</span>}</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <span style={{background:"#f0fdf4",color:"#16a34a",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
@@ -2684,7 +2685,7 @@ function AnketSonucSekme({aktifRol}){
                 <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
                 <span style={{background:"#fee2e2",color:"#dc2626",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
               </div>
-              <div style={{fontSize:12,color:"#888",marginBottom:6}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?"Lazer Epilasyon":"Cilt/Karbon/Tüy"}</div>
+              <div style={{fontSize:12,color:"#888",marginBottom:6}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}</div>
               {a.cevaplar&&Object.keys(a.cevaplar).length>0&&(
                 <div style={{background:"#f7f7f5",borderRadius:8,padding:"8px 10px",fontSize:12,color:"#555"}}>
                   {Object.entries(a.cevaplar).map(([k,v])=>(
