@@ -802,7 +802,7 @@ export default function App() {
       {modal&&(
         <ModalWrapper onClose={()=>setModal(null)}>
           {modal.tip==="yeni"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={async(data)=>{const ok=await randevuKaydet(data);if(ok&&modal.beklemdeId)await beklemeRandevuAlindi(modal.beklemdeId);}} onIptal={()=>setModal(null)}/>}
-          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} hastalar={hastalar} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={randevuHastaBilgisiDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
+          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} hastalar={hastalar} randevular={randevular} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={randevuHastaBilgisiDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
           {modal.tip==="duzenle"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={randevuKaydet} onIptal={()=>setModal(null)} duzenleme/>}
         </ModalWrapper>
       )}
@@ -1634,7 +1634,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
 }
 
 // ── RANDEVU DETAY ────────────────────────────────────────────────────────────
-function RandevuDetay({randevu:r,hastalar,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc}){
+function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc}){
   const [durum,setDurum]=useState(r.durum);const [odeme,setOdeme]=useState(r.odeme);
   const hastaKaydi=(hastalar||[]).find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
   const [hastaEdit,setHastaEdit]=useState(false);
@@ -1726,14 +1726,13 @@ function RandevuDetay({randevu:r,hastalar,aktifRol,onDuzenle,onDurumGuncelle,onK
           <div style={{fontSize:13,fontWeight:600,color:"#3b5bdb",marginBottom:8}}>📋 Memnuniyet Anketi</div>
           {!r.anket_durum&&(
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>onAnketDurum(r.id,"onay_verildi")} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#2f9e44"}}>✅ Onay Verdi</button>
-              <button onClick={()=>onAnketDurum(r.id,"izin_vermedi")} style={{...btnSecondary,fontSize:12,padding:"6px 14px",color:"#e03131",borderColor:"#ffa8a8"}}>❌ İzin Vermedi</button>
-            </div>
-          )}
-          {r.anket_durum==="onay_verildi"&&(
-            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-              <span style={{fontSize:12,color:"#2f9e44",fontWeight:500}}>✅ Onay verildi</span>
-              <button onClick={()=>onAnketGonder(r)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#25d366"}}>📱 Anketi Gönder</button>
+              <button onClick={()=>{
+                const dahaOnceGonderildi=(randevular||[]).some(x=>x.id!==r.id&&x.hasta?.toLowerCase().trim()===r.hasta?.toLowerCase().trim()&&x.anket_durum==="gonderildi");
+                if(dahaOnceGonderildi){
+                  if(!window.confirm("⚠️ Bu hastaya daha önce anket gönderildi. Yine de göndermek istiyor musunuz?"))return;
+                }
+                onAnketGonder(r);
+              }} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#25d366"}}>📱 Anketi Gönder</button>
             </div>
           )}
           {r.anket_durum==="gonderildi"&&<span style={{fontSize:12,color:"#3b5bdb",fontWeight:500}}>📨 Anket gönderildi</span>}
