@@ -94,7 +94,11 @@ async function yukle(){
     const data=await r.json();
     if(!data||data.length===0){goster('<div class="hata">❌ Anket bulunamadı veya süresi dolmuş.</div>');return;}
     anketData=data[0];
-    if(anketData.tamamlandi){gosterTesekkur(anketData.puan);return;}
+    if(anketData.tamamlandi){
+      const sorularEski=anketData.anket_tipi==="cilt"?CILT_SORULAR:LAZER_SORULAR;
+      gosterTesekkur(anketData.puan,anketData.cevaplar||{},sorularEski);
+      return;
+    }
     gosterAnket();
   }catch(e){goster('<div class="hata">❌ Bağlantı hatası. Lütfen tekrar deneyin.</div>');}
 }
@@ -174,13 +178,32 @@ async function gonder(){
       headers:{...HDR,"Prefer":"return=minimal"},
       body:JSON.stringify({puan:genel_puan,cevaplar:tum_cevaplar,tamamlandi:true,tamamlama_tarih:new Date().toISOString().slice(0,10)})
     });
-    gosterTesekkur(genel_puan);
+    gosterTesekkur(genel_puan,tum_cevaplar,sorular);
   }catch(e){btn.disabled=false;btn.textContent="Anketi Gönder 🌸";alert("Hata oluştu, tekrar deneyin.");}
 }
 
-function gosterTesekkur(puan){
+function hepsiOlumluMu(sorular,cevaplar,genelPuan){
+  if(genelPuan!==10)return false;
+  for(const s of sorular){
+    if(s.tip==="yildiz"){
+      if(Number(cevaplar[s.id])!==5)return false;
+    } else if(s.tip==="radio"){
+      if(cevaplar[s.id]!==s.secenekler[0])return false; // en olumlu seçenek her zaman ilk sırada
+    }
+  }
+  return true;
+}
+
+function gosterTesekkur(puan,cevaplar,sorular){
   let html=`<div class="tesekkur">`;
-  if(puan>=8){
+  if(puan>=8&&hepsiOlumluMu(sorular,cevaplar||{},puan)){
+    html+=`<div class="icon">🌟</div>`;
+    html+=`<h2>Teşekkürler!</h2>`;
+    html+=`<p style="margin-bottom:4px;">🌸 Bizi 10 üzerinden 10 puanla değerlendirdiğiniz için çok teşekkür ederiz!</p>`;
+    html+=`<p style="margin-bottom:4px;">Sizlerin memnuniyeti bizim için en büyük motivasyondur.</p>`;
+    html+=`<p style="margin-bottom:16px;">Deneyiminizi Google'da paylaşmanız, bizi tercih edecek diğer hastalarımıza da yardımcı olacaktır.</p>`;
+    html+=`<a class="google-btn" href="${GOOGLE_LINK}" target="_blank" rel="noopener">⭐ Google'da Yorum Yap</a>`;
+  } else if(puan>=8){
     html+=`<div class="icon">🌟</div>`;
     html+=`<h2>Teşekkürler!</h2>`;
     html+=`<p>Memnuniyetinizi paylaştığınız için çok teşekkür ederiz. Sizi tekrar kliniğimizde görmekten mutluluk duyarız! 🌸</p>`;
