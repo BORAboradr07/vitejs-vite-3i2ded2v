@@ -1010,7 +1010,18 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                   {!u.tel&&<span title="Telefon numarası kayıtlı değil" style={{fontSize:12,flexShrink:0}}>📵</span>}
                   <div style={{fontSize:11,fontWeight:700,color:"#fff",width:42,flexShrink:0}}>{u.saat}</div>
                   <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",display:"flex",alignItems:"center",gap:6}}>
-                    {(()=>{const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];const renkKart=ed==="yesil"?"#22c55e":ed==="sari"?"#eab308":"#9ca3af";const baslikKart=ed==="yesil"?"Epilasyon kartı var (dijital seans girilmiş)":ed==="sari"?"Sadece kağıt kart fotoğrafı/notu var":"Epilasyon kartı yok — arşivden dosya gerekebilir";return <span title={baslikKart} style={{width:11,height:8,minWidth:11,borderRadius:2,background:renkKart,flexShrink:0,border:"1px solid rgba(0,0,0,0.15)"}}/>;})()}
+                    {(()=>{
+                      const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];
+                      const gelecekMi=u.list.some(r=>r.tarih>today());
+                      if(gelecekMi){
+                        // Gelecek randevu: "bugün doldurdu mu" sorusuyla karışmasın diye tamamen farklı bir gösterge — sadece dosya çıkarma ihtiyacı
+                        if(ed==="yesil"||ed==="sari")return null; // dijital kayıt zaten var, dosya çıkarmaya gerek yok
+                        return <span title="Arşivden dosyası çıkacak" style={{fontSize:12,flexShrink:0}}>📁</span>;
+                      }
+                      const renkKart=ed==="yesil"?"#22c55e":ed==="sari"?"#eab308":"#9ca3af";
+                      const baslikKart=ed==="yesil"?"Epilasyon kartı var (dijital seans girilmiş)":ed==="sari"?"Sadece kağıt kart fotoğrafı/notu var":"Epilasyon kartı yok — arşivden dosya gerekebilir";
+                      return <span title={baslikKart} style={{width:11,height:8,minWidth:11,borderRadius:2,background:renkKart,flexShrink:0,border:"1px solid rgba(0,0,0,0.15)"}}/>;
+                    })()}
                     <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.hasta}</span>
                     {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",borderRadius:8,padding:"1px 6px",fontWeight:700,flexShrink:0}}>{u.list.length} işlem</span>}
                   </div>
