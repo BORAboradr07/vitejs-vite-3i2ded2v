@@ -773,17 +773,18 @@ export default function App() {
           {[["takvim","📅 Takvim",0],...(aktifRol!=="sekreter"?[["bildirimler","🔔 Bildirimler",bildirimSayisi]]:[]),["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
             ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["rapor","📊 Rapor",0]]:[]),
             ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
+            ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["epilasyon_log","📋 Epilasyon Kartı Log",0]]:[]),
             ["anket_sonuc","📊 Anket Sonuçları",0],
             ["gelmeyenler","🚫 Gelmeyenler",0],
             ["dashboard","📅 Boş Randevular",0]]
             .map(([k,l,badge])=>(
             <button key={k} onClick={()=>{
-              if((k==="log"||k==="rapor")&&yoneticiKilit){setSifreModal(k);}
+              if((k==="log"||k==="rapor"||k==="epilasyon_log")&&yoneticiKilit){setSifreModal(k);}
               else if(k==="anket_sonuc"&&yoneticiKilit&&aktifRol!=="sekreter"){setSifreModal(k);}
 
               else setAktifSekme(k);
             }} style={{padding:"12px 16px",background:"none",border:"none",borderBottom:aktifSekme===k?"2px solid #6366f1":"2px solid transparent",color:aktifSekme===k?"#6366f1":"#666",fontWeight:aktifSekme===k?600:400,fontSize:14,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
-              {l}{(k==="rapor"||k==="log"||(k==="anket_sonuc"&&aktifRol!=="sekreter"))&&yoneticiKilit&&<span style={{fontSize:11,opacity:0.5}}>🔒</span>}{badge>0&&<span style={{background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:20}}>{badge}</span>}
+              {l}{(k==="rapor"||k==="log"||k==="epilasyon_log"||(k==="anket_sonuc"&&aktifRol!=="sekreter"))&&yoneticiKilit&&<span style={{fontSize:11,opacity:0.5}}>🔒</span>}{badge>0&&<span style={{background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:20}}>{badge}</span>}
             </button>
           ))}
         </div>
@@ -798,6 +799,7 @@ export default function App() {
         {aktifSekme==="gelmeyenler"&&<GelmeyenlerSekme randevular={randevular} aktifRol={aktifRol} onDurumGuncelle={durumGuncelle}/>}
         {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
         {aktifSekme==="log"&&aktifRol==="yonetici"&&<LogSekme randevular={randevular} silLog={silLog} gunIciLog={gunIciLog}/>}
+        {aktifSekme==="epilasyon_log"&&(aktifRol==="yonetici"||aktifRol==="sorumlu")&&<EpilasyonLogSekme/>}
       </div>
       {modal&&(
         <ModalWrapper onClose={()=>setModal(null)}>
@@ -1005,10 +1007,10 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                 <div key={u.id} onClick={()=>{if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",marginBottom:5,borderRadius:8,background:renk.bg,border:gecikmisEksik?"3px solid #dc2626":`1px solid ${renk.brd}`,boxShadow:gecikmisEksik?"0 0 0 2px rgba(220,38,38,0.25)":"none",cursor:"pointer"}}>
                   {gecikmisEksik&&<span title={[durumEksikVar&&"Durum (Seans/Kontrol/Gelmedi) hâlâ işaretlenmemiş",epilasyonEksikVar&&"Epilasyon kartı hâlâ doldurulmamış"].filter(Boolean).join(" · ")} style={{fontSize:13,flexShrink:0}}>⚠️</span>}
-                  {u.tel&&<div style={{width:8,height:8,borderRadius:"50%",background:"#60a5fa",flexShrink:0}}/>}
+                  {!u.tel&&<span title="Telefon numarası kayıtlı değil" style={{fontSize:12,flexShrink:0}}>📵</span>}
                   <div style={{fontSize:11,fontWeight:700,color:"#fff",width:42,flexShrink:0}}>{u.saat}</div>
                   <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",display:"flex",alignItems:"center",gap:6}}>
-                    {(()=>{const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];const renkNokta=ed==="yesil"?"#22c55e":ed==="sari"?"#eab308":"#ffffff55";const baslikNokta=ed==="yesil"?"Epilasyon kartı var (dijital seans girilmiş)":ed==="sari"?"Sadece kağıt kart fotoğrafı/notu var":"Epilasyon kartı yok — arşivden dosya gerekebilir";return <span title={baslikNokta} style={{width:7,height:7,minWidth:7,borderRadius:"50%",background:renkNokta,flexShrink:0}}/>;})()}
+                    {(()=>{const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];const renkKart=ed==="yesil"?"#22c55e":ed==="sari"?"#eab308":"#9ca3af";const baslikKart=ed==="yesil"?"Epilasyon kartı var (dijital seans girilmiş)":ed==="sari"?"Sadece kağıt kart fotoğrafı/notu var":"Epilasyon kartı yok — arşivden dosya gerekebilir";return <span title={baslikKart} style={{width:11,height:8,minWidth:11,borderRadius:2,background:renkKart,flexShrink:0,border:"1px solid rgba(0,0,0,0.15)"}}/>;})()}
                     <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.hasta}</span>
                     {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",borderRadius:8,padding:"1px 6px",fontWeight:700,flexShrink:0}}>{u.list.length} işlem</span>}
                   </div>
@@ -1852,6 +1854,88 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
   const [gecmisFotolar,setGecmisFotolar]=useState([]);
   const [yukleniyorFoto,setYukleniyorFoto]=useState(false);
   const [seansForm,setSeansForm]=useState(false);
+  const [duzenlenenBolgeId,setDuzenlenenBolgeId]=useState(null);
+  const [duzenSatir,setDuzenSatir]=useState(null);
+  const [yeniBolgeZiyaretId,setYeniBolgeZiyaretId]=useState(null);
+  const [yeniBolgeSatir,setYeniBolgeSatir]=useState(null);
+  const [yeniBolgePicker,setYeniBolgePicker]=useState(false);
+
+  function duzenlenebilirMi(tarih){
+    const gunFarki=Math.round((new Date(today()+"T00:00:00")-new Date(tarih+"T00:00:00"))/86400000);
+    return gunFarki>=0&&gunFarki<=1; // sadece aynı gün ya da bir gün sonrasına kadar
+  }
+
+  async function ziyaretleriYenile(){
+    const z=await sbGet("epilasyon_ziyaretleri",`hasta_id=eq.${hasta.id}&select=*,epilasyon_bolge_uygulamalari(*)&order=tarih.desc`);
+    setZiyaretler(z);
+  }
+
+  function bolgeDuzenlemeyeAc(b){
+    setDuzenlenenBolgeId(b.id);
+    setDuzenSatir({
+      bolge:b.bolge,cihaz:b.cihaz||"",
+      enerji:b.enerji_joule!=null?String(b.enerji_joule):"",
+      ms:b.pulse_suresi_ms!=null?String(b.pulse_suresi_ms):"",
+      atim:b.atim_sayisi!=null?String(b.atim_sayisi):"",
+      dokulme:b.tuy_dokulme_degerlendirmesi||"",
+      not:b.not_metni||""
+    });
+  }
+
+  async function bolgeGuncelle(){
+    try{
+      const ziyaret=ziyaretler.find(z=>(z.epilasyon_bolge_uygulamalari||[]).some(b=>b.id===duzenlenenBolgeId));
+      const eskiBolge=ziyaret?.epilasyon_bolge_uygulamalari.find(b=>b.id===duzenlenenBolgeId);
+      if(ziyaret&&ziyaret.tarih!==today()&&eskiBolge){
+        const eskiOzet=`${eskiBolge.cihaz||"-"} · ${eskiBolge.enerji_joule??"-"}j/cm² · ${eskiBolge.pulse_suresi_ms??"-"}ms · ${eskiBolge.atim_sayisi??"-"} atım · ${eskiBolge.tuy_dokulme_degerlendirmesi||"-"} · "${eskiBolge.not_metni||""}"`;
+        const yeniOzet=`${duzenSatir.cihaz||"-"} · ${duzenSatir.enerji||"-"}j/cm² · ${duzenSatir.ms||"-"}ms · ${duzenSatir.atim||"-"} atım · ${duzenSatir.dokulme||"-"} · "${duzenSatir.not||""}"`;
+        try{
+          await sbInsert("epilasyon_duzenleme_log",{hasta:hasta.ad,bolge:duzenSatir.bolge,ziyaret_tarihi:ziyaret.tarih,tip:"duzenleme",eski_deger:eskiOzet,yeni_deger:yeniOzet,kullanici:aktifKullanici?.login_name?`${aktifKullanici.login_name} (${ROLLER[aktifRol]})`:ROLLER[aktifRol],kayit_saat:nowTime()});
+        }catch(e){/* log tablosu henüz oluşturulmamış olabilir, sessizce geç */}
+      }
+      await sbUpdate("epilasyon_bolge_uygulamalari",duzenlenenBolgeId,{
+        cihaz:duzenSatir.cihaz,
+        enerji_joule:duzenSatir.enerji?parseFloat(duzenSatir.enerji):null,
+        pulse_suresi_ms:duzenSatir.ms?parseFloat(duzenSatir.ms):null,
+        atim_sayisi:duzenSatir.atim?parseInt(duzenSatir.atim):null,
+        tuy_dokulme_degerlendirmesi:duzenSatir.dokulme||null,
+        not_metni:duzenSatir.not||""
+      });
+      showToast("Bölge güncellendi.");
+      setDuzenlenenBolgeId(null);setDuzenSatir(null);
+      await ziyaretleriYenile();
+    }catch(e){showToast("Hata: "+e.message,"error");}
+  }
+
+  function yeniBolgeFormunuAc(ziyaretId){
+    setYeniBolgeZiyaretId(ziyaretId);
+    setYeniBolgeSatir({bolge:"",cihaz:"",enerji:"",ms:"",atim:"",dokulme:"",not:""});
+    setYeniBolgePicker(true);
+  }
+
+  async function yeniBolgeKaydet(){
+    if(!yeniBolgeSatir?.bolge){showToast("Önce bölge seçin.","error");return;}
+    try{
+      const ziyaret=ziyaretler.find(z=>z.id===yeniBolgeZiyaretId);
+      if(ziyaret&&ziyaret.tarih!==today()){
+        const yeniOzet=`${yeniBolgeSatir.cihaz||"-"} · ${yeniBolgeSatir.enerji||"-"}j/cm² · ${yeniBolgeSatir.ms||"-"}ms · ${yeniBolgeSatir.atim||"-"} atım · ${yeniBolgeSatir.dokulme||"-"} · "${yeniBolgeSatir.not||""}"`;
+        try{
+          await sbInsert("epilasyon_duzenleme_log",{hasta:hasta.ad,bolge:yeniBolgeSatir.bolge,ziyaret_tarihi:ziyaret.tarih,tip:"yeni_bolge",eski_deger:null,yeni_deger:yeniOzet,kullanici:aktifKullanici?.login_name?`${aktifKullanici.login_name} (${ROLLER[aktifRol]})`:ROLLER[aktifRol],kayit_saat:nowTime()});
+        }catch(e){/* log tablosu henüz oluşturulmamış olabilir, sessizce geç */}
+      }
+      await sbInsert("epilasyon_bolge_uygulamalari",{
+        ziyaret_id:yeniBolgeZiyaretId,bolge:yeniBolgeSatir.bolge,cihaz:yeniBolgeSatir.cihaz,
+        enerji_joule:yeniBolgeSatir.enerji?parseFloat(yeniBolgeSatir.enerji):null,
+        pulse_suresi_ms:yeniBolgeSatir.ms?parseFloat(yeniBolgeSatir.ms):null,
+        atim_sayisi:yeniBolgeSatir.atim?parseInt(yeniBolgeSatir.atim):null,
+        tuy_dokulme_degerlendirmesi:yeniBolgeSatir.dokulme||null,
+        not_metni:yeniBolgeSatir.not||""
+      });
+      showToast("Bölge eklendi.");
+      setYeniBolgeZiyaretId(null);setYeniBolgeSatir(null);setYeniBolgePicker(false);
+      await ziyaretleriYenile();
+    }catch(e){showToast("Hata: "+e.message,"error");}
+  }
 
   useEffect(()=>{
     let iptal=false;
@@ -1985,21 +2069,57 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
 
           <div style={{fontSize:13,fontWeight:600,color:"#555",marginBottom:8}}>Ziyaret Geçmişi</div>
           {ziyaretler.length===0?<div style={{color:"#aaa",fontSize:13,padding:"10px 0"}}>Henüz dijital seans kaydı yok.</div>:
-          ziyaretler.map(z=>(
+          ziyaretler.map(z=>{
+            const editVar=duzenlenebilirMi(z.tarih);
+            return(
             <div key={z.id} style={{border:"1px solid #e8e6e0",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                 <span style={{fontSize:13,fontWeight:600}}>{z.tarih}</span>
                 {z.uygulayan_personel&&<span style={{fontSize:11,color:"#6366f1"}}>👤 {z.uygulayan_personel}</span>}
               </div>
               {(z.epilasyon_bolge_uygulamalari||[]).map(b=>(
-                <div key={b.id} style={{fontSize:12,color:"#555",marginBottom:4,paddingLeft:8,borderLeft:"2px solid #eee"}}>
-                  <strong>{b.bolge}</strong> · {b.cihaz} {b.enerji_joule?"· "+b.enerji_joule+" j/cm²":""} {b.pulse_suresi_ms?"· "+b.pulse_suresi_ms+"ms":""} {b.atim_sayisi?"· "+b.atim_sayisi+" atım":""}
-                  {b.tuy_dokulme_degerlendirmesi&&<span style={{marginLeft:6,background:"#dcfce7",color:"#16a34a",fontSize:10,padding:"1px 6px",borderRadius:10}}>{b.tuy_dokulme_degerlendirmesi}</span>}
-                  {b.not_metni&&<div style={{color:"#999",marginTop:2}}>{b.not_metni}</div>}
-                </div>
+                duzenlenenBolgeId===b.id?(
+                  <div key={b.id} style={{marginBottom:8}}>
+                    <BolgeSatiri satir={duzenSatir} onDegis={setDuzenSatir} onSil={()=>{}} kilitli={false}/>
+                    <div style={{display:"flex",gap:8,marginTop:-4,marginBottom:8}}>
+                      <button onClick={bolgeGuncelle} style={{...btnPrimary,flex:1,padding:"7px",fontSize:13}}>Kaydet</button>
+                      <button onClick={()=>{setDuzenlenenBolgeId(null);setDuzenSatir(null);}} style={{...btnSecondary,padding:"7px 14px",fontSize:13}}>İptal</button>
+                    </div>
+                  </div>
+                ):(
+                  <div key={b.id} style={{fontSize:12,color:"#555",marginBottom:4,paddingLeft:8,borderLeft:"2px solid #eee",display:"flex",gap:6,alignItems:"flex-start"}}>
+                    <div style={{flex:1}}>
+                      <strong>{b.bolge}</strong> · {b.cihaz} {b.enerji_joule?"· "+b.enerji_joule+" j/cm²":""} {b.pulse_suresi_ms?"· "+b.pulse_suresi_ms+"ms":""} {b.atim_sayisi?"· "+b.atim_sayisi+" atım":""}
+                      {b.tuy_dokulme_degerlendirmesi&&<span style={{marginLeft:6,background:"#dcfce7",color:"#16a34a",fontSize:10,padding:"1px 6px",borderRadius:10}}>{b.tuy_dokulme_degerlendirmesi}</span>}
+                      {b.not_metni&&<div style={{color:"#999",marginTop:2}}>{b.not_metni}</div>}
+                    </div>
+                    {editVar&&<span onClick={()=>bolgeDuzenlemeyeAc(b)} title="Düzenle" style={{cursor:"pointer",flexShrink:0,fontSize:13}}>✏️</span>}
+                  </div>
+                )
               ))}
+              {editVar&&(
+                yeniBolgeZiyaretId===z.id?(
+                  yeniBolgePicker?(
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6,marginBottom:6}}>
+                      {[...new Set([...ALEX_BOLGELER,...SOPRANO_BOLGELER])].filter(bl=>!(z.epilasyon_bolge_uygulamalari||[]).some(x=>x.bolge===bl)).map(bl=>(
+                        <button key={bl} onClick={()=>{setYeniBolgeSatir(s=>({...s,bolge:bl}));setYeniBolgePicker(false);}} style={chipStyle(false)}>{bl}</button>
+                      ))}
+                    </div>
+                  ):(
+                    <div style={{marginTop:6}}>
+                      <BolgeSatiri satir={yeniBolgeSatir} onDegis={setYeniBolgeSatir} onSil={()=>{setYeniBolgeZiyaretId(null);setYeniBolgeSatir(null);}} kilitli={false}/>
+                      <div style={{display:"flex",gap:8,marginTop:-4}}>
+                        <button onClick={yeniBolgeKaydet} style={{...btnPrimary,flex:1,padding:"7px",fontSize:13}}>Bölgeyi Kaydet</button>
+                        <button onClick={()=>{setYeniBolgeZiyaretId(null);setYeniBolgeSatir(null);}} style={{...btnSecondary,padding:"7px 14px",fontSize:13}}>İptal</button>
+                      </div>
+                    </div>
+                  )
+                ):(
+                  <button onClick={()=>yeniBolgeFormunuAc(z.id)} style={{...btnSecondary,width:"100%",borderStyle:"dashed",marginTop:6,padding:"7px",fontSize:12}}>+ Bu ziyarete bölge ekle</button>
+                )
+              )}
             </div>
-          ))}
+          );})}
         </>
       )}
     </div>
@@ -2913,6 +3033,57 @@ function RaporSekme({seciliTarih,randevular,aktifRol}){
 }
 
 // ── LOG ──────────────────────────────────────────────────────────────────────
+function EpilasyonLogSekme(){
+  const [kayitlar,setKayitlar]=useState([]);
+  const [yukleniyor,setYukleniyor]=useState(true);
+  useEffect(()=>{
+    let iptal=false;
+    (async()=>{
+      try{
+        const r=await sbGet("epilasyon_duzenleme_log","order=id.desc");
+        if(!iptal)setKayitlar(r);
+      }catch(e){if(!iptal)setKayitlar([]);}
+      if(!iptal)setYukleniyor(false);
+    })();
+    return()=>{iptal=true;};
+  },[]);
+
+  return(
+    <div>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>📋 Epilasyon Kartı Log</h2>
+      <div style={{fontSize:12,color:"#888",marginBottom:14}}>Bir gün önceye ait epilasyon kayıtlarında yapılan sonradan düzenleme/ekleme işlemleri burada listelenir.</div>
+      {yukleniyor?(
+        <div style={{textAlign:"center",padding:24,color:"#aaa"}}>Yükleniyor...</div>
+      ):kayitlar.length===0?(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.5rem",textAlign:"center",color:"#aaa",fontSize:13}}>Henüz kayıt yok.</div>
+      ):(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+          {kayitlar.map((k,i)=>(
+            <div key={k.id} style={{padding:"12px 16px",borderBottom:i<kayitlar.length-1?"1px solid #f5f5f2":"none"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <span style={{fontWeight:600,fontSize:14}}>{k.hasta} <span style={{fontWeight:400,color:"#888",fontSize:12}}>— {k.bolge}</span></span>
+                <span style={{fontSize:11,color:"#6366f1",fontWeight:600}}>{k.kullanici}</span>
+              </div>
+              <div style={{fontSize:12,color:"#666",marginBottom:4}}>
+                Ziyaret tarihi: <b>{k.ziyaret_tarihi}</b> · {k.tip==="yeni_bolge"?"Sonradan bölge eklendi":"Düzenlendi"} · {k.kayit_tarih} {k.kayit_saat}
+              </div>
+              {k.tip==="duzenleme"&&(
+                <div style={{fontSize:11,color:"#999"}}>
+                  <div style={{color:"#dc2626"}}>Eski: {k.eski_deger}</div>
+                  <div style={{color:"#16a34a"}}>Yeni: {k.yeni_deger}</div>
+                </div>
+              )}
+              {k.tip==="yeni_bolge"&&(
+                <div style={{fontSize:11,color:"#16a34a"}}>Eklenen: {k.yeni_deger}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LogSekme({randevular,silLog,gunIciLog}){
   const [aktifTab,setAktifTab]=useState("gunici");
   const tumLog=randevular.flatMap(r=>(r.log||[]).map(l=>({...l,hasta:r.hasta,tarih:r.tarih}))).sort((a,b)=>b.saat?.localeCompare(a.saat||"")||0);
@@ -2986,7 +3157,7 @@ function SifreModal({hedef,aktifRol,onBasari,onKapat}){
   const [sifre,setSifre]=useState("");const [hata,setHata]=useState(false);const [deneme,setDeneme]=useState(0);
   useEffect(()=>{const fn=e=>{if(e.key==="Escape")onKapat();};window.addEventListener("keydown",fn);return()=>window.removeEventListener("keydown",fn);},[]);
   function kontrol(){
-    const dogruSifre=(hedef==="dashboard"||hedef==="anket_sonuc")&&aktifRol==="sorumlu"?"5555":hedef==="anket_sonuc"?"SON26":"SON26";
+    const dogruSifre=(hedef==="dashboard"||hedef==="anket_sonuc"||hedef==="epilasyon_log")&&aktifRol==="sorumlu"?"5555":hedef==="anket_sonuc"?"SON26":"SON26";
     if(sifre===dogruSifre){setHata(false);onBasari();}else{setHata(true);setDeneme(d=>d+1);setSifre("");}
   }
   const baslik=hedef==="rapor"?"📊 Rapor":hedef==="log"?"📋 Log":hedef==="anket_sonuc"?"📊 Anket Sonuçları":"📅 Boş Randevular";
