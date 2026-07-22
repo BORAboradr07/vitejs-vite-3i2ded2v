@@ -178,8 +178,56 @@ async function gonder(){
       headers:{...HDR,"Prefer":"return=minimal"},
       body:JSON.stringify({puan:genel_puan,cevaplar:tum_cevaplar,tamamlandi:true,tamamlama_tarih:new Date().toISOString().slice(0,10)})
     });
-    gosterTesekkur(genel_puan,tum_cevaplar,sorular);
+    if(genel_puan>=8){
+      gosterTesekkur(genel_puan,tum_cevaplar,sorular);
+    } else {
+      gosterDusukPuanAra();
+    }
   }catch(e){btn.disabled=false;btn.textContent="Anketi Gönder 🌸";alert("Hata oluştu, tekrar deneyin.");}
+}
+
+function gosterDusukPuanAra(){
+  let html=`<div class="tesekkur">`;
+  html+=`<div class="icon">🙏</div>`;
+  html+=`<h2>Değerlendirmeniz İçin Teşekkür Ederiz</h2>`;
+  html+=`<p style="margin-bottom:18px;">Beklentinizi tam olarak karşılayamadığımızı anlıyoruz. Eğer isterseniz, yaşadığınız deneyimi bizimle paylaşabilirsiniz. Geri bildiriminiz yalnızca kliniğimiz tarafından görülecek ve hizmet kalitemizi geliştirmek amacıyla değerlendirilecektir.</p>`;
+  html+=`<div style="display:flex;flex-direction:column;gap:10px;">`;
+  html+=`<button class="btn" onclick="gosterEkGeriBildirimFormu()">📝 Görüşümü Paylaş</button>`;
+  html+=`<button class="btn" style="background:#eee;color:#666;" onclick="gosterTesekkurDusuk()">Geç</button>`;
+  html+=`</div></div>`;
+  goster(html);
+}
+
+function gosterEkGeriBildirimFormu(){
+  let html=`<div class="tesekkur">`;
+  html+=`<h2 style="margin-bottom:14px;">Görüşünüzü Paylaşın</h2>`;
+  html+=`<textarea id="ekYorum" placeholder="Deneyiminizi bizimle paylaşabilirsiniz..." rows="4" style="width:100%;margin-bottom:14px;"></textarea>`;
+  html+=`<button class="btn" onclick="ekGeriBildirimGonder()">Gönder</button>`;
+  html+=`</div>`;
+  goster(html);
+}
+
+async function ekGeriBildirimGonder(){
+  const metin=document.getElementById("ekYorum")?.value||"";
+  const btn=document.querySelector('.btn');
+  if(btn){btn.disabled=true;btn.textContent="Gönderiliyor...";}
+  try{
+    await fetch(`${SB_URL}/rest/v1/anketler?token=eq.${token}`,{
+      method:"PATCH",
+      headers:{...HDR,"Prefer":"return=minimal"},
+      body:JSON.stringify({ek_geri_bildirim:metin})
+    });
+  }catch(e){/* sessizce geç, yine de teşekkür ekranına yönlendir */}
+  gosterTesekkurDusuk();
+}
+
+function gosterTesekkurDusuk(){
+  let html=`<div class="tesekkur">`;
+  html+=`<div class="icon">🙏</div>`;
+  html+=`<h2>Görüşünüz İçin Teşekkürler</h2>`;
+  html+=`<p>Geri bildiriminizi aldık. Hizmet kalitemizi artırmak için değerlendireceğiz. 🌸</p>`;
+  html+=`</div>`;
+  goster(html);
 }
 
 function hepsiOlumluMu(sorular,cevaplar,genelPuan){
