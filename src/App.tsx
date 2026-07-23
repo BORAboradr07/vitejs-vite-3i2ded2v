@@ -2683,23 +2683,37 @@ function AnketSonucSekme({aktifRol}){
     {id:"s8",tip:"radio",secenekler:["Kesinlikle evet","Muhtemelen evet","Emin değilim","Hayır"]},
     {id:"s9",tip:"metin"},
   ];
-  function soruIstatistikleri(anketTipi){
-    const sorular=anketTipi==="lazer"?LAZER_SORULAR_TAM:CILT_SORULAR_TAM;
-    const grup=anketler.filter(a=>a.anket_tipi===anketTipi&&a.puan!=null&&a.puan<10);
-    if(grup.length===0)return{grupSayisi:0,sonuc:[]};
-    const sonuc=sorular.filter(s=>s.tip==="yildiz"||s.tip==="radio").map(s=>{
-      let olumsuz=0,cevaplanan=0;
+  function dagilimHesapla(sorular,grup){
+    if(grup.length===0)return[];
+    return sorular.filter(s=>s.tip==="yildiz"||s.tip==="radio").map(s=>{
+      const secenekler=s.tip==="yildiz"?["5","4","3","2","1"]:s.secenekler;
+      const sayaclar={};
+      secenekler.forEach(sec=>sayaclar[sec]=0);
+      let cevaplanan=0;
       grup.forEach(a=>{
         const cevap=a.cevaplar?.[s.id];
         if(cevap===undefined||cevap===null||cevap==="")return;
-        cevaplanan++;
-        if(s.tip==="yildiz"){if(Number(cevap)!==5)olumsuz++;}
-        else if(s.tip==="radio"){if(cevap!==s.secenekler[0])olumsuz++;}
+        const key=s.tip==="yildiz"?String(cevap):cevap;
+        if(sayaclar[key]!==undefined){sayaclar[key]++;cevaplanan++;}
       });
-      const yuzde=cevaplanan>0?Math.round((olumsuz/cevaplanan)*100):0;
-      return{id:s.id,metin:soruMetni(anketTipi,s.id),yuzde,olumsuz,cevaplanan};
-    }).sort((a,b)=>b.yuzde-a.yuzde);
-    return{grupSayisi:grup.length,sonuc};
+      return{id:s.id,dagilim:secenekler.map(sec=>({secenek:s.tip==="yildiz"?`${sec}★`:sec,yuzde:cevaplanan>0?Math.round((sayaclar[sec]/cevaplanan)*100):0}))};
+    });
+  }
+  function soruIstatistikleri(anketTipi){
+    const sorular=anketTipi==="lazer"?LAZER_SORULAR_TAM:CILT_SORULAR_TAM;
+    const grupDusuk=anketler.filter(a=>a.anket_tipi===anketTipi&&a.puan!=null&&a.puan<10);
+    const grupTumu=anketler.filter(a=>a.anket_tipi===anketTipi&&a.puan!=null);
+    const dusukDagilim=dagilimHesapla(sorular,grupDusuk);
+    const tumDagilim=dagilimHesapla(sorular,grupTumu);
+    const sonuc=dusukDagilim.map(d=>{
+      const genelD=tumDagilim.find(g=>g.id===d.id);
+      return{
+        id:d.id,
+        metin:soruMetni(anketTipi,d.id),
+        dagilim:d.dagilim.map((opt,i)=>({...opt,genelYuzde:genelD?.dagilim?.[i]?.yuzde??0}))
+      };
+    });
+    return{grupSayisi:grupDusuk.length,tumSayisi:grupTumu.length,sonuc};
   }
   const lazerIstatistik=soruIstatistikleri("lazer");
   const ciltIstatistik=soruIstatistikleri("cilt");
@@ -2786,32 +2800,40 @@ function AnketSonucSekme({aktifRol}){
           <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:lazerIstatistik.grupSayisi>0&&ciltIstatistik.grupSayisi>0?"1fr 1fr":"1fr",gap:20}}>
             {lazerIstatistik.grupSayisi>0&&(
               <div>
-                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Lazer Epilasyon ({lazerIstatistik.grupSayisi} kişi)</div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Lazer Epilasyon ({lazerIstatistik.grupSayisi} kişi düşük puan / {lazerIstatistik.tumSayisi} kişi toplam)</div>
                 {lazerIstatistik.sonuc.map(s=>(
-                  <div key={s.id} style={{marginBottom:10}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#666",marginBottom:3}}>
-                      <span>{s.metin}</span>
-                      <span style={{fontWeight:700,color:s.yuzde>=50?"#dc2626":s.yuzde>=25?"#b45309":"#16a34a"}}>%{s.yuzde}</span>
-                    </div>
-                    <div style={{background:"#f0f0ed",borderRadius:6,height:6,overflow:"hidden"}}>
-                      <div style={{width:`${s.yuzde}%`,height:"100%",background:s.yuzde>=50?"#dc2626":s.yuzde>=25?"#f59e0b":"#22c55e"}}/>
-                    </div>
+                  <div key={s.id} style={{marginBottom:14}}>
+                    <div style={{fontSize:12,color:"#666",marginBottom:5,fontWeight:600}}>{s.metin}</div>
+                    {s.dagilim.map(d=>(
+                      <div key={d.secenek} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                        <span style={{fontSize:11,color:"#888",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.secenek}</span>
+                        <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:8,overflow:"hidden"}}>
+                          <div style={{width:`${d.yuzde}%`,height:"100%",background:"#6366f1"}}/>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
+                        <span title="Anketi kullanan tüm kişiler içindeki oran" style={{fontSize:10,color:"#aaa",width:56,textAlign:"right",flexShrink:0}}>(genel %{d.genelYuzde})</span>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
             )}
             {ciltIstatistik.grupSayisi>0&&(
               <div>
-                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Cilt/Karbon/Tüy ({ciltIstatistik.grupSayisi} kişi)</div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Cilt/Karbon/Tüy ({ciltIstatistik.grupSayisi} kişi düşük puan / {ciltIstatistik.tumSayisi} kişi toplam)</div>
                 {ciltIstatistik.sonuc.map(s=>(
-                  <div key={s.id} style={{marginBottom:10}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#666",marginBottom:3}}>
-                      <span>{s.metin}</span>
-                      <span style={{fontWeight:700,color:s.yuzde>=50?"#dc2626":s.yuzde>=25?"#b45309":"#16a34a"}}>%{s.yuzde}</span>
-                    </div>
-                    <div style={{background:"#f0f0ed",borderRadius:6,height:6,overflow:"hidden"}}>
-                      <div style={{width:`${s.yuzde}%`,height:"100%",background:s.yuzde>=50?"#dc2626":s.yuzde>=25?"#f59e0b":"#22c55e"}}/>
-                    </div>
+                  <div key={s.id} style={{marginBottom:14}}>
+                    <div style={{fontSize:12,color:"#666",marginBottom:5,fontWeight:600}}>{s.metin}</div>
+                    {s.dagilim.map(d=>(
+                      <div key={d.secenek} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                        <span style={{fontSize:11,color:"#888",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.secenek}</span>
+                        <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:8,overflow:"hidden"}}>
+                          <div style={{width:`${d.yuzde}%`,height:"100%",background:"#6366f1"}}/>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
+                        <span title="Anketi kullanan tüm kişiler içindeki oran" style={{fontSize:10,color:"#aaa",width:56,textAlign:"right",flexShrink:0}}>(genel %{d.genelYuzde})</span>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
