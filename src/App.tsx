@@ -795,7 +795,7 @@ export default function App() {
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} hastaGuncelle={hastaGuncelle} aktifRol={aktifRol} showToast={showToast} randevular={randevular} silLog={silLog} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil} onEpilasyonAc={(hasta)=>setEpilasyonModal({hasta,randevu:null})}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle}/>}
         {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular} aktifRol={aktifRol}/>}
-        {aktifSekme==="anket_sonuc"&&<AnketSonucSekme aktifRol={aktifRol}/>}
+        {aktifSekme==="anket_sonuc"&&<AnketSonucSekme aktifRol={aktifRol} onAnketGonder={anketGonder}/>}
         {aktifSekme==="gelmeyenler"&&<GelmeyenlerSekme randevular={randevular} aktifRol={aktifRol} onDurumGuncelle={durumGuncelle}/>}
         {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
         {aktifSekme==="log"&&aktifRol==="yonetici"&&<LogSekme randevular={randevular} silLog={silLog} gunIciLog={gunIciLog}/>}
@@ -2656,7 +2656,7 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
 // ── GELMEYENLERs ─────────────────────────────────────────────────────────────
 
 // ── ANKET SONUÇLARI ──────────────────────────────────────────────────────────
-function AnketSonucSekme({aktifRol}){
+function AnketSonucSekme({aktifRol,onAnketGonder}){
   const [anketler,setAnketler]=useState([]);
   const [gunlukRandevular,setGunlukRandevular]=useState([]);
   const [istatistikYukleniyor,setIstatistikYukleniyor]=useState(true);
@@ -2732,7 +2732,7 @@ function AnketSonucSekme({aktifRol}){
     yukle();
     async function yukleRandevu(){
       try{
-        const r=await sbGet("randevular","select=id,hasta,tarih,anket_durum,tel");
+        const r=await sbGet("randevular","select=id,hasta,tarih,saat,anket_durum,tel,cinsiyet,oda,bolgeler,durum");
         setGunlukRandevular(r);
       }catch(e){}
       setIstatistikYukleniyor(false);
@@ -2741,6 +2741,18 @@ function AnketSonucSekme({aktifRol}){
   },[]);
 
   // Güne göre grupla: toplam hasta (tekil isim) ve anket gönderilen hasta sayısı
+  // Önceki günlere ait, anketi gönderilmemiş hastalar (Gelmedi hariç), tarihe göre sıralı
+  const gonderilmemis=(()=>{
+    const adaylar=gunlukRandevular.filter(r=>r.tarih<today()&&r.anket_durum!=="gonderildi"&&r.durum!=="Gelmedi");
+    const map=new Map();
+    adaylar.forEach(r=>{
+      const k=`${r.hasta?.toLowerCase().trim()}|${r.tarih}`;
+      if(!map.has(k))map.set(k,r);
+    });
+    return[...map.values()].sort((a,b)=>a.tarih.localeCompare(b.tarih)||(a.saat||"").localeCompare(b.saat||""));
+  })();
+  const [gonderPaneliAcik,setGonderPaneliAcik]=useState(false);
+
   const gunlukIstatistik=(()=>{
     const map=new Map();
     gunlukRandevular.forEach(r=>{
@@ -2775,6 +2787,33 @@ function AnketSonucSekme({aktifRol}){
   return(
     <div>
       <h2 style={{fontSize:18,fontWeight:600,marginBottom:12}}>📊 Anket Sonuçları</h2>
+
+      <button onClick={()=>setGonderPaneliAcik(v=>!v)} style={{...btnSecondary,marginBottom:12,display:"flex",alignItems:"center",gap:8,color:gonderilmemis.length>0?"#c2410c":"#666",borderColor:gonderilmemis.length>0?"#fed7aa":undefined}}>
+        📤 Anket Yolla — Geçmiş Günler {gonderilmemis.length>0&&<span style={{background:"#ea580c",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:20}}>{gonderilmemis.length}</span>}
+      </button>
+
+      {gonderPaneliAcik&&(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",background:"#fff7ed",borderBottom:"1px solid #fed7aa"}}>
+            <span style={{fontWeight:600,fontSize:14,color:"#c2410c"}}>📤 Önceki Günlerden Anketi Gönderilmemiş Hastalar ({gonderilmemis.length})</span>
+          </div>
+          {gonderilmemis.length===0?(
+            <div style={{padding:24,textAlign:"center",color:"#aaa",fontSize:13}}>Hepsine gönderilmiş 👍</div>
+          ):(
+            <div style={{maxHeight:400,overflowY:"auto"}}>
+              {gonderilmemis.map((r,i)=>(
+                <div key={r.id} style={{padding:"10px 16px",borderBottom:i<gonderilmemis.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:13}}>{r.hasta}</div>
+                    <div style={{fontSize:12,color:"#888"}}>{r.tarih} · {r.oda==="alex"?"Alex":"Soprano"}{!r.tel&&<span style={{color:"#dc2626",marginLeft:6}}>telefon yok</span>}</div>
+                  </div>
+                  <button onClick={async()=>{await onAnketGonder(r);setGunlukRandevular(prev=>prev.map(x=>x.id===r.id?{...x,anket_durum:"gonderildi"}:x));}} disabled={!r.tel} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:r.tel?"#25d366":"#ccc",cursor:r.tel?"pointer":"not-allowed",flexShrink:0}}>📱 Gönder</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {!sekreterModu&&<div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         <button onClick={()=>setFiltre("hepsi")} style={{...chipStyle(filtre==="hepsi"),fontSize:13}}>Tümü ({sirali.filter(a=>a.puan>0).length})</button>
