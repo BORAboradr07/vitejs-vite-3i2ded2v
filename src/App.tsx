@@ -2702,18 +2702,21 @@ function AnketSonucSekme({aktifRol}){
   function soruIstatistikleri(anketTipi){
     const sorular=anketTipi==="lazer"?LAZER_SORULAR_TAM:CILT_SORULAR_TAM;
     const grupDusuk=anketler.filter(a=>a.anket_tipi===anketTipi&&a.puan!=null&&a.puan<10);
-    const grupTumu=anketler.filter(a=>a.anket_tipi===anketTipi&&a.puan!=null);
+    const grupAlex=grupDusuk.filter(a=>a.oda==="alex");
+    const grupSoprano=grupDusuk.filter(a=>a.oda==="soprano");
     const dusukDagilim=dagilimHesapla(sorular,grupDusuk);
-    const tumDagilim=dagilimHesapla(sorular,grupTumu);
+    const alexDagilim=dagilimHesapla(sorular,grupAlex);
+    const sopranoDagilim=dagilimHesapla(sorular,grupSoprano);
     const sonuc=dusukDagilim.map(d=>{
-      const genelD=tumDagilim.find(g=>g.id===d.id);
+      const alexD=alexDagilim.find(g=>g.id===d.id);
+      const sopD=sopranoDagilim.find(g=>g.id===d.id);
       return{
         id:d.id,
         metin:soruMetni(anketTipi,d.id),
-        dagilim:d.dagilim.map((opt,i)=>({...opt,genelYuzde:genelD?.dagilim?.[i]?.yuzde??0}))
+        dagilim:d.dagilim.map((opt,i)=>({...opt,alexYuzde:alexD?.dagilim?.[i]?.yuzde,sopranoYuzde:sopD?.dagilim?.[i]?.yuzde}))
       };
     });
-    return{grupSayisi:grupDusuk.length,tumSayisi:grupTumu.length,sonuc};
+    return{grupSayisi:grupDusuk.length,alexSayisi:grupAlex.length,sopranoSayisi:grupSoprano.length,sonuc};
   }
   const lazerIstatistik=soruIstatistikleri("lazer");
   const ciltIstatistik=soruIstatistikleri("cilt");
@@ -2800,7 +2803,7 @@ function AnketSonucSekme({aktifRol}){
           <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:lazerIstatistik.grupSayisi>0&&ciltIstatistik.grupSayisi>0?"1fr 1fr":"1fr",gap:20}}>
             {lazerIstatistik.grupSayisi>0&&(
               <div>
-                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Lazer Epilasyon ({lazerIstatistik.grupSayisi} kişi düşük puan / {lazerIstatistik.tumSayisi} kişi toplam)</div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Lazer Epilasyon ({lazerIstatistik.grupSayisi} kişi düşük puan — Alex: {lazerIstatistik.alexSayisi}, Soprano: {lazerIstatistik.sopranoSayisi})</div>
                 {lazerIstatistik.sonuc.map(s=>(
                   <div key={s.id} style={{marginBottom:14}}>
                     <div style={{fontSize:12,color:"#666",marginBottom:5,fontWeight:600}}>{s.metin}</div>
@@ -2811,7 +2814,7 @@ function AnketSonucSekme({aktifRol}){
                           <div style={{width:`${d.yuzde}%`,height:"100%",background:"#6366f1"}}/>
                         </div>
                         <span style={{fontSize:11,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
-                        <span title="Anketi kullanan tüm kişiler içindeki oran" style={{fontSize:10,color:"#aaa",width:56,textAlign:"right",flexShrink:0}}>(genel %{d.genelYuzde})</span>
+                        <span title="Alex / Soprano odalarındaki düşük puan verenler arasındaki oran" style={{fontSize:10,color:"#aaa",width:110,textAlign:"right",flexShrink:0}}>(Alex {d.alexYuzde!==undefined?`%${d.alexYuzde}`:"-"} · Sop {d.sopranoYuzde!==undefined?`%${d.sopranoYuzde}`:"-"})</span>
                       </div>
                     ))}
                   </div>
@@ -2820,7 +2823,7 @@ function AnketSonucSekme({aktifRol}){
             )}
             {ciltIstatistik.grupSayisi>0&&(
               <div>
-                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Cilt/Karbon/Tüy ({ciltIstatistik.grupSayisi} kişi düşük puan / {ciltIstatistik.tumSayisi} kişi toplam)</div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Cilt/Karbon/Tüy ({ciltIstatistik.grupSayisi} kişi düşük puan — Alex: {ciltIstatistik.alexSayisi}, Soprano: {ciltIstatistik.sopranoSayisi})</div>
                 {ciltIstatistik.sonuc.map(s=>(
                   <div key={s.id} style={{marginBottom:14}}>
                     <div style={{fontSize:12,color:"#666",marginBottom:5,fontWeight:600}}>{s.metin}</div>
@@ -2831,7 +2834,7 @@ function AnketSonucSekme({aktifRol}){
                           <div style={{width:`${d.yuzde}%`,height:"100%",background:"#6366f1"}}/>
                         </div>
                         <span style={{fontSize:11,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
-                        <span title="Anketi kullanan tüm kişiler içindeki oran" style={{fontSize:10,color:"#aaa",width:56,textAlign:"right",flexShrink:0}}>(genel %{d.genelYuzde})</span>
+                        <span title="Alex / Soprano odalarındaki düşük puan verenler arasındaki oran" style={{fontSize:10,color:"#aaa",width:110,textAlign:"right",flexShrink:0}}>(Alex {d.alexYuzde!==undefined?`%${d.alexYuzde}`:"-"} · Sop {d.sopranoYuzde!==undefined?`%${d.sopranoYuzde}`:"-"})</span>
                       </div>
                     ))}
                   </div>
