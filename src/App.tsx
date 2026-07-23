@@ -2667,6 +2667,43 @@ function AnketSonucSekme({aktifRol}){
   const CILT_SORULAR_METIN={s1:"İşlem öncesinde size yeterli bilgilendirme yapıldı mı?",s2:"Personelimizin ilgisini ve iletişimini nasıl değerlendirirsiniz?",s3:"İşlem sırasında kendinizi rahat hissettiniz mi?",s4:"Klinik hijyenini nasıl değerlendirirsiniz?",s5:"İşlem sonrasında öneriler ve bakım tavsiyeleri yeterince anlatıldı mı?",s6:"Genel memnuniyet puanı (1-10)",s7:"Aynı personelden tekrar hizmet almak ister misiniz?",s8:"Kliniğimizi yakınlarınıza tavsiye eder misiniz?",s9:"Görüş, öneri veya paylaşmak istediğiniz başka bir konu"};
   function soruMetni(anketTipi,key){const m=anketTipi==="lazer"?LAZER_SORULAR_METIN:CILT_SORULAR_METIN;return m[key]||key;}
 
+  // Soru tipleri/seçenekleri (anket.html'deki LAZER_SORULAR/CILT_SORULAR ile birebir aynı olmalı — biri değişirse diğeri de güncellenmeli)
+  const LAZER_SORULAR_TAM=[
+    {id:"s1",tip:"yildiz"},{id:"s2",tip:"yildiz"},{id:"s3",tip:"yildiz"},
+    {id:"s4",tip:"radio",secenekler:["Evet","Kısmen","Hayır"]},
+    {id:"s5",tip:"yildiz"},{id:"s6",tip:"yildiz"},{id:"s7",tip:"puan"},
+    {id:"s8",tip:"radio",secenekler:["Kesinlikle evet","Evet","Kararsızım","Hayır"]},
+    {id:"s9",tip:"radio",secenekler:["Kesinlikle evet","Muhtemelen evet","Emin değilim","Hayır"]},
+    {id:"s10",tip:"metin"},
+  ];
+  const CILT_SORULAR_TAM=[
+    {id:"s1",tip:"yildiz"},{id:"s2",tip:"yildiz"},{id:"s3",tip:"yildiz"},{id:"s4",tip:"yildiz"},{id:"s5",tip:"yildiz"},
+    {id:"s6",tip:"puan"},
+    {id:"s7",tip:"radio",secenekler:["Kesinlikle evet","Evet","Kararsızım","Hayır"]},
+    {id:"s8",tip:"radio",secenekler:["Kesinlikle evet","Muhtemelen evet","Emin değilim","Hayır"]},
+    {id:"s9",tip:"metin"},
+  ];
+  function soruIstatistikleri(anketTipi){
+    const sorular=anketTipi==="lazer"?LAZER_SORULAR_TAM:CILT_SORULAR_TAM;
+    const grup=anketler.filter(a=>a.anket_tipi===anketTipi&&a.puan!=null&&a.puan<10);
+    if(grup.length===0)return{grupSayisi:0,sonuc:[]};
+    const sonuc=sorular.filter(s=>s.tip==="yildiz"||s.tip==="radio").map(s=>{
+      let olumsuz=0,cevaplanan=0;
+      grup.forEach(a=>{
+        const cevap=a.cevaplar?.[s.id];
+        if(cevap===undefined||cevap===null||cevap==="")return;
+        cevaplanan++;
+        if(s.tip==="yildiz"){if(Number(cevap)!==5)olumsuz++;}
+        else if(s.tip==="radio"){if(cevap!==s.secenekler[0])olumsuz++;}
+      });
+      const yuzde=cevaplanan>0?Math.round((olumsuz/cevaplanan)*100):0;
+      return{id:s.id,metin:soruMetni(anketTipi,s.id),yuzde,olumsuz,cevaplanan};
+    }).sort((a,b)=>b.yuzde-a.yuzde);
+    return{grupSayisi:grup.length,sonuc};
+  }
+  const lazerIstatistik=soruIstatistikleri("lazer");
+  const ciltIstatistik=soruIstatistikleri("cilt");
+
   useEffect(()=>{
     async function yukle(){
       try{
@@ -2740,6 +2777,48 @@ function AnketSonucSekme({aktifRol}){
           </div>
         ))}
       </div>
+
+      {(lazerIstatistik.grupSayisi>0||ciltIstatistik.grupSayisi>0)&&(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",background:"#fff7ed",borderBottom:"1px solid #fed7aa"}}>
+            <span style={{fontWeight:600,fontSize:14,color:"#c2410c"}}>📉 Düşük Puan Analizi (10 altı puan verenler arasında)</span>
+          </div>
+          <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:lazerIstatistik.grupSayisi>0&&ciltIstatistik.grupSayisi>0?"1fr 1fr":"1fr",gap:20}}>
+            {lazerIstatistik.grupSayisi>0&&(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Lazer Epilasyon ({lazerIstatistik.grupSayisi} kişi)</div>
+                {lazerIstatistik.sonuc.map(s=>(
+                  <div key={s.id} style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#666",marginBottom:3}}>
+                      <span>{s.metin}</span>
+                      <span style={{fontWeight:700,color:s.yuzde>=50?"#dc2626":s.yuzde>=25?"#b45309":"#16a34a"}}>%{s.yuzde}</span>
+                    </div>
+                    <div style={{background:"#f0f0ed",borderRadius:6,height:6,overflow:"hidden"}}>
+                      <div style={{width:`${s.yuzde}%`,height:"100%",background:s.yuzde>=50?"#dc2626":s.yuzde>=25?"#f59e0b":"#22c55e"}}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {ciltIstatistik.grupSayisi>0&&(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Cilt/Karbon/Tüy ({ciltIstatistik.grupSayisi} kişi)</div>
+                {ciltIstatistik.sonuc.map(s=>(
+                  <div key={s.id} style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#666",marginBottom:3}}>
+                      <span>{s.metin}</span>
+                      <span style={{fontWeight:700,color:s.yuzde>=50?"#dc2626":s.yuzde>=25?"#b45309":"#16a34a"}}>%{s.yuzde}</span>
+                    </div>
+                    <div style={{background:"#f0f0ed",borderRadius:6,height:6,overflow:"hidden"}}>
+                      <div style={{width:`${s.yuzde}%`,height:"100%",background:s.yuzde>=50?"#dc2626":s.yuzde>=25?"#f59e0b":"#22c55e"}}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
         <div style={{padding:"12px 16px",background:"#f7f7f5",borderBottom:"1px solid #e8e6e0"}}>
