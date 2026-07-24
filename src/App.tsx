@@ -362,14 +362,16 @@ export default function App() {
 
   // Oturum token'ını canlı tutmak için: sayfa ilk açıldığında ve periyodik olarak (45 dakikada bir) yenile.
   // Token'lar (varsayılan ~1 saat) süresi dolmadan yenilenmezse, uzun süre açık kalan sekmelerde (personel sabahtan akşama kapatmıyor) istekler 401 ile başarısız olurdu.
+  // authHazir: ilk yenileme denemesi bitene kadar veri yüklemeyi bekletir — aksi halde veri yükleme, henüz yenilenmemiş eski (süresi dolmuş) anahtarla yarışıp başarısız olabiliyordu.
+  const [authHazir,setAuthHazir]=useState(()=>!aktifKullanici?.refresh_token);
   const aktifKullaniciRef=useRef(aktifKullanici);
   useEffect(()=>{aktifKullaniciRef.current=aktifKullanici;},[aktifKullanici]);
   useEffect(()=>{
-    if(!aktifKullanici?.login_name)return;
+    if(!aktifKullanici?.login_name){setAuthHazir(true);return;}
     let iptal=false;
     async function yenile(){
       const guncelRefreshToken=aktifKullaniciRef.current?.refresh_token;
-      if(!guncelRefreshToken)return;
+      if(!guncelRefreshToken){setAuthHazir(true);return;}
       try{
         const data=await sbTokenYenile(guncelRefreshToken);
         if(iptal)return;
@@ -383,6 +385,8 @@ export default function App() {
       }catch(e){
         // Yenileme başarısız oldu (refresh token da geçersiz/süresi dolmuş) — oturumu kapat, tekrar giriş istensin
         if(!iptal)cikisYap();
+      } finally {
+        if(!iptal)setAuthHazir(true);
       }
     }
     yenile();
@@ -393,6 +397,7 @@ export default function App() {
 
 
   useEffect(()=>{
+    if(!authHazir)return; // token yenilemesi bitmeden veri yüklemeyi başlatma (yarış durumunu önler)
     async function yukle(sessiz){
       try{
         if(!sessiz)setYukleniyor(true);
@@ -421,7 +426,7 @@ export default function App() {
     function gorunurlukDegisti(){ if(document.visibilityState==="visible") yukle(true); }
     document.addEventListener("visibilitychange",gorunurlukDegisti);
     return()=>{clearInterval(interval);document.removeEventListener("visibilitychange",gorunurlukDegisti);};
-  },[]);
+  },[authHazir]);
 
   const gunR    = randevular.filter(r=>r.tarih===seciliTarih);
   const alexR   = gunR.filter(r=>r.oda==="alex").sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat));
