@@ -7,7 +7,13 @@ const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 // Kasa Supabase - sadece hasta kontrolü için
 const KASA_URL = "https://pwcyawsgjzjcydcisyvy.supabase.co";
 const KASA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3Y3lhd3NnanpqY3lkY2lzeXZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNDA4MDEsImV4cCI6MjA5NDcxNjgwMX0.gnee9oYsFpxzdb_-H-JtRC2fU0Imj2Dajybt7or9a0Y";
-const HDR = { "Content-Type":"application/json", "apikey":SB_KEY, "Authorization":"Bearer "+SB_KEY };
+const HDR_BASE = { "Content-Type":"application/json", "apikey":SB_KEY };
+// Giriş yapan kullanıcının kendi oturum anahtarı — login sonrası ve arka planda periyodik olarak güncellenir.
+// Giriş yapılmamışsa (ör. giriş ekranı) anon anahtara düşer.
+let CURRENT_TOKEN = null;
+function HDR(){
+  return { ...HDR_BASE, "Authorization":"Bearer "+(CURRENT_TOKEN||SB_KEY) };
+}
 
 // ── AUTH ─────────────────────────────────────────────────────────────────────
 async function sbLogin(email, sifre){
@@ -26,6 +32,17 @@ async function sbLogout(token){
     method:"POST",
     headers:{"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+token}
   });
+}
+
+async function sbTokenYenile(refreshToken){
+  const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json","apikey":SB_KEY},
+    body:JSON.stringify({refresh_token:refreshToken})
+  });
+  const data=await r.json();
+  if(!r.ok) throw new Error(data.error_description||data.msg||"Oturum yenilenemedi");
+  return data;
 }
 
 async function kullaniciBilgi(token){
@@ -54,7 +71,7 @@ async function sbGet(tablo, params=""){
   let bas=0;
   while(true){
     const r = await fetch(`${SB_URL}/rest/v1/${tablo}?${params}&order=id.asc`, {
-      headers:{...HDR,"Prefer":"return=representation","Range-Unit":"items","Range":`${bas}-${bas+SAYFA-1}`}
+      headers:{...HDR(),"Prefer":"return=representation","Range-Unit":"items","Range":`${bas}-${bas+SAYFA-1}`}
     });
     if(!r.ok) throw new Error(await r.text());
     const parca = await r.json();
@@ -65,23 +82,23 @@ async function sbGet(tablo, params=""){
   return tumKayitlar;
 }
 async function sbInsert(tablo, data){
-  const r = await fetch(`${SB_URL}/rest/v1/${tablo}`, {method:"POST", headers:{...HDR,"Prefer":"return=representation"}, body:JSON.stringify(data)});
+  const r = await fetch(`${SB_URL}/rest/v1/${tablo}`, {method:"POST", headers:{...HDR(),"Prefer":"return=representation"}, body:JSON.stringify(data)});
   if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function sbUpdate(tablo, id, data){
-  const r = await fetch(`${SB_URL}/rest/v1/${tablo}?id=eq.${id}`, {method:"PATCH", headers:{...HDR,"Prefer":"return=representation"}, body:JSON.stringify(data)});
+  const r = await fetch(`${SB_URL}/rest/v1/${tablo}?id=eq.${id}`, {method:"PATCH", headers:{...HDR(),"Prefer":"return=representation"}, body:JSON.stringify(data)});
   if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function sbDelete(tablo, id){
-  const r = await fetch(`${SB_URL}/rest/v1/${tablo}?id=eq.${id}`, {method:"DELETE", headers:HDR});
+  const r = await fetch(`${SB_URL}/rest/v1/${tablo}?id=eq.${id}`, {method:"DELETE", headers:HDR()});
   if(!r.ok) throw new Error(await r.text());
 }
 async function sbUploadFile(path, file){
   const r = await fetch(`${SB_URL}/storage/v1/object/${EPILASYON_BUCKET}/${path}`, {
     method:"POST",
-    headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY,"Content-Type":file.type||"application/octet-stream","x-upsert":"true"},
+    headers:{"apikey":SB_KEY,"Authorization":"Bearer "+(CURRENT_TOKEN||SB_KEY),"Content-Type":file.type||"application/octet-stream","x-upsert":"true"},
     body:file
   });
   if(!r.ok) throw new Error(await r.text());
@@ -258,7 +275,8 @@ function GirisEkrani({onGiris}){
       });
       const kulData=await kulRes.json();
       if(!kulData||kulData.length===0) throw new Error("Kullanıcı bulunamadı.");
-      const kullanici={login_name:kulData[0].login_name,rol:kulData[0].rol,token:authData.access_token};
+      CURRENT_TOKEN=authData.access_token;
+      const kullanici={login_name:kulData[0].login_name,rol:kulData[0].rol,token:authData.access_token,refresh_token:authData.refresh_token};
       try{window.localStorage.setItem("kl_user",JSON.stringify(kullanici));}catch{}
       onGiris(kullanici);
     } catch(e){
@@ -296,7 +314,12 @@ function GirisEkrani({onGiris}){
 export default function App() {
   // Login state - localStorage'dan oku
   const [aktifKullanici,setAktifKullanici] = useState(()=>{
-    try{const u=window.localStorage.getItem("kl_user");return u?JSON.parse(u):null;}catch{return null;}
+    try{
+      const u=window.localStorage.getItem("kl_user");
+      const parsed=u?JSON.parse(u):null;
+      if(parsed?.token)CURRENT_TOKEN=parsed.token; // sayfa ilk açıldığında, yenileme tamamlanmadan önce de doğru anahtar kullanılsın
+      return parsed;
+    }catch{return null;}
   });
   const [aktifRol,setAktifRol]       = useState(()=>{
     try{const u=window.localStorage.getItem("kl_user");const p=u?JSON.parse(u):null;return p?.rol||"sekreter";}catch{return "sekreter";}
@@ -324,16 +347,48 @@ export default function App() {
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
 
   function kullaniciGiris(k){
+    if(k?.token)CURRENT_TOKEN=k.token;
     setAktifKullanici(k);
     setAktifRol(k.rol||"sekreter");
     setAktifSekme("takvim");
   }
   function cikisYap(){
     try{window.localStorage.removeItem("kl_user");window.localStorage.removeItem("kl_yonetici_onay");window.localStorage.removeItem("kl_dashboard_onay");}catch{}
+    CURRENT_TOKEN=null;
     setAktifKullanici(null);
     setAktifRol("sekreter");
     setAktifSekme("takvim");
   }
+
+  // Oturum token'ını canlı tutmak için: sayfa ilk açıldığında ve periyodik olarak (45 dakikada bir) yenile.
+  // Token'lar (varsayılan ~1 saat) süresi dolmadan yenilenmezse, uzun süre açık kalan sekmelerde (personel sabahtan akşama kapatmıyor) istekler 401 ile başarısız olurdu.
+  const aktifKullaniciRef=useRef(aktifKullanici);
+  useEffect(()=>{aktifKullaniciRef.current=aktifKullanici;},[aktifKullanici]);
+  useEffect(()=>{
+    if(!aktifKullanici?.login_name)return;
+    let iptal=false;
+    async function yenile(){
+      const guncelRefreshToken=aktifKullaniciRef.current?.refresh_token;
+      if(!guncelRefreshToken)return;
+      try{
+        const data=await sbTokenYenile(guncelRefreshToken);
+        if(iptal)return;
+        CURRENT_TOKEN=data.access_token;
+        setAktifKullanici(prev=>{
+          if(!prev)return prev;
+          const yeni={...prev,token:data.access_token,refresh_token:data.refresh_token};
+          try{window.localStorage.setItem("kl_user",JSON.stringify(yeni));}catch{}
+          return yeni;
+        });
+      }catch(e){
+        // Yenileme başarısız oldu (refresh token da geçersiz/süresi dolmuş) — oturumu kapat, tekrar giriş istensin
+        if(!iptal)cikisYap();
+      }
+    }
+    yenile();
+    const interval=setInterval(yenile,45*60*1000);
+    return()=>{iptal=true;clearInterval(interval);};
+  },[aktifKullanici?.login_name]);
 
 
 
@@ -621,7 +676,7 @@ export default function App() {
       // 1) İsimle eşleşenler
       const r1=await fetch(`${SB_URL}/rest/v1/randevular?hasta=eq.${encodeURIComponent(eskiAd)}`,{
         method:"PATCH",
-        headers:{...HDR,"Prefer":"return=representation"},
+        headers:{...HDR(),"Prefer":"return=representation"},
         body:JSON.stringify(randevuAlanlar)
       });
       if(!r1.ok) throw new Error(await r1.text());
@@ -630,7 +685,7 @@ export default function App() {
       if(eskiHastaId){
         const r2=await fetch(`${SB_URL}/rest/v1/randevular?hasta_id=eq.${encodeURIComponent(eskiHastaId)}`,{
           method:"PATCH",
-          headers:{...HDR,"Prefer":"return=representation"},
+          headers:{...HDR(),"Prefer":"return=representation"},
           body:JSON.stringify(randevuAlanlar)
         });
         if(!r2.ok) throw new Error(await r2.text());
