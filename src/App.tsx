@@ -2803,8 +2803,39 @@ function AnketSonucSekme({aktifRol}){
     });
     return{grupSayisi:grupDusuk.length,alexSayisi:grupAlex.length,sopranoSayisi:grupSoprano.length,sonuc};
   }
+  // Alex'te haftalık dönüşümlü sabahçı/öğlenci tahmini — bu hafta Gülşah sabahçı (09:00-14:00), Hazal öğlenci (14:30-19:15), her hafta değişiyor
+  function haftaBasiPazartesi(tarihStr){
+    const d=new Date(tarihStr+"T00:00:00");
+    const gun=d.getDay();
+    const fark=gun===0?-6:1-gun;
+    d.setDate(d.getDate()+fark);
+    return d;
+  }
+  function alexPersoneliTahmini(tarih,saat){
+    if(!tarih||!saat)return null;
+    const buHaftaBasi=haftaBasiPazartesi(today());
+    const oHaftaBasi=haftaBasiPazartesi(tarih);
+    const haftaFarki=Math.round((oHaftaBasi-buHaftaBasi)/(7*86400000));
+    const ayniHafta=(((haftaFarki%2)+2)%2)===0; // true: bu haftayla aynı düzen (Gülşah sabah), false: ters (Hazal sabah)
+    const sabahci=ayniHafta?"Gülşah":"Hazal";
+    const oglenci=ayniHafta?"Hazal":"Gülşah";
+    return timeToMin(saat)<14*60?sabahci:oglenci;
+  }
+  const randevuSaatMap=new Map(gunlukRandevular.map(r=>[r.id,r.saat]));
   const lazerIstatistik=soruIstatistikleri("lazer");
   const ciltIstatistik=soruIstatistikleri("cilt");
+
+  // "Aynı personelden tekrar hizmet almak ister misiniz?" — TÜM anketler üzerinden, oda bazlı (lazer=s8, cilt=s7, seçenekler aynı)
+  function personelCevabi(a){return a.anket_tipi==="cilt"?a.cevaplar?.s7:a.cevaplar?.s8;}
+  const PERSONEL_SECENEKLERI=["Kesinlikle evet","Evet","Kararsızım","Hayır"];
+  function personelIstatistigi(odaAdi){
+    const grup=anketler.filter(a=>a.oda===odaAdi&&personelCevabi(a));
+    const sayaclar={};PERSONEL_SECENEKLERI.forEach(s=>sayaclar[s]=0);
+    grup.forEach(a=>{const c=personelCevabi(a);if(sayaclar[c]!==undefined)sayaclar[c]++;});
+    return{toplam:grup.length,dagilim:PERSONEL_SECENEKLERI.map(s=>({secenek:s,yuzde:grup.length>0?Math.round((sayaclar[s]/grup.length)*100):0}))};
+  }
+  const alexPersonelIst=personelIstatistigi("alex");
+  const sopranoPersonelIst=personelIstatistigi("soprano");
 
   useEffect(()=>{
     async function yukle(){
@@ -2817,7 +2848,7 @@ function AnketSonucSekme({aktifRol}){
     yukle();
     async function yukleRandevu(){
       try{
-        const r=await sbGet("randevular","select=id,hasta,tarih,anket_durum,tel");
+        const r=await sbGet("randevular","select=id,hasta,tarih,saat,anket_durum,tel");
         setGunlukRandevular(r);
       }catch(e){}
       setIstatistikYukleniyor(false);
@@ -2879,6 +2910,46 @@ function AnketSonucSekme({aktifRol}){
           </div>
         ))}
       </div>
+
+      {(alexPersonelIst.toplam>0||sopranoPersonelIst.toplam>0)&&(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",background:"#eef0ff",borderBottom:"1px solid #c7d2fe"}}>
+            <span style={{fontWeight:600,fontSize:14,color:"#4338ca"}}>👤 Aynı Personelden Tekrar Hizmet Alma İsteği (tüm anketler)</span>
+          </div>
+          <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:alexPersonelIst.toplam>0&&sopranoPersonelIst.toplam>0?"1fr 1fr":"1fr",gap:20}}>
+            {alexPersonelIst.toplam>0&&(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Alex Lazer ({alexPersonelIst.toplam} kişi)</div>
+                {alexPersonelIst.dagilim.map(d=>(
+                  <div key={d.secenek} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                    <span style={{fontSize:12,color:d.secenek==="Hayır"||d.secenek==="Kararsızım"?"#dc2626":"#555",width:110,flexShrink:0,fontWeight:d.secenek==="Hayır"||d.secenek==="Kararsızım"?700:400}}>{d.secenek}</span>
+                    <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:8,overflow:"hidden"}}>
+                      <div style={{width:`${d.yuzde}%`,height:"100%",background:d.secenek==="Hayır"?"#dc2626":d.secenek==="Kararsızım"?"#f59e0b":"#22c55e"}}/>
+                    </div>
+                    <span style={{fontSize:12,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
+                  </div>
+                ))}
+                <div style={{fontSize:11,color:"#dc2626",fontWeight:700,marginTop:6}}>Hayır + Kararsızım toplam: %{(alexPersonelIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(alexPersonelIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
+              </div>
+            )}
+            {sopranoPersonelIst.toplam>0&&(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Soprano ({sopranoPersonelIst.toplam} kişi)</div>
+                {sopranoPersonelIst.dagilim.map(d=>(
+                  <div key={d.secenek} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                    <span style={{fontSize:12,color:d.secenek==="Hayır"||d.secenek==="Kararsızım"?"#dc2626":"#555",width:110,flexShrink:0,fontWeight:d.secenek==="Hayır"||d.secenek==="Kararsızım"?700:400}}>{d.secenek}</span>
+                    <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:8,overflow:"hidden"}}>
+                      <div style={{width:`${d.yuzde}%`,height:"100%",background:d.secenek==="Hayır"?"#dc2626":d.secenek==="Kararsızım"?"#f59e0b":"#22c55e"}}/>
+                    </div>
+                    <span style={{fontSize:12,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
+                  </div>
+                ))}
+                <div style={{fontSize:11,color:"#dc2626",fontWeight:700,marginTop:6}}>Hayır + Kararsızım toplam: %{(sopranoPersonelIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(sopranoPersonelIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {(lazerIstatistik.grupSayisi>0||ciltIstatistik.grupSayisi>0)&&(
         <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
@@ -2978,7 +3049,7 @@ function AnketSonucSekme({aktifRol}){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:6}}>
                 <div>
                   <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
-                  <div style={{fontSize:12,color:"#888"}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}{a.anket_tipi!=="lazer"&&a.oda&&<span style={{color:"#aaa"}}> ({a.oda==="alex"?"Alex":"Soprano"})</span>}{a.randevu_tarih&&<span style={{marginLeft:6,color:"#6366f1"}}>| Randevu: {a.randevu_tarih}</span>}</div>
+                  <div style={{fontSize:12,color:"#888"}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}{a.anket_tipi!=="lazer"&&a.oda&&<span style={{color:"#aaa"}}> ({a.oda==="alex"?"Alex":"Soprano"})</span>}{a.randevu_tarih&&<span style={{marginLeft:6,color:"#6366f1"}}>| Randevu: {a.randevu_tarih}</span>}{a.oda==="alex"&&randevuSaatMap.get(a.randevu_id)&&<span style={{marginLeft:6,color:"#7c3aed",fontWeight:600}}>| 👤 {alexPersoneliTahmini(a.randevu_tarih,randevuSaatMap.get(a.randevu_id))} (tahmini)</span>}</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <span style={{background:"#f0fdf4",color:"#16a34a",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
@@ -3008,7 +3079,7 @@ function AnketSonucSekme({aktifRol}){
                 <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
                 <span style={{background:"#fee2e2",color:"#dc2626",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
               </div>
-              <div style={{fontSize:12,color:"#888",marginBottom:6}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}</div>
+              <div style={{fontSize:12,color:"#888",marginBottom:6}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}{a.oda==="alex"&&randevuSaatMap.get(a.randevu_id)&&<span style={{marginLeft:6,color:"#7c3aed",fontWeight:600}}>| 👤 {alexPersoneliTahmini(a.randevu_tarih,randevuSaatMap.get(a.randevu_id))} (tahmini)</span>}</div>
               {a.cevaplar&&Object.keys(a.cevaplar).length>0&&(
                 <div style={{background:"#f7f7f5",borderRadius:8,padding:"8px 10px",fontSize:12,color:"#555"}}>
                   {Object.entries(a.cevaplar).map(([k,v])=>(
