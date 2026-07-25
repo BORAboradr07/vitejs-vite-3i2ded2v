@@ -2006,6 +2006,18 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
   const [gecmisForm,setGecmisForm]=useState(false);
   const [gecmisNot,setGecmisNot]=useState("");
   const [gecmisFotolar,setGecmisFotolar]=useState([]);
+  const [fotoDuzenleModu,setFotoDuzenleModu]=useState(false);
+
+  async function fotoSil(index){
+    if(!window.confirm("Bu fotoğraf silinecek. Emin misiniz?"))return;
+    try{
+      const yeniListe=gecmisFotolar.filter((_,i)=>i!==index);
+      if(gecmis){await sbUpdate("epilasyon_gecmis",gecmis.id,{foto_urls:yeniListe});}
+      setGecmisFotolar(yeniListe);
+      if(yeniListe.length===0)setFotoDuzenleModu(false);
+      showToast("Fotoğraf silindi.");
+    }catch(e){showToast("Silme hatası: "+e.message,"error");}
+  }
   const [yukleniyorFoto,setYukleniyorFoto]=useState(false);
   const [seansForm,setSeansForm]=useState(false);
   const [duzenlenenBolgeId,setDuzenlenenBolgeId]=useState(null);
@@ -2192,13 +2204,23 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
           </div>
 
           <div style={{border:"1px solid #e8e6e0",borderRadius:10,padding:12,marginBottom:14}}>
-            <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>📋 Kağıt karttan geçmiş</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{fontSize:13,fontWeight:600}}>📋 Kağıt karttan geçmiş</span>
+              {gecmisFotolar.length>0&&(
+                <span onClick={()=>setFotoDuzenleModu(v=>!v)} title="Fotoğrafları düzenle" style={{cursor:"pointer",fontSize:14,padding:"2px 6px",background:fotoDuzenleModu?"#eef0ff":"transparent",borderRadius:6}}>✏️</span>
+              )}
+            </div>
             {gecmisFotolar.length>0&&(
               <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
                 {gecmisFotolar.map((u,i)=>(
-                  <a key={i} href={u} target="_blank" rel="noreferrer">
-                    <img src={u} alt="Kağıt kart" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:"1px solid #ddd"}}/>
-                  </a>
+                  <div key={i} style={{position:"relative"}}>
+                    <a href={fotoDuzenleModu?undefined:u} target="_blank" rel="noreferrer" onClick={e=>{if(fotoDuzenleModu)e.preventDefault();}}>
+                      <img src={u} alt="Kağıt kart" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:"1px solid #ddd",opacity:fotoDuzenleModu?0.7:1}}/>
+                    </a>
+                    {fotoDuzenleModu&&(
+                      <span onClick={()=>fotoSil(i)} title="Bu fotoğrafı sil" style={{position:"absolute",top:-6,right:-6,background:"#dc2626",color:"#fff",width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 1px 4px rgba(0,0,0,0.3)"}}>✕</span>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
