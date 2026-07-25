@@ -371,7 +371,13 @@ export default function App() {
     let iptal=false;
     async function yenile(){
       const guncelRefreshToken=aktifKullaniciRef.current?.refresh_token;
-      if(!guncelRefreshToken){setAuthHazir(true);return;}
+      if(!guncelRefreshToken){
+        // Bu değişiklikten önceki eski bir oturum — refresh token hiç kaydedilmemiş.
+        // Eski (muhtemelen süresi dolmuş) anahtarla sessizce devam etmek yerine, güvenli şekilde çıkışa yönlendir; tekrar giriş yeni oturum bilgisini (refresh token dahil) kaydeder.
+        cikisYap();
+        setAuthHazir(true);
+        return;
+      }
       try{
         const data=await sbTokenYenile(guncelRefreshToken);
         if(iptal)return;
@@ -1848,7 +1854,7 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
             const dt=new Date(r.tarih+"T00:00:00");
             const gun=gunler[dt.getDay()];
             const unvan=r.cinsiyet==="Bay"?"BEY":"HANIM";
-            const msg=`🌸 ${ad.toUpperCase()} ${unvan} MERHABALAR,\nBen Fatma, Dr. Duygu Coşkun Özbakır Kliniği'nden yazıyorum.\n${gun} günü saat ${r.saat}'daki lazer randevunuzu hatırlatmak istedim. 😊\nİşlemlerin planlanan şekilde ilerleyebilmesi için randevu saatinizden 5 dakika önce kliniğimizde olmanızı rica ederiz. Geç kalınması durumunda, sonraki randevuların aksamaması adına işlem süresinde kısıtlama gerekebilir.\nYoğun talep nedeniyle randevu planlamalarımızı düzenli sürdürebilmek adına, randevunuzu koruyabilmemiz için gün sonuna kadar dönüş yapmanızı rica ederiz.\nRandevunuza katılacaksanız "Evet", katılamayacaksanız "Hayır" şeklinde dönüş yapmanız yeterlidir. 😊\nAnlayışınız için teşekkür eder, sağlıklı günler dileriz. 🌸\nDr. Duygu Coşkun Özbakır Kliniği`;
+            const msg=`🌸 ${ad.toUpperCase()} ${unvan} MERHABALAR,\nDr. Duygu Coşkun Özbakır Kliniği'nden yazıyorum.\n${gun} günü saat ${r.saat}'daki lazer randevunuzu hatırlatmak istedim. 😊\nİşlemlerin planlanan şekilde ilerleyebilmesi için randevu saatinizden 5 dakika önce kliniğimizde olmanızı rica ederiz. Geç kalınması durumunda, sonraki randevuların aksamaması adına işlem süresinde kısıtlama gerekebilir.\nYoğun talep nedeniyle randevu planlamalarımızı düzenli sürdürebilmek adına, randevunuzu koruyabilmemiz için gün sonuna kadar dönüş yapmanızı rica ederiz.\nRandevunuza katılacaksanız "Evet", katılamayacaksanız "Hayır" şeklinde dönüş yapmanız yeterlidir. 😊\nAnlayışınız için teşekkür eder, sağlıklı günler dileriz. 🌸\nDr. Duygu Coşkun Özbakır Kliniği`;
             const tel=r.tel.replace(/[^0-9]/g,"").slice(-10);
             window.open(`https://wa.me/90${tel}?text=${encodeURIComponent(msg)}`,"_blank");
           }} style={{marginLeft:"auto",background:"#25d366",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>📱 WhatsApp</button>
@@ -2110,7 +2116,14 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
     try{
       const yeniUrller=[];
       for(const f of dosyalar){
-        const yol=`${hasta.id}/${Date.now()}_${f.name.replace(/\s+/g,"_")}`;
+        // Supabase Storage dosya yolunda Türkçe/özel karakter kabul etmiyor (400 Bad Request) — güvenli hale getir
+        const guvenliAd=f.name
+          .replace(/ç/g,"c").replace(/Ç/g,"C").replace(/ğ/g,"g").replace(/Ğ/g,"G")
+          .replace(/ı/g,"i").replace(/İ/g,"I").replace(/ö/g,"o").replace(/Ö/g,"O")
+          .replace(/ş/g,"s").replace(/Ş/g,"S").replace(/ü/g,"u").replace(/Ü/g,"U")
+          .replace(/\s+/g,"_")
+          .replace(/[^a-zA-Z0-9._-]/g,"");
+        const yol=`${hasta.id}/${Date.now()}_${guvenliAd||"foto.jpg"}`;
         const url=await sbUploadFile(yol,f);
         yeniUrller.push(url);
       }
