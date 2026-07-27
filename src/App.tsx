@@ -558,7 +558,7 @@ export default function App() {
     } catch(e){showToast("Hata: "+e.message,"error");return false;}
   }
 
-  async function durumGuncelle(id,durum,odeme){
+  async function durumGuncelle(id,durum,odeme,uygulayici){
     const now=nowTime();
     const r=randevular.find(x=>x.id===id);
     // Ödeme değişikliği logu
@@ -566,10 +566,12 @@ export default function App() {
     if(durum&&durum!==r?.durum) logMesajlar.push(`Durum: ${r?.durum||"-"} → ${durum}`);
     else if(durum) logMesajlar.push(`Durum: ${durum} (onaylandı)`);
     if(odeme!==undefined&&odeme!==r?.odeme) logMesajlar.push(`Ödeme: ${r?.odeme||"Yok"} → ${odeme||"Yok"}`);
-    const yeniLog=[...(r?.log||[]),{saat:now,kullanici:kullaniciEtiket(),islem:logMesajlar.join(" | ")||"Güncellendi"}];
+    if(uygulayici!==undefined&&uygulayici!==r?.uygulayici) logMesajlar.push(`Uygulayıcı: ${uygulayici||"Hanife"}`);
+    const yeniLog=logMesajlar.length>0?[...(r?.log||[]),{saat:now,kullanici:kullaniciEtiket(),islem:logMesajlar.join(" | ")}]:(r?.log||[]);
     try{
-      await sbUpdate("randevular",id,{...(durum?{durum}:{}),...(odeme!==undefined?{odeme}:{}),log:yeniLog});
-      setRandevular(prev=>prev.map(x=>x.id!==id?x:{...x,...(durum?{durum}:{}),...(odeme!==undefined?{odeme}:{}),log:yeniLog}));
+      const guncel={...(durum?{durum}:{}),...(odeme!==undefined?{odeme}:{}),log:yeniLog,...(uygulayici!==undefined?{uygulayici:uygulayici||null}:{})};
+      await sbUpdate("randevular",id,guncel);
+      setRandevular(prev=>prev.map(x=>x.id!==id?x:{...x,...guncel}));
       showToast("Güncellendi.");
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
@@ -1906,10 +1908,10 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
           <div style={{fontSize:13,fontWeight:600,color:"#7c3aed",marginBottom:8}}>🌸 Cilt Bakımı Uygulayıcı</div>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <select value={r.uygulayici||""} onChange={async e=>{
+              const yeniDeger=e.target.value||null;
               try{
-                await sbUpdate("randevular",r.id,{uygulayici:e.target.value||null});
-                r.uygulayici=e.target.value||null;
-                showToast("Uygulayıcı kaydedildi.");
+                await sbUpdate("randevular",r.id,{uygulayici:yeniDeger});
+                onDurumGuncelle(r.id,r.durum,r.odeme,yeniDeger);
               }catch(err){showToast("Hata: "+err.message,"error");}
             }} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontWeight:600,color:r.uygulayici==="Meltem"?"#2563eb":"#7c3aed"}}>
               <option value="">Hanife (varsayılan)</option>
@@ -3082,7 +3084,16 @@ function AnketSonucSekme({aktifRol}){
     }
     return false;
   }
-  const gosterilen=filtre==="yuksek"?yuksekPuan:filtre==="dusuk"?dusukPuan:sirali.filter(a=>a.puan>0);
+  const [anketArama,setAnketArama]=useState("");
+  const gosterilenFiltreli=(()=>{
+    let liste=filtre==="yuksek"?yuksekPuan:filtre==="dusuk"?dusukPuan:sirali.filter(a=>a.puan>0);
+    if(anketArama.trim().length>=2){
+      const arama=anketArama.toLowerCase().trim();
+      liste=sirali.filter(a=>a.puan>0&&a.hasta?.toLowerCase().includes(arama));
+    }
+    return liste;
+  })();
+  const gosterilen=gosterilenFiltreli;
   const sekreterModu=aktifRol==="sekreter";
   const ortalama=anketler.length>0?(anketler.reduce((s,a)=>s+(a.puan||0),0)/anketler.length).toFixed(1):"-";
 
@@ -3097,10 +3108,12 @@ function AnketSonucSekme({aktifRol}){
     <div>
       <h2 style={{fontSize:18,fontWeight:600,marginBottom:12}}>📊 Anket Sonuçları</h2>
 
-      {!sekreterModu&&<div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
-        <button onClick={()=>setFiltre("hepsi")} style={{...chipStyle(filtre==="hepsi"),fontSize:13}}>Tümü ({sirali.filter(a=>a.puan>0).length})</button>
-        <button onClick={()=>setFiltre("yuksek")} style={{...chipStyle(filtre==="yuksek"),fontSize:13,background:filtre==="yuksek"?"#f0fdf4":undefined,color:filtre==="yuksek"?"#16a34a":undefined,border:filtre==="yuksek"?"1.5px solid #86efac":undefined}}>⭐ 9 ve üstü ({yuksekPuan.length})</button>
-        <button onClick={()=>setFiltre("dusuk")} style={{...chipStyle(filtre==="dusuk"),fontSize:13,background:filtre==="dusuk"?"#fff0f0":undefined,color:filtre==="dusuk"?"#dc2626":undefined,border:filtre==="dusuk"?"1.5px solid #fca5a5":undefined}}>📋 8 ve altı ({dusukPuan.length})</button>
+      {!sekreterModu&&<div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+        <button onClick={()=>{setFiltre("hepsi");setAnketArama("");}} style={{...chipStyle(filtre==="hepsi"&&!anketArama),fontSize:13}}>Tümü ({sirali.filter(a=>a.puan>0).length})</button>
+        <button onClick={()=>{setFiltre("yuksek");setAnketArama("");}} style={{...chipStyle(filtre==="yuksek"&&!anketArama),fontSize:13,background:filtre==="yuksek"&&!anketArama?"#f0fdf4":undefined,color:filtre==="yuksek"&&!anketArama?"#16a34a":undefined,border:filtre==="yuksek"&&!anketArama?"1.5px solid #86efac":undefined}}>⭐ 9 ve üstü ({yuksekPuan.length})</button>
+        <button onClick={()=>{setFiltre("dusuk");setAnketArama("");}} style={{...chipStyle(filtre==="dusuk"&&!anketArama),fontSize:13,background:filtre==="dusuk"&&!anketArama?"#fff0f0":undefined,color:filtre==="dusuk"&&!anketArama?"#dc2626":undefined,border:filtre==="dusuk"&&!anketArama?"1.5px solid #fca5a5":undefined}}>📋 8 ve altı ({dusukPuan.length})</button>
+        <input value={anketArama} onChange={e=>setAnketArama(e.target.value)} placeholder="🔍 Hasta adıyla ara..." style={{...inputStyle,width:180,fontSize:13,padding:"7px 12px"}}/>
+        {anketArama&&<span style={{fontSize:12,color:"#6366f1",fontWeight:600}}>{gosterilen.length} sonuç</span>}
       </div>}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
