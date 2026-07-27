@@ -890,6 +890,7 @@ export default function App() {
             ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
             ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["epilasyon_log","📋 Epilasyon Kartı Log",0]]:[]),
             ["anket_sonuc","📊 Anket Sonuçları",0],
+            ["alex_program","📋 Alex Program",0],
             ["gelmeyenler","🚫 Gelmeyenler",0],
             ["dashboard","📅 Boş Randevular",0]]
             .map(([k,l,badge])=>(
@@ -914,6 +915,7 @@ export default function App() {
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle} onNotGuncelle={beklemeNotGuncelle}/>}
         {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular} aktifRol={aktifRol}/>}
         {aktifSekme==="anket_sonuc"&&<AnketSonucSekme aktifRol={aktifRol}/>}
+        {aktifSekme==="alex_program"&&<AlexProgramSekme aktifRol={aktifRol}/>}
         {aktifSekme==="gelmeyenler"&&<GelmeyenlerSekme randevular={randevular} aktifRol={aktifRol} onDurumGuncelle={durumGuncelle}/>}
         {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
         {aktifSekme==="log"&&aktifRol==="yonetici"&&<LogSekme randevular={randevular} silLog={silLog} gunIciLog={gunIciLog}/>}
@@ -1899,6 +1901,24 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
         <button onClick={onKapat} style={btnSecondary}>Kapat</button>
       </div>
       {/* Anket Bölümü */}
+      {(r.bolgeler||[]).some(b=>["Cilt Bakımı","Karbon","Tüy Sarartma","Forma"].includes(b))&&(
+        <div style={{marginTop:14,padding:"12px 14px",background:"#fdf4ff",border:"1px solid #e9d5ff",borderRadius:10}}>
+          <div style={{fontSize:13,fontWeight:600,color:"#7c3aed",marginBottom:8}}>🌸 Cilt Bakımı Uygulayıcı</div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <select value={r.uygulayici||""} onChange={async e=>{
+              try{
+                await sbUpdate("randevular",r.id,{uygulayici:e.target.value||null});
+                r.uygulayici=e.target.value||null;
+                showToast("Uygulayıcı kaydedildi.");
+              }catch(err){showToast("Hata: "+err.message,"error");}
+            }} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontWeight:600,color:r.uygulayici==="Meltem"?"#2563eb":"#7c3aed"}}>
+              <option value="">Hanife (varsayılan)</option>
+              <option value="Meltem">Meltem</option>
+            </select>
+            <span style={{fontSize:13,fontWeight:600,color:r.uygulayici==="Meltem"?"#2563eb":"#7c3aed"}}>👤 {r.uygulayici==="Meltem"?"Meltem":"Hanife"}</span>
+          </div>
+        </div>
+      )}
       {r.durum!=="Gelmedi"&&r.tel&&(
         <div style={{marginTop:14,padding:"12px 14px",background:"#f8faff",border:"1px solid #c7d7f4",borderRadius:10}}>
           <div style={{fontSize:13,fontWeight:600,color:"#3b5bdb",marginBottom:8}}>📋 Memnuniyet Anketi</div>
@@ -2930,12 +2950,13 @@ function AnketSonucSekme({aktifRol}){
   }
   function alexPersoneliTahmini(tarih,saat){
     if(!tarih||!saat)return null;
-    const buHaftaBasi=haftaBasiPazartesi(today());
+    // Referans: 2026-07-28 (Pazartesi) haftası Hazal sabahçı, Gülşah öğlenci. Her hafta değişir.
+    const refHaftaBasi=new Date("2026-07-28T00:00:00");
     const oHaftaBasi=haftaBasiPazartesi(tarih);
-    const haftaFarki=Math.round((oHaftaBasi-buHaftaBasi)/(7*86400000));
-    const ayniHafta=(((haftaFarki%2)+2)%2)===0; // true: bu haftayla aynı düzen (Gülşah sabah), false: ters (Hazal sabah)
-    const sabahci=ayniHafta?"Gülşah":"Hazal";
-    const oglenci=ayniHafta?"Hazal":"Gülşah";
+    const haftaFarki=Math.round((oHaftaBasi-refHaftaBasi)/(7*86400000));
+    const hazalSabahMi=(((haftaFarki%2)+2)%2)===0; // 0: referans haftayla aynı düzen (Hazal sabah)
+    const sabahci=hazalSabahMi?"Hazal":"Gülşah";
+    const oglenci=hazalSabahMi?"Gülşah":"Hazal";
     return timeToMin(saat)<14*60?sabahci:oglenci;
   }
   const randevuSaatMap=new Map(gunlukRandevular.map(r=>[r.id,r.saat]));
@@ -2951,8 +2972,47 @@ function AnketSonucSekme({aktifRol}){
     grup.forEach(a=>{const c=personelCevabi(a);if(sayaclar[c]!==undefined)sayaclar[c]++;});
     return{toplam:grup.length,dagilim:PERSONEL_SECENEKLERI.map(s=>({secenek:s,yuzde:grup.length>0?Math.round((sayaclar[s]/grup.length)*100):0}))};
   }
+  function personelSecenekHastalari(odaAdi,secenek){
+    const grup=anketler.filter(a=>a.oda===odaAdi&&personelCevabi(a)===secenek);
+    return grup.map(a=>{
+      const randevuSaati=randevuSaatMap.get(a.randevu_id);
+      const personelTahmini=a.oda==="alex"&&randevuSaati?alexPersoneliTahmini(a.randevu_tarih,randevuSaati):null;
+      return{hasta:a.hasta,puan:a.puan,tarih:a.tamamlama_tarih,oda:a.oda,randevuTarih:a.randevu_tarih,personel:personelTahmini};
+    });
+  }
+
   const alexPersonelIst=personelIstatistigi("alex");
   const sopranoPersonelIst=personelIstatistigi("soprano");
+
+  // Personel bazlı "aynı personelden tekrar hizmet" istatistikleri — Gülşah/Hazal (Alex, saate göre tahmin), Hanife (Soprano, tümü)
+  function personelBazliIstatistik(personelAdi,odaAdi){
+    const grup=anketler.filter(a=>{
+      if(!personelCevabi(a))return false;
+      if(odaAdi==="soprano")return a.oda==="soprano";
+      if(odaAdi==="alex"){
+        const saat=randevuSaatMap.get(a.randevu_id);
+        return a.oda==="alex"&&saat&&alexPersoneliTahmini(a.randevu_tarih,saat)===personelAdi;
+      }
+      return false;
+    });
+    const sayaclar={};PERSONEL_SECENEKLERI.forEach(s=>sayaclar[s]=0);
+    grup.forEach(a=>{const c=personelCevabi(a);if(sayaclar[c]!==undefined)sayaclar[c]++;});
+    return{toplam:grup.length,dagilim:PERSONEL_SECENEKLERI.map(s=>({secenek:s,yuzde:grup.length>0?Math.round((sayaclar[s]/grup.length)*100):0}))};
+  }
+  function personelBazliHastalar(personelAdi,odaAdi,secenek){
+    return anketler.filter(a=>{
+      if(personelCevabi(a)!==secenek)return false;
+      if(odaAdi==="soprano")return a.oda==="soprano";
+      if(odaAdi==="alex"){
+        const saat=randevuSaatMap.get(a.randevu_id);
+        return a.oda==="alex"&&saat&&alexPersoneliTahmini(a.randevu_tarih,saat)===personelAdi;
+      }
+      return false;
+    }).map(a=>({hasta:a.hasta,puan:a.puan,tarih:a.tamamlama_tarih,oda:a.oda,randevuTarih:a.randevu_tarih,personel:personelAdi}));
+  }
+  const gulsahIst=personelBazliIstatistik("Gülşah","alex");
+  const hazalIst=personelBazliIstatistik("Hazal","alex");
+  const hanifeIst=personelBazliIstatistik("Hanife","soprano");
 
   useEffect(()=>{
     async function yukle(){
@@ -3101,31 +3161,96 @@ function AnketSonucSekme({aktifRol}){
             {alexPersonelIst.toplam>0&&(
               <div>
                 <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Alex Lazer ({alexPersonelIst.toplam} kişi)</div>
-                {alexPersonelIst.dagilim.map(d=>(
-                  <div key={d.secenek} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                    <span style={{fontSize:12,color:d.secenek==="Hayır"||d.secenek==="Kararsızım"?"#dc2626":"#555",width:110,flexShrink:0,fontWeight:d.secenek==="Hayır"||d.secenek==="Kararsızım"?700:400}}>{d.secenek}</span>
+                {alexPersonelIst.dagilim.map(d=>{
+                  const olumsuz=d.secenek==="Hayır"||d.secenek==="Kararsızım";
+                  return(
+                  <div key={d.secenek} onClick={()=>setSoruDetay({soruId:"personel_alex",secenek:d.secenek,anketTipi:"lazer",metin:"Tekrar aynı personelden hizmet almak ister misiniz? (Alex)",secenekLabel:d.secenek,hastalar:personelSecenekHastalari("alex",d.secenek)})} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer",background:olumsuz?"#fffbeb":"transparent",borderRadius:4,padding:"2px 0"}}>
+                    <span style={{fontSize:12,color:olumsuz?"#dc2626":"#555",width:110,flexShrink:0,fontWeight:olumsuz?700:400}}>{d.secenek}{olumsuz&&" 👆"}</span>
                     <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:8,overflow:"hidden"}}>
                       <div style={{width:`${d.yuzde}%`,height:"100%",background:d.secenek==="Hayır"?"#dc2626":d.secenek==="Kararsızım"?"#f59e0b":"#22c55e"}}/>
                     </div>
                     <span style={{fontSize:12,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
-                  </div>
-                ))}
+                  </div>);
+                })}
                 <div style={{fontSize:11,color:"#dc2626",fontWeight:700,marginTop:6}}>Hayır + Kararsızım toplam: %{(alexPersonelIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(alexPersonelIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
               </div>
             )}
             {sopranoPersonelIst.toplam>0&&(
               <div>
                 <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Soprano ({sopranoPersonelIst.toplam} kişi)</div>
-                {sopranoPersonelIst.dagilim.map(d=>(
-                  <div key={d.secenek} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                    <span style={{fontSize:12,color:d.secenek==="Hayır"||d.secenek==="Kararsızım"?"#dc2626":"#555",width:110,flexShrink:0,fontWeight:d.secenek==="Hayır"||d.secenek==="Kararsızım"?700:400}}>{d.secenek}</span>
+                {sopranoPersonelIst.dagilim.map(d=>{
+                  const olumsuz=d.secenek==="Hayır"||d.secenek==="Kararsızım";
+                  return(
+                  <div key={d.secenek} onClick={()=>setSoruDetay({soruId:"personel_soprano",secenek:d.secenek,anketTipi:"lazer",metin:"Tekrar aynı personelden hizmet almak ister misiniz? (Soprano)",secenekLabel:d.secenek,hastalar:personelSecenekHastalari("soprano",d.secenek)})} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer",background:olumsuz?"#fffbeb":"transparent",borderRadius:4,padding:"2px 0"}}>
+                    <span style={{fontSize:12,color:olumsuz?"#dc2626":"#555",width:110,flexShrink:0,fontWeight:olumsuz?700:400}}>{d.secenek}{olumsuz&&" 👆"}</span>
                     <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:8,overflow:"hidden"}}>
                       <div style={{width:`${d.yuzde}%`,height:"100%",background:d.secenek==="Hayır"?"#dc2626":d.secenek==="Kararsızım"?"#f59e0b":"#22c55e"}}/>
                     </div>
                     <span style={{fontSize:12,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
-                  </div>
-                ))}
+                  </div>);
+                })}
                 <div style={{fontSize:11,color:"#dc2626",fontWeight:700,marginTop:6}}>Hayır + Kararsızım toplam: %{(sopranoPersonelIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(sopranoPersonelIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(gulsahIst.toplam>0||hazalIst.toplam>0||hanifeIst.toplam>0)&&(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",background:"#f0fdf4",borderBottom:"1px solid #bbf7d0"}}>
+            <span style={{fontWeight:600,fontSize:14,color:"#16a34a"}}>👤 Personel Bazlı — Tekrar Hizmet Alma İsteği (tahmini)</span>
+          </div>
+          <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:[gulsahIst.toplam>0,hazalIst.toplam>0,hanifeIst.toplam>0].filter(Boolean).length>=2?"1fr 1fr 1fr":"1fr",gap:16}}>
+            {gulsahIst.toplam>0&&(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Gülşah ({gulsahIst.toplam} kişi)</div>
+                {gulsahIst.dagilim.map(d=>{
+                  const olumsuz=d.secenek==="Hayır"||d.secenek==="Kararsızım";
+                  return(
+                  <div key={d.secenek} onClick={()=>setSoruDetay({soruId:"personel_gulsah",secenek:d.secenek,anketTipi:"lazer",metin:"Tekrar aynı personelden hizmet almak ister misiniz? (Gülşah — tahmini)",secenekLabel:d.secenek,hastalar:personelBazliHastalar("Gülşah","alex",d.secenek)})} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer",background:olumsuz?"#fffbeb":"transparent",borderRadius:4,padding:"2px 0"}}>
+                    <span style={{fontSize:11,color:olumsuz?"#dc2626":"#555",width:90,flexShrink:0,fontWeight:olumsuz?700:400}}>{d.secenek}</span>
+                    <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:7,overflow:"hidden"}}>
+                      <div style={{width:`${d.yuzde}%`,height:"100%",background:olumsuz?"#dc2626":"#22c55e"}}/>
+                    </div>
+                    <span style={{fontSize:11,fontWeight:700,color:"#555",width:30,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
+                  </div>);
+                })}
+                <div style={{fontSize:10,color:"#dc2626",fontWeight:700,marginTop:4}}>Hayır+Kararsızım: %{(gulsahIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(gulsahIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
+              </div>
+            )}
+            {hazalIst.toplam>0&&(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Hazal ({hazalIst.toplam} kişi)</div>
+                {hazalIst.dagilim.map(d=>{
+                  const olumsuz=d.secenek==="Hayır"||d.secenek==="Kararsızım";
+                  return(
+                  <div key={d.secenek} onClick={()=>setSoruDetay({soruId:"personel_hazal",secenek:d.secenek,anketTipi:"lazer",metin:"Tekrar aynı personelden hizmet almak ister misiniz? (Hazal — tahmini)",secenekLabel:d.secenek,hastalar:personelBazliHastalar("Hazal","alex",d.secenek)})} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer",background:olumsuz?"#fffbeb":"transparent",borderRadius:4,padding:"2px 0"}}>
+                    <span style={{fontSize:11,color:olumsuz?"#dc2626":"#555",width:90,flexShrink:0,fontWeight:olumsuz?700:400}}>{d.secenek}</span>
+                    <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:7,overflow:"hidden"}}>
+                      <div style={{width:`${d.yuzde}%`,height:"100%",background:olumsuz?"#dc2626":"#22c55e"}}/>
+                    </div>
+                    <span style={{fontSize:11,fontWeight:700,color:"#555",width:30,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
+                  </div>);
+                })}
+                <div style={{fontSize:10,color:"#dc2626",fontWeight:700,marginTop:4}}>Hayır+Kararsızım: %{(hazalIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(hazalIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
+              </div>
+            )}
+            {hanifeIst.toplam>0&&(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Hanife ({hanifeIst.toplam} kişi)</div>
+                {hanifeIst.dagilim.map(d=>{
+                  const olumsuz=d.secenek==="Hayır"||d.secenek==="Kararsızım";
+                  return(
+                  <div key={d.secenek} onClick={()=>setSoruDetay({soruId:"personel_hanife",secenek:d.secenek,anketTipi:"lazer",metin:"Tekrar aynı personelden hizmet almak ister misiniz? (Hanife)",secenekLabel:d.secenek,hastalar:personelBazliHastalar("Hanife","soprano",d.secenek)})} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer",background:olumsuz?"#fffbeb":"transparent",borderRadius:4,padding:"2px 0"}}>
+                    <span style={{fontSize:11,color:olumsuz?"#dc2626":"#555",width:90,flexShrink:0,fontWeight:olumsuz?700:400}}>{d.secenek}</span>
+                    <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:7,overflow:"hidden"}}>
+                      <div style={{width:`${d.yuzde}%`,height:"100%",background:olumsuz?"#dc2626":"#22c55e"}}/>
+                    </div>
+                    <span style={{fontSize:11,fontWeight:700,color:"#555",width:30,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
+                  </div>);
+                })}
+                <div style={{fontSize:10,color:"#dc2626",fontWeight:700,marginTop:4}}>Hayır+Kararsızım: %{(hanifeIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(hanifeIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
               </div>
             )}
           </div>
@@ -3206,7 +3331,7 @@ function AnketSonucSekme({aktifRol}){
             ):soruDetay.hastalar.map((h,i)=>(
               <div key={i} style={{padding:"8px 10px",borderBottom:i<soruDetay.hastalar.length-1?"1px solid #f5f5f2":"none",fontSize:13}}>
                 <div style={{fontWeight:600}}>{h.hasta} <span style={{fontWeight:400,color:"#dc2626",fontSize:12}}>{h.puan}/10</span></div>
-                <div style={{fontSize:11,color:"#888"}}>{h.tarih} · {h.oda==="alex"?"Alex":h.oda==="soprano"?"Soprano":"—"}{h.randevuTarih&&` · Randevu: ${h.randevuTarih}`}</div>
+                <div style={{fontSize:11,color:"#888"}}>{h.tarih} · {h.oda==="alex"?"Alex":h.oda==="soprano"?"Soprano":"—"}{h.randevuTarih&&` · Randevu: ${h.randevuTarih}`}{h.personel&&<span style={{color:"#7c3aed",fontWeight:600}}> · 👤 {h.personel}</span>}</div>
               </div>
             ))}
           </div>
@@ -3261,7 +3386,7 @@ function AnketSonucSekme({aktifRol}){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:6}}>
                 <div>
                   <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
-                  <div style={{fontSize:12,color:"#888"}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}{a.anket_tipi!=="lazer"&&a.oda&&<span style={{color:"#aaa"}}> ({a.oda==="alex"?"Alex":"Soprano"})</span>}{a.randevu_tarih&&<span style={{marginLeft:6,color:"#6366f1"}}>| Randevu: {a.randevu_tarih}</span>}{a.oda==="alex"&&randevuSaatMap.get(a.randevu_id)&&<span style={{marginLeft:6,color:"#7c3aed",fontWeight:600}}>| 👤 {alexPersoneliTahmini(a.randevu_tarih,randevuSaatMap.get(a.randevu_id))} (tahmini)</span>}</div>
+                  <div style={{fontSize:12,color:"#888"}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}{a.anket_tipi!=="lazer"&&a.oda&&<span style={{color:"#aaa"}}> ({a.oda==="alex"?"Alex":"Soprano"})</span>}{a.randevu_tarih&&<span style={{marginLeft:6,color:"#6366f1"}}>| Randevu: {a.randevu_tarih}</span>}{a.oda==="alex"&&randevuSaatMap.get(a.randevu_id)&&<span style={{marginLeft:6,color:"#7c3aed",fontWeight:600}}>| 👤 {alexPersoneliTahmini(a.randevu_tarih,randevuSaatMap.get(a.randevu_id))} (tahmini)</span>}{a.oda==="soprano"&&<span style={{marginLeft:6,color:"#7c3aed",fontWeight:600}}>| 👤 Hanife</span>}</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <span style={{background:"#f0fdf4",color:"#16a34a",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
@@ -3291,7 +3416,7 @@ function AnketSonucSekme({aktifRol}){
                 <div style={{fontWeight:600,fontSize:14}}>{a.hasta||"Anonim"}</div>
                 <span style={{background:"#fee2e2",color:"#dc2626",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
               </div>
-              <div style={{fontSize:12,color:"#888",marginBottom:6}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}{a.oda==="alex"&&randevuSaatMap.get(a.randevu_id)&&<span style={{marginLeft:6,color:"#7c3aed",fontWeight:600}}>| 👤 {alexPersoneliTahmini(a.randevu_tarih,randevuSaatMap.get(a.randevu_id))} (tahmini)</span>}</div>
+              <div style={{fontSize:12,color:"#888",marginBottom:6}}>{a.tamamlama_tarih} · {a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}{a.oda==="alex"&&randevuSaatMap.get(a.randevu_id)&&<span style={{marginLeft:6,color:"#7c3aed",fontWeight:600}}>| 👤 {alexPersoneliTahmini(a.randevu_tarih,randevuSaatMap.get(a.randevu_id))} (tahmini)</span>}{a.oda==="soprano"&&<span style={{marginLeft:6,color:"#7c3aed",fontWeight:600}}>| 👤 Hanife</span>}</div>
               {a.cevaplar&&Object.keys(a.cevaplar).length>0&&(
                 <div style={{background:"#f7f7f5",borderRadius:8,padding:"8px 10px",fontSize:12,color:"#555"}}>
                   {Object.entries(a.cevaplar).map(([k,v])=>(
@@ -3315,6 +3440,181 @@ function AnketSonucSekme({aktifRol}){
 }
 
 const GELMEDI_TAKIP_BASLANGIC="2026-07-16"; // Bu tarihten önceki randevular "Gelmedi" işaretlemesi düzgün tutulmadığı için istatistiğe dahil edilmiyor
+function CiltBakimiSekme({randevular,setRandevular,aktifRol,showToast}){
+  const CILT_BOLGELER=["Cilt Bakımı","Karbon","Tüy Sarartma","Forma"];
+  
+  // Bu haftanın Pazartesi'si ve Cumartesi'sini bul
+  const bugun=new Date(today()+"T00:00:00");
+  const gun=bugun.getDay();
+  const fark=gun===0?-6:1-gun;
+  const haftaPzt=new Date(bugun);haftaPzt.setDate(bugun.getDate()+fark);
+  const haftaCmt=new Date(haftaPzt);haftaCmt.setDate(haftaPzt.getDate()+5);
+  // Önceki 3 iş günü
+  const onceki3=addDays(today(),-3);
+  const baslangicTarih=`${haftaPzt.getFullYear()}-${String(haftaPzt.getMonth()+1).padStart(2,"0")}-${String(haftaPzt.getDate()).padStart(2,"0")}`;
+  const enEskiTarih=baslangicTarih<onceki3?onceki3:baslangicTarih; // ikisinden erken olanı al (haftanın başı vs 3 gün önce)
+  const bitisTarih=`${haftaCmt.getFullYear()}-${String(haftaCmt.getMonth()+1).padStart(2,"0")}-${String(haftaCmt.getDate()).padStart(2,"0")}`;
+
+  const ciltRandevular=randevular.filter(r=>(r.bolgeler||[]).some(b=>CILT_BOLGELER.includes(b))&&r.tarih>=onceki3&&r.tarih<=bitisTarih).sort((a,b)=>b.tarih.localeCompare(a.tarih)||a.saat.localeCompare(b.saat));
+  
+  // Günlere göre grupla
+  const gunler=new Map();
+  ciltRandevular.forEach(r=>{
+    if(!gunler.has(r.tarih))gunler.set(r.tarih,[]);
+    gunler.get(r.tarih).push(r);
+  });
+  const gunListesi=[...gunler.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
+
+  async function uygulayiciAta(randevuId,personel){
+    try{
+      await sbUpdate("randevular",randevuId,{uygulayici:personel||null});
+      setRandevular(prev=>prev.map(r=>r.id===randevuId?{...r,uygulayici:personel||null}:r));
+    }catch(e){showToast("Hata: "+e.message,"error");}
+  }
+
+  return(
+    <div>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>🌸 Cilt Bakımı Randevuları</h2>
+      <div style={{fontSize:12,color:"#888",marginBottom:14}}>Bu hafta ve önceki 3 günün cilt bakımı randevuları. Meltem olarak işaretlenmeyen hastalar otomatik olarak Hanife kabul edilir.</div>
+      {gunListesi.length===0?(
+        <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa",fontSize:13}}>Bu dönemde cilt bakımı randevusu bulunamadı.</div>
+      ):gunListesi.map(([tarih,liste])=>{
+        const bugunMu=tarih===today();
+        const gecmisMi=tarih<today();
+        return(
+          <div key={tarih} style={{marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:700,color:bugunMu?"#6366f1":gecmisMi?"#aaa":"#333",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+              <span>{tarih}</span>
+              {bugunMu&&<span style={{background:"#6366f1",color:"#fff",fontSize:10,padding:"2px 8px",borderRadius:10}}>Bugün</span>}
+              <span style={{fontSize:11,color:"#888",fontWeight:400}}>{liste.length} randevu</span>
+            </div>
+            <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+              {liste.map((r,i)=>{
+                const atanan=r.uygulayici==="Meltem"?"Meltem":"Hanife";
+                return(
+                <div key={r.id} style={{padding:"10px 14px",borderBottom:i<liste.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,opacity:gecmisMi?0.7:1}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600,fontSize:13}}>{r.hasta}</div>
+                    <div style={{fontSize:12,color:"#888"}}>
+                      {r.saat} · {r.sure}dk · {r.oda==="alex"?"Alex":"Soprano"} · {(r.bolgeler||[]).filter(b=>CILT_BOLGELER.includes(b)).join(", ")}
+                      {r.durum&&<span style={{marginLeft:6,color:r.durum==="Gelmedi"?"#dc2626":"#16a34a",fontWeight:600}}>{r.durum}</span>}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    <select value={r.uygulayici||""} onChange={e=>uygulayiciAta(r.id,e.target.value)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #ddd",fontSize:12,fontWeight:600,color:r.uygulayici==="Meltem"?"#2563eb":"#7c3aed"}}>
+                      <option value="">Hanife (varsayılan)</option>
+                      <option value="Meltem">Meltem</option>
+                    </select>
+                    <span style={{fontSize:12,color:atanan==="Meltem"?"#2563eb":"#7c3aed",fontWeight:600,minWidth:50}}>👤 {atanan}</span>
+                  </div>
+                </div>);
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AlexProgramSekme({aktifRol}){
+  // Referans: 2026-07-28 haftası Hazal sabahçı, Gülşah öğlenci. Her hafta değişir.
+  const REF_TARIH=new Date("2026-07-28T00:00:00");
+  const [override,setOverride]=useState(()=>{try{return JSON.parse(localStorage.getItem("kl_alex_program")||"{}");} catch{return{};}});
+  
+  function haftalar(){
+    const sonuc=[];
+    // Bu haftanın Pazartesi'sini bul
+    const bugun=new Date(today()+"T00:00:00");
+    const gun=bugun.getDay();
+    const fark=gun===0?-6:1-gun;
+    const baslangic=new Date(bugun);baslangic.setDate(bugun.getDate()+fark);
+    // 9 hafta (≈2 ay) oluştur
+    for(let i=0;i<9;i++){
+      const pazartesi=new Date(baslangic);pazartesi.setDate(baslangic.getDate()+i*7);
+      const cumartesi=new Date(pazartesi);cumartesi.setDate(pazartesi.getDate()+5);
+      const pzKey=`${pazartesi.getFullYear()}-${String(pazartesi.getMonth()+1).padStart(2,"0")}-${String(pazartesi.getDate()).padStart(2,"0")}`;
+      const haftaFarki=Math.round((pazartesi-REF_TARIH)/(7*86400000));
+      const hazalSabahMi=(((haftaFarki%2)+2)%2)===0;
+      const varsayilanSabah=hazalSabahMi?"Hazal":"Gülşah";
+      const varsayilanOgle=hazalSabahMi?"Gülşah":"Hazal";
+      const sabah=override[pzKey]?.sabah||varsayilanSabah;
+      const ogle=override[pzKey]?.ogle||varsayilanOgle;
+      const cumKey=`${cumartesi.getFullYear()}-${String(cumartesi.getMonth()+1).padStart(2,"0")}-${String(cumartesi.getDate()).padStart(2,"0")}`;
+      sonuc.push({pzKey,cumKey,sabah,ogle,varsayilanSabah,varsayilanOgle,duzenlendi:!!override[pzKey]});
+    }
+    return sonuc;
+  }
+  const liste=haftalar();
+  const duzenlenebilir=aktifRol==="yonetici"||aktifRol==="sorumlu";
+
+  function degistir(pzKey,alan,deger){
+    const yeni={...override,[pzKey]:{...override[pzKey],[alan]:deger}};
+    setOverride(yeni);
+    try{localStorage.setItem("kl_alex_program",JSON.stringify(yeni));}catch{}
+  }
+
+  function sifirla(pzKey){
+    const yeni={...override};delete yeni[pzKey];
+    setOverride(yeni);
+    try{localStorage.setItem("kl_alex_program",JSON.stringify(yeni));}catch{}
+  }
+
+  const PERSONELLER=["Hazal","Gülşah"];
+
+  return(
+    <div>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>📋 Alex Çalışma Programı</h2>
+      <div style={{fontSize:12,color:"#888",marginBottom:14}}>Haftalık dönüşümlü çalışma takvimi. Sabah: 09:00-14:00 · Öğleden sonra: 14:30-19:15{!duzenlenebilir&&" · Değişiklik yapmak için Yönetici veya Sorumlu yetkisi gerekli."}</div>
+      <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead>
+            <tr style={{background:"#f7f7f5"}}>
+              <th style={{textAlign:"left",padding:"10px 14px",fontWeight:600,fontSize:12,color:"#888",borderBottom:"1px solid #e8e6e0"}}>Hafta</th>
+              <th style={{textAlign:"center",padding:"10px 14px",fontWeight:600,fontSize:12,color:"#2563eb",borderBottom:"1px solid #e8e6e0"}}>Sabah (09-14)</th>
+              <th style={{textAlign:"center",padding:"10px 14px",fontWeight:600,fontSize:12,color:"#7c3aed",borderBottom:"1px solid #e8e6e0"}}>Öğle Sonrası (14:30-19:15)</th>
+              {duzenlenebilir&&<th style={{width:60,borderBottom:"1px solid #e8e6e0"}}></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {liste.map((h,i)=>{
+              const gecmisMi=h.cumKey<today();
+              return(
+              <tr key={h.pzKey} style={{background:gecmisMi?"#fafaf8":h.pzKey<=today()&&h.cumKey>=today()?"#eef0ff":"#fff",opacity:gecmisMi?0.6:1}}>
+                <td style={{padding:"10px 14px",borderBottom:"1px solid #f5f5f2",fontSize:12}}>
+                  <div style={{fontWeight:600}}>{h.pzKey}</div>
+                  <div style={{color:"#aaa",fontSize:11}}>→ {h.cumKey}</div>
+                  {h.duzenlendi&&<span style={{fontSize:9,color:"#f59e0b",fontWeight:700}}>✏️ düzenlendi</span>}
+                </td>
+                <td style={{textAlign:"center",padding:"10px 14px",borderBottom:"1px solid #f5f5f2"}}>
+                  {duzenlenebilir&&!gecmisMi?(
+                    <select value={h.sabah} onChange={e=>{degistir(h.pzKey,"sabah",e.target.value);degistir(h.pzKey,"ogle",PERSONELLER.find(p=>p!==e.target.value));}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontWeight:600,color:"#2563eb",textAlign:"center"}}>
+                      {PERSONELLER.map(p=><option key={p} value={p}>{p}</option>)}
+                    </select>
+                  ):(
+                    <span style={{fontWeight:600,color:"#2563eb"}}>{h.sabah}</span>
+                  )}
+                </td>
+                <td style={{textAlign:"center",padding:"10px 14px",borderBottom:"1px solid #f5f5f2"}}>
+                  {duzenlenebilir&&!gecmisMi?(
+                    <select value={h.ogle} onChange={e=>{degistir(h.pzKey,"ogle",e.target.value);degistir(h.pzKey,"sabah",PERSONELLER.find(p=>p!==e.target.value));}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontWeight:600,color:"#7c3aed",textAlign:"center"}}>
+                      {PERSONELLER.map(p=><option key={p} value={p}>{p}</option>)}
+                    </select>
+                  ):(
+                    <span style={{fontWeight:600,color:"#7c3aed"}}>{h.ogle}</span>
+                  )}
+                </td>
+                {duzenlenebilir&&<td style={{textAlign:"center",padding:"10px 6px",borderBottom:"1px solid #f5f5f2"}}>{h.duzenlendi&&!gecmisMi&&<span onClick={()=>sifirla(h.pzKey)} title="Varsayılana döndür" style={{cursor:"pointer",fontSize:12,color:"#999"}}>↺</span>}</td>}
+              </tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{fontSize:11,color:"#aaa",marginTop:10}}>Not: Bu program tahmini personel atamalarında (anket istatistikleri vb.) kullanılır. Gerçek çalışma düzeni farklılık gösterebilir.</div>
+    </div>
+  );
+}
+
 function GelmeyenlerSekme({randevular,aktifRol,onDurumGuncelle}){
   const [aramaAdi,setAramaAdi]=useState("");
   const bugun=today();
@@ -3515,6 +3815,47 @@ function RaporSekme({seciliTarih,randevular,aktifRol}){
           </div>
         )}
       </div>
+
+      {aktifRol==="yonetici"&&(()=>{
+        const CILT_BOLGELER_IST=["Cilt Bakımı","Karbon","Tüy Sarartma","Forma"];
+        // Bu haftanın randevuları
+        const bugunD=new Date(today()+"T00:00:00");
+        const gunNo=bugunD.getDay();
+        const pztFark=gunNo===0?-6:1-gunNo;
+        const haftaPzt=addDays(today(),pztFark);
+        const haftaCmt=addDays(haftaPzt,5);
+        const haftaCilt=randevular.filter(r=>(r.bolgeler||[]).some(b=>CILT_BOLGELER_IST.includes(b))&&r.tarih>=haftaPzt&&r.tarih<=haftaCmt&&r.durum!=="Gelmedi");
+        const haftaMeltem=haftaCilt.filter(r=>r.uygulayici==="Meltem").length;
+        const haftaHanife=haftaCilt.length-haftaMeltem;
+        // Bu ayın randevuları
+        const ayBaslangic=today().slice(0,7)+"-01";
+        const ayCilt=randevular.filter(r=>(r.bolgeler||[]).some(b=>CILT_BOLGELER_IST.includes(b))&&r.tarih>=ayBaslangic&&r.tarih<=today()&&r.durum!=="Gelmedi");
+        const ayMeltem=ayCilt.filter(r=>r.uygulayici==="Meltem").length;
+        const ayHanife=ayCilt.length-ayMeltem;
+        return(
+          <div style={{marginTop:16,background:"#fff",border:"1px solid #e9d5ff",borderRadius:12,padding:"1.25rem"}}>
+            <div style={{fontSize:14,fontWeight:600,color:"#7c3aed",marginBottom:14}}>🌸 Cilt Bakımı İstatistiği (sadece Yönetici)</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              <div style={{background:"#fdf4ff",borderRadius:10,padding:"12px 14px"}}>
+                <div style={{fontSize:12,color:"#888",marginBottom:6}}>Bu Hafta ({haftaPzt} → {haftaCmt})</div>
+                <div style={{fontSize:20,fontWeight:700,color:"#7c3aed",marginBottom:8}}>Toplam: {haftaCilt.length}</div>
+                <div style={{display:"flex",gap:12}}>
+                  <div><span style={{fontSize:12,color:"#555"}}>Meltem:</span> <strong style={{color:"#2563eb"}}>{haftaMeltem}</strong></div>
+                  <div><span style={{fontSize:12,color:"#555"}}>Hanife:</span> <strong style={{color:"#7c3aed"}}>{haftaHanife}</strong></div>
+                </div>
+              </div>
+              <div style={{background:"#fdf4ff",borderRadius:10,padding:"12px 14px"}}>
+                <div style={{fontSize:12,color:"#888",marginBottom:6}}>Bu Ay ({today().slice(0,7)})</div>
+                <div style={{fontSize:20,fontWeight:700,color:"#7c3aed",marginBottom:8}}>Toplam: {ayCilt.length}</div>
+                <div style={{display:"flex",gap:12}}>
+                  <div><span style={{fontSize:12,color:"#555"}}>Meltem:</span> <strong style={{color:"#2563eb"}}>{ayMeltem}</strong></div>
+                  <div><span style={{fontSize:12,color:"#555"}}>Hanife:</span> <strong style={{color:"#7c3aed"}}>{ayHanife}</strong></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
