@@ -2994,6 +2994,8 @@ function AnketSonucSekme({aktifRol}){
   const sirali=[...anketler].sort((a,b)=>(b.tamamlama_tarih||"").localeCompare(a.tamamlama_tarih||""));
   const yuksekPuan=sirali.filter(a=>a.puan>=9);
   const dusukPuan=sirali.filter(a=>a.puan<=8&&a.puan>0);
+  const cokDusukPuan=sirali.filter(a=>a.puan!=null&&a.puan<=3&&a.puan>0);
+  const [cokDusukAcik,setCokDusukAcik]=useState(false);
   const gosterilen=filtre==="yuksek"?yuksekPuan:filtre==="dusuk"?dusukPuan:sirali.filter(a=>a.puan>0);
   const sekreterModu=aktifRol==="sekreter";
   const ortalama=anketler.length>0?(anketler.reduce((s,a)=>s+(a.puan||0),0)/anketler.length).toFixed(1):"-";
@@ -3020,13 +3022,49 @@ function AnketSonucSekme({aktifRol}){
           {l:"Toplam Anket",v:anketler.length,c:"#6366f1"},
           {l:"Ortalama Puan",v:ortalama,c:"#16a34a"},
           {l:"8+ Puan (Mutlu)",v:yuksekPuan.length,c:"#f59e0b"},
+          {l:"3 ve altı ⚠️",v:cokDusukPuan.length,c:"#dc2626",tikla:true},
         ].map(s=>(
-          <div key={s.l} style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"14px 16px"}}>
+          <div key={s.l} onClick={s.tikla?()=>setCokDusukAcik(v=>!v):undefined} style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"14px 16px",cursor:s.tikla?"pointer":undefined}}>
             <div style={{fontSize:11,color:"#888"}}>{s.l}</div>
             <div style={{fontSize:24,fontWeight:700,color:s.c}}>{s.v}</div>
           </div>
         ))}
       </div>
+
+      {cokDusukAcik&&cokDusukPuan.length>0&&(
+        <div style={{background:"#fff",border:"1px solid #fca5a5",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",background:"#fef2f2",borderBottom:"1px solid #fca5a5"}}>
+            <span style={{fontWeight:600,fontSize:14,color:"#dc2626"}}>⚠️ 3 ve Altı Puan Veren Hastalar ({cokDusukPuan.length})</span>
+          </div>
+          <div style={{maxHeight:350,overflowY:"auto"}}>
+            {cokDusukPuan.map((a,i)=>{
+              const randevuSaati=randevuSaatMap.get(a.randevu_id);
+              const personelTahmini=a.oda==="alex"&&randevuSaati?alexPersoneliTahmini(a.randevu_tarih,randevuSaati):null;
+              return(
+                <div key={a.id||i} style={{padding:"10px 16px",borderBottom:i<cokDusukPuan.length-1?"1px solid #f5f5f2":"none"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <span style={{fontWeight:600,fontSize:13}}>{a.hasta}</span>
+                      <span style={{marginLeft:8,fontSize:20,fontWeight:700,color:"#dc2626"}}>{a.puan}/10</span>
+                    </div>
+                    <span style={{fontSize:11,color:"#888"}}>{a.tamamlama_tarih}</span>
+                  </div>
+                  <div style={{fontSize:12,color:"#888",marginTop:2}}>
+                    {a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano":"—"}
+                    {a.randevu_tarih&&<span> · Randevu: {a.randevu_tarih}</span>}
+                    {personelTahmini&&<span style={{color:"#7c3aed",fontWeight:600}}> · 👤 {personelTahmini} (tahmini)</span>}
+                  </div>
+                  {a.cevaplar&&Object.entries(a.cevaplar).filter(([k,v])=>k.startsWith("s")&&v).map(([k,v])=>(
+                    <div key={k} style={{fontSize:11,color:"#666",marginTop:2}}>
+                      <span style={{color:"#aaa"}}>{soruMetni(a.anket_tipi,k)}:</span> <strong>{v}</strong>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {(alexPersonelIst.toplam>0||sopranoPersonelIst.toplam>0)&&(
         <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
