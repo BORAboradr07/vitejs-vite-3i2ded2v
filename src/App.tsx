@@ -3073,43 +3073,45 @@ function AnketSonucSekme({aktifRol}){
           <div style={{padding:"12px 16px",background:"#fff7ed",borderBottom:"1px solid #fed7aa"}}>
             <span style={{fontWeight:600,fontSize:14,color:"#c2410c"}}>📉 Düşük Puan Analizi (10 altı puan verenler arasında)</span>
           </div>
-          <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:lazerIstatistik.grupSayisi>0&&ciltIstatistik.grupSayisi>0?"1fr 1fr":"1fr",gap:20}}>
+          <div style={{padding:"14px 16px"}}>
             {lazerIstatistik.grupSayisi>0&&(
-              <div>
-                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Lazer Epilasyon ({lazerIstatistik.grupSayisi} kişi düşük puan — Alex: {lazerIstatistik.alexSayisi}, Soprano: {lazerIstatistik.sopranoSayisi})</div>
+              <div style={{marginBottom:20}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:10}}>Lazer Epilasyon ({lazerIstatistik.grupSayisi} kişi — <span style={{color:"#2563eb"}}>Alex: {lazerIstatistik.alexSayisi}</span> · <span style={{color:"#7c3aed"}}>Soprano: {lazerIstatistik.sopranoSayisi}</span>)</div>
                 {lazerIstatistik.sonuc.map(s=>(
-                  <div key={s.id} style={{marginBottom:14}}>
-                    <div style={{fontSize:12,color:"#666",marginBottom:5,fontWeight:600}}>{s.metin}</div>
-                    {s.dagilim.map(d=>(
-                      <div key={d.secenek} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                        <span style={{fontSize:11,color:"#888",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.secenek}</span>
-                        <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:8,overflow:"hidden"}}>
-                          <div style={{width:`${d.yuzde}%`,height:"100%",background:"#6366f1"}}/>
-                        </div>
-                        <span style={{fontSize:11,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
-                        <span title="Alex / Soprano odalarındaki düşük puan verenler arasındaki oran" style={{fontSize:10,color:"#aaa",width:110,textAlign:"right",flexShrink:0}}>(Alex {d.alexYuzde!==undefined?`%${d.alexYuzde}`:"-"} · Sop {d.sopranoYuzde!==undefined?`%${d.sopranoYuzde}`:"-"})</span>
-                      </div>
-                    ))}
+                  <div key={s.id} style={{marginBottom:16}}>
+                    <div style={{fontSize:12,color:"#666",marginBottom:6,fontWeight:600}}>{s.metin}</div>
+                    <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+                      <thead><tr style={{color:"#aaa",textAlign:"left"}}><th style={{fontWeight:400,width:110,paddingBottom:4}}>Seçenek</th><th style={{fontWeight:400,paddingBottom:4}}>Genel %</th><th style={{fontWeight:400,paddingBottom:4,color:"#2563eb"}}>Alex %</th><th style={{fontWeight:400,paddingBottom:4,color:"#7c3aed"}}>Soprano %</th></tr></thead>
+                      <tbody>{s.dagilim.map(d=>(
+                        <tr key={d.secenek}>
+                          <td style={{padding:"3px 0",color:"#555"}}>{d.secenek}</td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#f0f0ed",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.yuzde}%`,height:"100%",background:"#6366f1"}}/></div><span style={{fontWeight:700,color:"#555",minWidth:28}}>%{d.yuzde}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#eff6ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.alexYuzde??0}%`,height:"100%",background:"#2563eb"}}/></div><span style={{fontWeight:700,color:"#2563eb",minWidth:28}}>{d.alexYuzde!==undefined?`%${d.alexYuzde}`:"-"}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#f3f0ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.sopranoYuzde??0}%`,height:"100%",background:"#7c3aed"}}/></div><span style={{fontWeight:700,color:"#7c3aed",minWidth:28}}>{d.sopranoYuzde!==undefined?`%${d.sopranoYuzde}`:"-"}</span></div></td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
                   </div>
                 ))}
               </div>
             )}
             {ciltIstatistik.grupSayisi>0&&(
               <div>
-                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Cilt/Karbon/Tüy ({ciltIstatistik.grupSayisi} kişi düşük puan — Alex: {ciltIstatistik.alexSayisi}, Soprano: {ciltIstatistik.sopranoSayisi})</div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:10}}>Cilt/Karbon/Tüy ({ciltIstatistik.grupSayisi} kişi — <span style={{color:"#2563eb"}}>Alex: {ciltIstatistik.alexSayisi}</span> · <span style={{color:"#7c3aed"}}>Soprano: {ciltIstatistik.sopranoSayisi}</span>)</div>
                 {ciltIstatistik.sonuc.map(s=>(
-                  <div key={s.id} style={{marginBottom:14}}>
-                    <div style={{fontSize:12,color:"#666",marginBottom:5,fontWeight:600}}>{s.metin}</div>
-                    {s.dagilim.map(d=>(
-                      <div key={d.secenek} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                        <span style={{fontSize:11,color:"#888",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.secenek}</span>
-                        <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:8,overflow:"hidden"}}>
-                          <div style={{width:`${d.yuzde}%`,height:"100%",background:"#6366f1"}}/>
-                        </div>
-                        <span style={{fontSize:11,fontWeight:700,color:"#555",width:34,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
-                        <span title="Alex / Soprano odalarındaki düşük puan verenler arasındaki oran" style={{fontSize:10,color:"#aaa",width:110,textAlign:"right",flexShrink:0}}>(Alex {d.alexYuzde!==undefined?`%${d.alexYuzde}`:"-"} · Sop {d.sopranoYuzde!==undefined?`%${d.sopranoYuzde}`:"-"})</span>
-                      </div>
-                    ))}
+                  <div key={s.id} style={{marginBottom:16}}>
+                    <div style={{fontSize:12,color:"#666",marginBottom:6,fontWeight:600}}>{s.metin}</div>
+                    <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+                      <thead><tr style={{color:"#aaa",textAlign:"left"}}><th style={{fontWeight:400,width:110,paddingBottom:4}}>Seçenek</th><th style={{fontWeight:400,paddingBottom:4}}>Genel %</th><th style={{fontWeight:400,paddingBottom:4,color:"#2563eb"}}>Alex %</th><th style={{fontWeight:400,paddingBottom:4,color:"#7c3aed"}}>Soprano %</th></tr></thead>
+                      <tbody>{s.dagilim.map(d=>(
+                        <tr key={d.secenek}>
+                          <td style={{padding:"3px 0",color:"#555"}}>{d.secenek}</td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#f0f0ed",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.yuzde}%`,height:"100%",background:"#6366f1"}}/></div><span style={{fontWeight:700,color:"#555",minWidth:28}}>%{d.yuzde}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#eff6ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.alexYuzde??0}%`,height:"100%",background:"#2563eb"}}/></div><span style={{fontWeight:700,color:"#2563eb",minWidth:28}}>{d.alexYuzde!==undefined?`%${d.alexYuzde}`:"-"}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#f3f0ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.sopranoYuzde??0}%`,height:"100%",background:"#7c3aed"}}/></div><span style={{fontWeight:700,color:"#7c3aed",minWidth:28}}>{d.sopranoYuzde!==undefined?`%${d.sopranoYuzde}`:"-"}</span></div></td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
                   </div>
                 ))}
               </div>
