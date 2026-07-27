@@ -539,6 +539,14 @@ export default function App() {
         showToast("Randevu güncellendi.");
       } else {
         const hastaObj2=hastalar.find(h=>h.id===data.hastaId)||hastalar.find(h=>h.ad?.toLowerCase().trim()===data.hasta?.toLowerCase().trim());
+        // Hasta, hastalar tablosunda yoksa otomatik ekle (epilasyon kartı ve diğer özellikler için gerekli)
+        if(!hastaObj2&&data.hasta){
+          try{
+            const [yeniHasta]=await sbInsert("hastalar",{ad:data.hasta,tel:data.tel||"",cinsiyet:data.cinsiyet||"Bayan"});
+            setHastalar(prev=>[...prev,yeniHasta]);
+            data.hastaId=yeniHasta.id;
+          }catch(e){console.warn("Hasta otomatik eklenemedi:",e);}
+        }
         const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum||"Seans",odeme:data.odeme,notlar:data.notlar||"",tel:data.tel||hastaObj2?.tel||"",cinsiyet:data.cinsiyet||hastaObj2?.cinsiyet||"Bayan",log:[{saat:now,kullanici:kullaniciEtiket(),islem:"Randevu oluşturuldu"}]};
         const [ins]=await sbInsert("randevular",sbData);
         // hastalar tablosundan tel ve cinsiyet bilgisini al
@@ -1151,9 +1159,9 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                   <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",display:"flex",alignItems:"center",gap:6}}>
                     {(()=>{
                       const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];
-                      const gelecekMi=u.list.some(r=>r.tarih>today());
-                      if(!gelecekMi)return null; // bugün/geçmiş rozeti ismin sağında gösterilecek, burada değil
-                      // Gelecek randevu: "bugün doldurdu mu" sorusuyla karışmasın diye tamamen farklı bir gösterge — sadece dosya çıkarma ihtiyacı, isim solunda
+                      const bugunVeyaGelecekMi=u.list.some(r=>r.tarih>=today());
+                      if(!bugunVeyaGelecekMi)return null; // geçmiş günlerde dosya çıkarma ihtiyacı yok
+                      // Dosya çıkarma göstergesi: dijital kaydı hiç olmayan hastada, randevu GÜNÜ DAHİL görünür — personel o sabah dosyayı arşivden çıkarır; seans/foto girilince kendiliğinden kaybolur
                       if(ed==="yesil"||ed==="sari")return null; // dijital kayıt zaten var, dosya çıkarmaya gerek yok
                       return <span title="Arşivden dosyası çıkacak" style={{fontSize:12,flexShrink:0}}>📁</span>;
                     })()}
@@ -1714,7 +1722,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar,tel:hastaTel,cinsiyet:hastaCinsiyet});
     setKayitYapiliyor(false);
   }
-  const filtreliHastalar=hastaFiltre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(hastaFiltre.toLowerCase())||h.hasta_id?.includes(hastaFiltre)||h.tel?.includes(hastaFiltre)):[];
+  const filtreliHastalar=hastaFiltre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(hastaFiltre.toLowerCase())||h.hasta_id?.includes(hastaFiltre)||h.tel?.includes(hastaFiltre)||(hastaFiltre.trim().length>=3&&benzerlik(h.ad,hastaFiltre)>=0.6)):[];
   const otomatikSure=(()=>{const t=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||15),0);return durum==="Kontrol"?Math.ceil((t||15)/2):(t||15);})();
   const onizlemeRenk=islemRenk(seciliBolgeler,oda,durum);
   return(
@@ -1752,6 +1760,20 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
           )}
           {!hasta&&hastaFiltre.trim().length>=1&&filtreliHastalar.length===0&&(
             <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
+              {(()=>{
+                const benzerler=hastalar.filter(h=>benzerlik(h.ad,hastaFiltre)>=0.6&&benzerlik(h.ad,hastaFiltre)<1).sort((a,b)=>benzerlik(b.ad,hastaFiltre)-benzerlik(a.ad,hastaFiltre)).slice(0,3);
+                if(benzerler.length>0) return(
+                  <div style={{padding:"8px 10px",background:"#fef3c7",border:"1px solid #f59e0b",borderRadius:8}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"#92400e",marginBottom:6}}>⚠️ Benzer isimli hastalar var — yanlışlıkla yeni kayıt oluşturmamak için kontrol edin:</div>
+                    {benzerler.map(h=>(
+                      <div key={h.id} onClick={()=>{setHasta(h.ad);setHastaId(h.id);setHastaTel(h.tel||"");setHastaCinsiyet(h.cinsiyet||"Bayan");setHastaFiltre("");}} style={{padding:"6px 10px",cursor:"pointer",background:"#fff",borderRadius:6,marginBottom:4,fontSize:13,border:"1px solid #e8e6e0"}}>
+                        <strong>{h.ad}</strong>{h.tel&&<span style={{color:"#888",marginLeft:8,fontSize:11}}>{h.tel}</span>}
+                      </div>
+                    ))}
+                  </div>
+                );
+                return null;
+              })()}
               <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>"{hastaFiltre}" listede yok — bilgileri girin:</div>
               <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
               <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
