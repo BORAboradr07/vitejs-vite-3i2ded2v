@@ -144,7 +144,7 @@ const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı
 const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde"];
 const ODEME_TIPLERI    = ["Nakit","Kart","EFT","Ödeme Alınmadı"];
 const DURUMLAR_ALEX    = ["Seans","Rütuş","Gelmedi"];
-const DURUMLAR_SOPRANO = ["Seans","Gelmedi"];
+const DURUMLAR_SOPRANO = ["Seans","Rütuş","Gelmedi"];
 const ROLLER = {yonetici:"Yönetici",sekreter:"Sekreter",personel:"Uygulayıcı",sorumlu:"Sorumlu"};
 
 // ── EPİLASYON KARTI SABİTLERİ ────────────────────────────────────────────────
@@ -342,6 +342,8 @@ export default function App() {
   const [yukleniyor,setYukleniyor]   = useState(true);
   const [modal,setModal]             = useState(null);
   const [epilasyonModal,setEpilasyonModal] = useState(null); // {hasta, randevu}
+  const [gecikmisPopupAcik,setGecikmisPopupAcik] = useState(false);
+  const [gecikmisKapatilanlar,setGecikmisKapatilanlar] = useState(()=>new Set());
   const [toast,setToast]             = useState(null);
 
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
@@ -831,6 +833,19 @@ export default function App() {
   })();
   const gunIciSayisi=gunIciLog.filter(g=>(g.degTarih||g.deg_tarih)===today()).length;
 
+  // Saati geçmiş ama durumu (Seans/Rütuş/Gelmedi) hâlâ işaretlenmemiş randevular — sadece Uygulayıcı (personel) için
+  const gecikmisDurumsuzRandevular = aktifRol!=="personel" ? [] : randevular.filter(r=>
+    r.tarih<=today() && r.tarih>=BILDIRIM_TAKIP_BASLANGIC &&
+    !(r.log||[]).some(l=>l.islem?.includes("Durum:")) &&
+    new Date(`${r.tarih}T${r.saat}:00`).getTime()<Date.now() &&
+    !gecikmisKapatilanlar.has(r.id)
+  ).sort((a,b)=>a.tarih.localeCompare(b.tarih)||a.saat.localeCompare(b.saat));
+
+  useEffect(()=>{
+    if(aktifRol==="personel" && gecikmisDurumsuzRandevular.length>0 && !gecikmisPopupAcik) setGecikmisPopupAcik(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[randevular,aktifRol]);
+
   // Giriş yapılmamışsa login ekranı
   if(!aktifKullanici) return <GirisEkrani onGiris={kullaniciGiris}/>;
   const aktifLoginName=aktifKullanici.login_name||"";
@@ -949,6 +964,28 @@ export default function App() {
                 ))}
               </div>
             )}
+          </div>
+        </ModalWrapper>
+      )}
+      {gecikmisPopupAcik&&gecikmisDurumsuzRandevular.length>0&&(
+        <ModalWrapper onClose={()=>{setGecikmisKapatilanlar(prev=>new Set([...prev,...gecikmisDurumsuzRandevular.map(r=>r.id)]));setGecikmisPopupAcik(false);}}>
+          <div>
+            <h2 style={{fontSize:16,fontWeight:600,marginBottom:4}}>⏰ Randevu saati geçti, lütfen durumunu işaretleyiniz</h2>
+            <div style={{fontSize:12,color:"#888",marginBottom:14}}>Aşağıdaki hastaların randevu saati geçti ancak durumu (Seans/Rütuş/Gelmedi) hâlâ işaretlenmemiş:</div>
+            <div style={{maxHeight:400,overflowY:"auto",border:"1px solid #e8e6e0",borderRadius:10}}>
+              {gecikmisDurumsuzRandevular.map((r,i)=>(
+                <div key={r.id} onClick={()=>{setModal({tip:"detay",data:r});setGecikmisPopupAcik(false);}} style={{padding:"10px 14px",borderBottom:i<gecikmisDurumsuzRandevular.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,cursor:"pointer"}}>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:13}}>{r.hasta}</div>
+                    <div style={{fontSize:12,color:"#888"}}>{r.tarih} · {r.saat} · {r.oda==="alex"?"Alex":"Soprano"}</div>
+                  </div>
+                  <button onClick={e=>{e.stopPropagation();setGecikmisKapatilanlar(prev=>new Set([...prev,r.id]));}} style={{...btnSecondary,fontSize:11,padding:"4px 10px",flexShrink:0}}>Şimdi değil</button>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:16}}>
+              <button onClick={()=>{setGecikmisKapatilanlar(prev=>new Set([...prev,...gecikmisDurumsuzRandevular.map(r=>r.id)]));setGecikmisPopupAcik(false);}} style={btnSecondary}>Kapat</button>
+            </div>
           </div>
         </ModalWrapper>
       )}
@@ -1151,7 +1188,10 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
               return(
                 <div key={u.id} onClick={()=>{if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",marginBottom:5,borderRadius:8,background:renk.bg,border:gecikmisEksik?"3px solid #dc2626":`1px solid ${renk.brd}`,boxShadow:gecikmisEksik?"0 0 0 2px rgba(220,38,38,0.25)":"none",cursor:"pointer"}}>
-                  {gecikmisEksik&&<span title={[durumEksikVar&&"Durum (Seans/Kontrol/Gelmedi) hâlâ işaretlenmemiş",epilasyonEksikVar&&"Epilasyon kartı hâlâ doldurulmamış"].filter(Boolean).join(" · ")} style={{fontSize:13,flexShrink:0}}>⚠️</span>}
+                  {gecikmisEksik&&(aktifRol==="personel"?
+                    <span onClick={e=>{e.stopPropagation();if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}} title={[durumEksikVar&&"Durum (Seans/Rütuş/Gelmedi) hâlâ işaretlenmemiş",epilasyonEksikVar&&"Epilasyon kartı hâlâ doldurulmamış"].filter(Boolean).join(" · ")} style={{fontSize:10,fontWeight:800,color:"#fff",background:"#7f1d1d",border:"1px solid rgba(255,255,255,0.6)",borderRadius:999,padding:"3px 9px",flexShrink:0,cursor:"pointer",whiteSpace:"nowrap"}}>⚠️ Kapanmadı</span>
+                    :<span title={[durumEksikVar&&"Durum (Seans/Rütuş/Gelmedi) hâlâ işaretlenmemiş",epilasyonEksikVar&&"Epilasyon kartı hâlâ doldurulmamış"].filter(Boolean).join(" · ")} style={{fontSize:13,flexShrink:0}}>⚠️</span>
+                  )}
                   {!u.tel&&<span title="Telefon numarası kayıtlı değil" style={{fontSize:12,flexShrink:0}}>📵</span>}
                   <div style={{fontSize:11,fontWeight:700,color:"#fff",width:42,flexShrink:0}}>{u.saat}</div>
                   <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",display:"flex",alignItems:"center",gap:6}}>
@@ -1787,6 +1827,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
       <Label>Bölgeler</Label>
       <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{bolgeler.map(b=><button key={b} onClick={()=>toggleBolge(b)} style={chipStyle(seciliBolgeler.includes(b))}>{b}</button>)}</div>
       {seciliBolgeler.length>0&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><div style={{width:12,height:12,borderRadius:3,background:onizlemeRenk.bg}}/><span style={{fontSize:12,color:"#666"}}>{onizlemeRenk.label}</span></div>}
+      <div style={{marginBottom:14}}><Label>Durum</Label>{aktifRol==="sekreter"?<div style={{...inputStyle,background:"#f5f5f2",color:"#888"}}>{durum} (salt okunur)</div>:<select value={durum} onChange={e=>{setDurum(e.target.value);setManuelSure(false);}} style={inputStyle}>{durumlar.map(d=><option key={d} value={d}>{d}</option>)}</select>}</div>
       <div style={{background:"#f7f7f5",borderRadius:10,padding:"10px 14px",marginBottom:14}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
           <div>
@@ -1796,7 +1837,6 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
           <SureKontrol sure={sure} setSure={handleSureChange}/>
         </div>
       </div>
-      <div style={{marginBottom:14}}><Label>Durum</Label>{aktifRol==="sekreter"?<div style={{...inputStyle,background:"#f5f5f2",color:"#888"}}>{durum} (salt okunur)</div>:<select value={durum} onChange={e=>{setDurum(e.target.value);setManuelSure(false);}} style={inputStyle}>{durumlar.map(d=><option key={d} value={d}>{d}</option>)}</select>}</div>
       <Label>Notlar</Label>
       <textarea value={notlar} onChange={e=>setNotlar(e.target.value)} rows={2} placeholder="Opsiyonel..." style={{...inputStyle,resize:"vertical"}}/>
       <div style={{display:"flex",gap:8,marginTop:16}}>
