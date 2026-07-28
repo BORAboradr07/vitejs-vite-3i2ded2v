@@ -146,6 +146,9 @@ const ODEME_TIPLERI    = ["Nakit","Kart","EFT","Ödeme Alınmadı"];
 const DURUMLAR_ALEX    = ["Seans","Rütuş","Gelmedi"];
 const DURUMLAR_SOPRANO = ["Seans","Rütuş","Gelmedi"];
 const ROLLER = {yonetici:"Yönetici",sekreter:"Sekreter",personel:"Uygulayıcı",sorumlu:"Sorumlu"};
+// Bu bölgelerden oluşan randevularda epilasyon kartı zorunlu değil — sadece Durum (Seans/Rütuş/Gelmedi) yeterli
+const EPILASYON_MUAF_BOLGELER = ["Cilt Bakımı","Karbon","Tüy Sarartma"];
+function epilasyonMuafMi(r){return (r.bolgeler||[]).length>0 && (r.bolgeler||[]).every(b=>EPILASYON_MUAF_BOLGELER.includes(b));}
 
 // ── EPİLASYON KARTI SABİTLERİ ────────────────────────────────────────────────
 const EPILASYON_CIHAZLAR = ["Soprano","Alex","Nd:YAG"];
@@ -1183,7 +1186,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                 return Date.now()>=esik.getTime();
               };
               const durumEksikVar=u.list.some(r=>r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&gunSonuGecti(r));
-              const epilasyonEksikVar=u.list.some(r=>r.tarih>=EPILASYON_UYARI_BASLANGIC&&r.durum!=="Gelmedi"&&epilasyonDurum?.[r.hasta?.toLowerCase().trim()]!=="yesil"&&gecikti1_5Saat(r));
+              const epilasyonEksikVar=u.list.some(r=>r.tarih>=EPILASYON_UYARI_BASLANGIC&&r.durum!=="Gelmedi"&&!epilasyonMuafMi(r)&&epilasyonDurum?.[r.hasta?.toLowerCase().trim()]!=="yesil"&&gecikti1_5Saat(r));
               const gecikmisEksik=durumEksikVar||epilasyonEksikVar;
               return(
                 <div key={u.id} onClick={()=>{if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}}
@@ -2491,7 +2494,7 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
     let iptal=false;
     async function yukle(){
       setYukleniyor(true);
-      const adaylar=randevular.filter(r=>r.tarih<=bugun&&r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&r.durum!=="Gelmedi");
+      const adaylar=randevular.filter(r=>r.tarih<=bugun&&r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&r.durum!=="Gelmedi"&&!epilasyonMuafMi(r));
       const adlar=[...new Set(adaylar.map(r=>r.hasta?.toLowerCase().trim()).filter(Boolean))];
       const idMap={};
       hastalar.forEach(h=>{const k=h.ad?.toLowerCase().trim();if(k&&adlar.includes(k))idMap[k]=h.id;});
