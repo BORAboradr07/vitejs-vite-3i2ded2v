@@ -143,7 +143,7 @@ const RENK = {
 const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde","Karbon","Cilt Bakımı","Forma","Tüy Sarartma"];
 const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde"];
 const ODEME_TIPLERI    = ["Nakit","Kart","EFT","Ödeme Alınmadı"];
-const DURUMLAR_ALEX    = ["Seans","Kontrol","Gelmedi"];
+const DURUMLAR_ALEX    = ["Seans","Rütuş","Gelmedi"];
 const DURUMLAR_SOPRANO = ["Seans","Gelmedi"];
 const ROLLER = {yonetici:"Yönetici",sekreter:"Sekreter",personel:"Uygulayıcı",sorumlu:"Sorumlu"};
 
@@ -361,21 +361,18 @@ export default function App() {
   }
 
   // Oturum token'ını canlı tutmak için: sayfa ilk açıldığında ve periyodik olarak (45 dakikada bir) yenile.
-  // Token'lar (varsayılan ~1 saat) süresi dolmadan yenilenmezse, uzun süre açık kalan sekmelerde (personel sabahtan akşama kapatmıyor) istekler 401 ile başarısız olurdu.
-  // authHazir: ilk yenileme denemesi bitene kadar veri yüklemeyi bekletir — aksi halde veri yükleme, henüz yenilenmemiş eski (süresi dolmuş) anahtarla yarışıp başarısız olabiliyordu.
-  const [authHazir,setAuthHazir]=useState(()=>!aktifKullanici?.refresh_token);
+  // Veri yükleme token yenilemesini BEKLEMEZ — eski token'la hemen başlar.
+  // Token yenilenince sessizce tekrar çeker (tokenYenilendi sayacıyla tetiklenir).
   const aktifKullaniciRef=useRef(aktifKullanici);
   useEffect(()=>{aktifKullaniciRef.current=aktifKullanici;},[aktifKullanici]);
+  const [tokenYenilendi,setTokenYenilendi]=useState(0);
   useEffect(()=>{
-    if(!aktifKullanici?.login_name){setAuthHazir(true);return;}
+    if(!aktifKullanici?.login_name)return;
     let iptal=false;
     async function yenile(){
       const guncelRefreshToken=aktifKullaniciRef.current?.refresh_token;
       if(!guncelRefreshToken){
-        // Bu değişiklikten önceki eski bir oturum — refresh token hiç kaydedilmemiş.
-        // Eski (muhtemelen süresi dolmuş) anahtarla sessizce devam etmek yerine, güvenli şekilde çıkışa yönlendir; tekrar giriş yeni oturum bilgisini (refresh token dahil) kaydeder.
         cikisYap();
-        setAuthHazir(true);
         return;
       }
       try{
@@ -388,11 +385,9 @@ export default function App() {
           try{window.localStorage.setItem("kl_user",JSON.stringify(yeni));}catch{}
           return yeni;
         });
+        setTokenYenilendi(v=>v+1);
       }catch(e){
-        // Yenileme başarısız oldu (refresh token da geçersiz/süresi dolmuş) — oturumu kapat, tekrar giriş istensin
         if(!iptal)cikisYap();
-      } finally {
-        if(!iptal)setAuthHazir(true);
       }
     }
     yenile();
@@ -403,7 +398,6 @@ export default function App() {
 
 
   useEffect(()=>{
-    if(!authHazir)return; // token yenilemesi bitmeden veri yüklemeyi başlatma (yarış durumunu önler)
     async function yukle(sessiz){
       try{
         if(!sessiz)setYukleniyor(true);
@@ -432,7 +426,7 @@ export default function App() {
     function gorunurlukDegisti(){ if(document.visibilityState==="visible") yukle(true); }
     document.addEventListener("visibilitychange",gorunurlukDegisti);
     return()=>{clearInterval(interval);document.removeEventListener("visibilitychange",gorunurlukDegisti);};
-  },[authHazir]);
+  },[tokenYenilendi]);
 
   const gunR    = randevular.filter(r=>r.tarih===seciliTarih);
   const alexR   = gunR.filter(r=>r.oda==="alex").sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat));
@@ -1186,7 +1180,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                     ))}
                   </span>
                   <div style={{fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>{u.sure}dk{u.odeme?` · ${u.odeme}`:""}</div>
-                  {u.durum&&<span style={{fontSize:10,fontWeight:700,color:"#fff",flexShrink:0}}>{u.durum==="Gelmedi"?"❌":u.durum==="Kontrol"?"⏳":"✔"}</span>}
+                  {u.durum&&<span style={{fontSize:10,fontWeight:700,color:"#fff",flexShrink:0}}>{u.durum==="Gelmedi"?"❌":u.durum==="Rütuş"?"⏳":"✔"}</span>}
                   {(()=>{
                     if(mobil)return null;
                     const digerOda=odaId==="alex"?"soprano":"alex";
@@ -1300,7 +1294,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                   <div style={{fontWeight:600,fontSize:13}}>{r.hasta}</div>
                   <div style={{fontSize:11,color:"#888"}}>{r.saat} · {r.sure}dk{r.odeme?` · ${r.odeme}`:""}</div>
                 </div>
-                <span style={{fontSize:11,fontWeight:600,color:r.durum==="Gelmedi"?"#dc2626":r.durum==="Kontrol"?"#b45309":"#16a34a"}}>{r.durum}</span>
+                <span style={{fontSize:11,fontWeight:600,color:r.durum==="Gelmedi"?"#dc2626":r.durum==="Rütuş"?"#b45309":"#16a34a"}}>{r.durum}</span>
               </div>
             ))}
           </div>
@@ -1338,7 +1332,7 @@ function HastaAraPanel({randevular,onDuzenle,onKapat}){
                 </div>
                 {r.bolgeler?.length>0&&<div style={{fontSize:11,color:"#aaa",marginTop:2}}>{r.bolgeler.join(" · ")}</div>}
                 <div style={{fontSize:11,marginTop:2}}>
-                  <span style={{color:r.durum==="Gelmedi"?"#dc2626":r.durum==="Kontrol"?"#b45309":"#16a34a",fontWeight:500}}>{r.durum}</span>
+                  <span style={{color:r.durum==="Gelmedi"?"#dc2626":r.durum==="Rütuş"?"#b45309":"#16a34a",fontWeight:500}}>{r.durum}</span>
                   {r.odeme&&<span style={{color:"#888",marginLeft:8}}>{r.odeme}</span>}
                 </div>
               </div>
@@ -1696,7 +1690,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
   const kasaTimerRef=useRef(null);
   const bolgeler=oda==="alex"?ALEX_BOLGELER:SOPRANO_BOLGELER;
   const durumlar=oda==="alex"?DURUMLAR_ALEX:DURUMLAR_SOPRANO;
-  useEffect(()=>{if(manuelSure)return;const t=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||15),0);setSure(durum==="Kontrol"?Math.ceil((t||15)/2):(t||15));},[seciliBolgeler,durum,manuelSure]);
+  useEffect(()=>{if(manuelSure)return;const t=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||15),0);setSure(durum==="Rütuş"?Math.ceil((t||15)/2):(t||15));},[seciliBolgeler,durum,manuelSure]);
   function handleSureChange(v){setSure(v);setManuelSure(true);}
   function toggleBolge(b){setManuelSure(false);setSeciliBolgeler(prev=>prev.includes(b)?prev.filter(x=>x!==b):[...prev,b]);}
   async function hastaEkle(){
@@ -1727,7 +1721,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     setKayitYapiliyor(false);
   }
   const filtreliHastalar=hastaFiltre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(hastaFiltre.toLowerCase())||h.hasta_id?.includes(hastaFiltre)||h.tel?.includes(hastaFiltre)||(hastaFiltre.trim().length>=3&&benzerlik(h.ad,hastaFiltre)>=0.6)):[];
-  const otomatikSure=(()=>{const t=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||15),0);return durum==="Kontrol"?Math.ceil((t||15)/2):(t||15);})();
+  const otomatikSure=(()=>{const t=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||15),0);return durum==="Rütuş"?Math.ceil((t||15)/2):(t||15);})();
   const onizlemeRenk=islemRenk(seciliBolgeler,oda,durum);
   return(
     <div>
@@ -3769,7 +3763,7 @@ function RaporSekme({seciliTarih,randevular,aktifRol}){
     }
     setKasaSonuc(sonuc);setKasaYukleniyor(false);
   }
-  function s(list){return{seans:list.filter(r=>r.durum==="Seans").length,kontrol:list.filter(r=>r.durum==="Kontrol").length,gelmedi:list.filter(r=>r.durum==="Gelmedi").length,nakit:list.filter(r=>r.odeme==="Nakit").length,kart:list.filter(r=>r.odeme==="Kart").length,eft:list.filter(r=>r.odeme==="EFT").length,alinmadi:list.filter(r=>r.odeme==="Ödeme Alınmadı").length,belirsiz:list.filter(r=>!r.odeme&&r.durum!=="Gelmedi").length};}
+  function s(list){return{seans:list.filter(r=>r.durum==="Seans").length,kontrol:list.filter(r=>r.durum==="Rütuş").length,gelmedi:list.filter(r=>r.durum==="Gelmedi").length,nakit:list.filter(r=>r.odeme==="Nakit").length,kart:list.filter(r=>r.odeme==="Kart").length,eft:list.filter(r=>r.odeme==="EFT").length,alinmadi:list.filter(r=>r.odeme==="Ödeme Alınmadı").length,belirsiz:list.filter(r=>!r.odeme&&r.durum!=="Gelmedi").length};}
   const a=s(al),so2=s(so);
   return(
     <div>
@@ -3779,7 +3773,7 @@ function RaporSekme({seciliTarih,randevular,aktifRol}){
           <div key={title} style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"1.25rem"}}>
             <div style={{fontSize:14,fontWeight:600,color:c,marginBottom:14,paddingBottom:10,borderBottom:"1px solid #f0f0ec"}}>{title}</div>
             <div style={{fontSize:13,fontWeight:600,color:"#666",marginBottom:8}}>Durum</div>
-            {[["Seans","seans","#2d6a35"],["Kontrol","kontrol","#b45309"],["Gelmedi","gelmedi","#dc2626"]].map(([l,k,cl])=>(<div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:14,color:"#555"}}>{l}</span><span style={{fontSize:14,fontWeight:600,color:cl}}>{d[k]}</span></div>))}
+            {[["Seans","seans","#2d6a35"],["Rütuş","kontrol","#b45309"],["Gelmedi","gelmedi","#dc2626"]].map(([l,k,cl])=>(<div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:14,color:"#555"}}>{l}</span><span style={{fontSize:14,fontWeight:600,color:cl}}>{d[k]}</span></div>))}
             <div style={{borderTop:"1px solid #f0f0ec",marginTop:10,paddingTop:10}}>
               <div style={{fontSize:13,fontWeight:600,color:"#666",marginBottom:8}}>Ödeme</div>
               {[["Nakit","nakit"],["Kart","kart"],["EFT","eft"],["Alınmadı","alinmadi"],["Belirsiz","belirsiz"]].map(([l,k])=>(<div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:13,color:"#666"}}>{l}</span><span style={{fontSize:13,fontWeight:d[k]>0?600:400,color:d[k]>0?"#333":"#bbb"}}>{d[k]}</span></div>))}
