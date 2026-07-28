@@ -147,7 +147,7 @@ const DURUMLAR_ALEX    = ["Seans","Rütuş","Gelmedi"];
 const DURUMLAR_SOPRANO = ["Seans","Rütuş","Gelmedi"];
 const ROLLER = {yonetici:"Yönetici",sekreter:"Sekreter",personel:"Uygulayıcı",sorumlu:"Sorumlu"};
 // Bu bölgelerden oluşan randevularda epilasyon kartı zorunlu değil — sadece Durum (Seans/Rütuş/Gelmedi) yeterli
-const EPILASYON_MUAF_BOLGELER = ["Cilt Bakımı","Karbon","Tüy Sarartma"];
+const EPILASYON_MUAF_BOLGELER = ["Cilt Bakımı","Karbon","Tüy Sarartma","Forma"];
 function epilasyonMuafMi(r){return (r.bolgeler||[]).length>0 && (r.bolgeler||[]).every(b=>EPILASYON_MUAF_BOLGELER.includes(b));}
 
 // ── EPİLASYON KARTI SABİTLERİ ────────────────────────────────────────────────
