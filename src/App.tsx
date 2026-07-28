@@ -1803,8 +1803,6 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
         </div>
       </div>
       <div style={{marginBottom:14}}><Label>Durum</Label>{aktifRol==="sekreter"?<div style={{...inputStyle,background:"#f5f5f2",color:"#888"}}>{durum} (salt okunur)</div>:<select value={durum} onChange={e=>{setDurum(e.target.value);setManuelSure(false);}} style={inputStyle}>{durumlar.map(d=><option key={d} value={d}>{d}</option>)}</select>}</div>
-      {aktifRol!=="personel"&&<><Label>Ödeme</Label>
-      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>{ODEME_TIPLERI.map(o=><button key={o} onClick={()=>setOdeme(odeme===o?null:o)} style={chipStyle(odeme===o)}>{o}</button>)}</div></>}
       <Label>Notlar</Label>
       <textarea value={notlar} onChange={e=>setNotlar(e.target.value)} rows={2} placeholder="Opsiyonel..." style={{...inputStyle,resize:"vertical"}}/>
       <div style={{display:"flex",gap:8,marginTop:16}}>
@@ -1892,8 +1890,6 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
       ):(
         <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>{durumlar.map(d=><button key={d} onClick={()=>setDurum(d)} style={chipStyle(durum===d)}>{d}</button>)}</div>
       )}
-      {aktifRol!=="personel"&&<><Label>Ödeme</Label>
-      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{ODEME_TIPLERI.map(o=><button key={o} onClick={()=>setOdeme(odeme===o?null:o)} style={chipStyle(odeme===o)}>{o}</button>)}</div></>}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{onDurumGuncelle(r.id,durum,odeme);onKapat();}} style={btnPrimary}>Kaydet</button>
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={onDuzenle} style={btnSecondary}>Düzenle</button>}
