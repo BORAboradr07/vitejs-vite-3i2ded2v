@@ -1200,7 +1200,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
               return(
                 <div key={u.id} onClick={()=>{if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",marginBottom:5,borderRadius:8,background:renk.bg,border:gecikmisEksik?"3px solid #dc2626":`1px solid ${renk.brd}`,boxShadow:gecikmisEksik?"0 0 0 2px rgba(220,38,38,0.25)":"none",cursor:"pointer"}}>
-                  {gecikmisEksik&&(aktifRol==="personel"?
+                  {gecikmisEksik&&(aktifRol!=="sekreter"?
                     <span onClick={e=>{e.stopPropagation();if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}} title={[durumEksikVar&&"Durum (Seans/Rütuş/Gelmedi) hâlâ işaretlenmemiş",epilasyonEksikVar&&"Epilasyon kartı hâlâ doldurulmamış"].filter(Boolean).join(" · ")} style={{fontSize:10,fontWeight:800,color:"#fff",background:"#7f1d1d",border:"1px solid rgba(255,255,255,0.6)",borderRadius:999,padding:"3px 9px",flexShrink:0,cursor:"pointer",whiteSpace:"nowrap"}}>⚠️ Kapanmadı</span>
                     :<span title={[durumEksikVar&&"Durum (Seans/Rütuş/Gelmedi) hâlâ işaretlenmemiş",epilasyonEksikVar&&"Epilasyon kartı hâlâ doldurulmamış"].filter(Boolean).join(" · ")} style={{fontSize:13,flexShrink:0}}>⚠️</span>
                   )}
