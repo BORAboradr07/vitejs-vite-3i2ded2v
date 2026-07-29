@@ -443,7 +443,16 @@ export default function App() {
   useEffect(()=>{
     let iptal=false;
     async function yukle(){
-      const idler=[...new Set(gunR.map(r=>r.hasta_id).filter(Boolean))];
+      // hasta_id'si olan randevularda direkt kullan, olmayanlarda isimle hastalar tablosundan bul
+      const hastaIdMap={}; // randevu.id → hastalar.id (Supabase UUID)
+      gunR.forEach(r=>{
+        if(r.hasta_id){hastaIdMap[r.id]=r.hasta_id;return;}
+        const k=r.hasta?.toLowerCase().trim();
+        if(!k)return;
+        const h=hastalar.find(h2=>h2.ad?.toLowerCase().trim()===k);
+        if(h)hastaIdMap[r.id]=h.id;
+      });
+      const idler=[...new Set(Object.values(hastaIdMap).filter(Boolean))];
       if(idler.length===0){setEpilasyonDurum({});return;}
       try{
         const [gecmisler,ziyaretler]=await Promise.all([
@@ -456,17 +465,18 @@ export default function App() {
         const ziyaretRandevuIdSeti=new Set(ziyaretler.map(z=>z.randevu_id).filter(Boolean));
         const yeniDurum={};
         gunR.forEach(r=>{
-          if(!r.hasta_id)return;
+          const hId=hastaIdMap[r.id];
+          if(!hId)return;
           if(ziyaretRandevuIdSeti.has(r.id))yeniDurum[r.id]="yesil";
-          else if(ziyaretHastaIdSeti.has(r.hasta_id))yeniDurum[r.id]="mavi";
-          else if(gecmisIdSeti.has(r.hasta_id))yeniDurum[r.id]="sari";
+          else if(ziyaretHastaIdSeti.has(hId))yeniDurum[r.id]="mavi";
+          else if(gecmisIdSeti.has(hId))yeniDurum[r.id]="sari";
         });
         setEpilasyonDurum(yeniDurum);
       }catch(e){/* sessizce geç — bu sadece görsel bir gösterge */}
     }
     yukle();
     return()=>{iptal=true;};
-  },[seciliTarih,randevular]);
+  },[seciliTarih,randevular,hastalar]);
 
   function cakismaVar(oda,tarih,saat,sure,excludeId=null){
     const yB=timeToMin(saat),yE=yB+sure;
@@ -2527,16 +2537,25 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
     async function yukle(){
       setYukleniyor(true);
       const adaylar=randevular.filter(r=>r.tarih<=bugun&&r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&r.durum!=="Gelmedi"&&!epilasyonMuafMi(r));
-      const idler=[...new Set(adaylar.map(r=>r.hasta_id).filter(Boolean))];
+      // hasta_id'si olan randevularda direkt kullan, olmayanlarda isimle hastalar tablosundan bul
+      const hastaIdMap={};
+      adaylar.forEach(r=>{
+        if(r.hasta_id){hastaIdMap[r.id]=r.hasta_id;return;}
+        const k=r.hasta?.toLowerCase().trim();
+        if(!k)return;
+        const h=hastalar.find(h2=>h2.ad?.toLowerCase().trim()===k);
+        if(h)hastaIdMap[r.id]=h.id;
+      });
+      const idler=[...new Set(Object.values(hastaIdMap).filter(Boolean))];
       if(idler.length===0){if(!iptal){setEpilasyonEksik([]);setYukleniyor(false);}return;}
       try{
         const ziyaretler=await sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id,randevu_id`);
         if(iptal)return;
         const ziyaretRandevuIdSeti=new Set(ziyaretler.map(z=>z.randevu_id).filter(Boolean));
-        const eksikRandevular=adaylar.filter(r=>r.hasta_id&&!ziyaretRandevuIdSeti.has(r.id));
+        const eksikRandevular=adaylar.filter(r=>hastaIdMap[r.id]&&!ziyaretRandevuIdSeti.has(r.id));
         const map=new Map();
         eksikRandevular.forEach(r=>{
-          const k=r.hasta_id;
+          const k=hastaIdMap[r.id];
           if(!map.has(k)||r.tarih>map.get(k).tarih)map.set(k,r);
         });
         setEpilasyonEksik([...map.values()].filter(r=>bildirimGorunurMu(r,aktifRol)).sort((a,b)=>a.tarih.localeCompare(b.tarih)));
@@ -2545,7 +2564,7 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
     }
     yukle();
     return()=>{iptal=true;};
-  },[randevular]);
+  },[randevular,hastalar]);
 
   return(
     <div>
