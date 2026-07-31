@@ -2144,10 +2144,32 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
   const [yeniBolgeZiyaretId,setYeniBolgeZiyaretId]=useState(null);
   const [yeniBolgeSatir,setYeniBolgeSatir]=useState(null);
   const [yeniBolgePicker,setYeniBolgePicker]=useState(false);
+  const [silmeOnay,setSilmeOnay]=useState(null); // {tip:"ziyaret"|"bolge", id, label}
 
   function duzenlenebilirMi(tarih){
     const gunFarki=Math.round((new Date(today()+"T00:00:00")-new Date(tarih+"T00:00:00"))/86400000);
     return gunFarki>=0&&gunFarki<=1; // sadece aynı gün ya da bir gün sonrasına kadar
+  }
+
+  async function ziyaretSil(ziyaretId){
+    try{
+      // Önce bölge uygulamalarını sil, sonra ziyareti
+      const z=ziyaretler.find(v=>v.id===ziyaretId);
+      if(z){for(const b of (z.epilasyon_bolge_uygulamalari||[])){await sbDelete("epilasyon_bolge_uygulamalari",b.id);}}
+      await sbDelete("epilasyon_ziyaretleri",ziyaretId);
+      await ziyaretleriYenile();
+      setSilmeOnay(null);
+      showToast&&showToast("Ziyaret kaydı silindi");
+    }catch(e){alert("Silme hatası: "+e.message);}
+  }
+
+  async function bolgeSil(bolgeId){
+    try{
+      await sbDelete("epilasyon_bolge_uygulamalari",bolgeId);
+      await ziyaretleriYenile();
+      setSilmeOnay(null);
+      showToast&&showToast("Bölge kaydı silindi");
+    }catch(e){alert("Silme hatası: "+e.message);}
   }
 
   async function ziyaretleriYenile(){
@@ -2377,7 +2399,10 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
             <div key={z.id} style={{border:"1px solid #e8e6e0",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                 <span style={{fontSize:13,fontWeight:600}}>{z.tarih}</span>
-                {z.uygulayan_personel&&<span style={{fontSize:11,color:"#6366f1"}}>👤 {z.uygulayan_personel}</span>}
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  {z.uygulayan_personel&&<span style={{fontSize:11,color:"#6366f1"}}>👤 {z.uygulayan_personel}</span>}
+                  {editVar&&<span onClick={()=>setSilmeOnay({tip:"ziyaret",id:z.id,label:`${z.tarih} tarihli tüm seans`})} title="Bu seansı sil" style={{cursor:"pointer",fontSize:12,color:"#dc2626",flexShrink:0}}>🗑️</span>}
+                </div>
               </div>
               {(z.epilasyon_bolge_uygulamalari||[]).map(b=>(
                 duzenlenenBolgeId===b.id?(
@@ -2395,6 +2420,7 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
                       {b.tuy_dokulme_degerlendirmesi&&<span style={{marginLeft:6,background:"#dcfce7",color:"#16a34a",fontSize:10,padding:"1px 6px",borderRadius:10}}>{b.tuy_dokulme_degerlendirmesi}</span>}
                       {b.not_metni&&<div style={{color:"#999",marginTop:2}}>{b.not_metni}</div>}
                     </div>
+                    {editVar&&<span onClick={()=>setSilmeOnay({tip:"bolge",id:b.id,label:b.bolge})} title="Bu bölgeyi sil" style={{cursor:"pointer",flexShrink:0,fontSize:11,color:"#dc2626"}}>✕</span>}
                     {editVar&&<span onClick={()=>bolgeDuzenlemeyeAc(b)} title="Düzenle" style={{cursor:"pointer",flexShrink:0,fontSize:13}}>✏️</span>}
                   </div>
                 )
@@ -2423,6 +2449,22 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
             </div>
           );})}
         </>
+      )}
+      {silmeOnay&&(
+        <ModalWrapper onClose={()=>setSilmeOnay(null)}>
+          <div>
+            <h2 style={{fontSize:16,fontWeight:600,marginBottom:8}}>🗑️ Silme Onayı</h2>
+            <div style={{fontSize:13,color:"#666",marginBottom:16}}>
+              {silmeOnay.tip==="ziyaret"
+                ?<><strong>{silmeOnay.label}</strong> kaydını ve içindeki tüm bölge verilerini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</>
+                :<><strong>{silmeOnay.label}</strong> bölgesini bu ziyaretten silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</>}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>silmeOnay.tip==="ziyaret"?ziyaretSil(silmeOnay.id):bolgeSil(silmeOnay.id)} style={{...btnPrimary,background:"#dc2626",flex:1}}>Evet, Sil</button>
+              <button onClick={()=>setSilmeOnay(null)} style={btnSecondary}>Vazgeç</button>
+            </div>
+          </div>
+        </ModalWrapper>
       )}
     </div>
   );
