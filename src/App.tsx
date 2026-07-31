@@ -15,6 +15,33 @@ function HDR(){
   return { ...HDR_BASE, "Authorization":"Bearer "+(CURRENT_TOKEN||SB_KEY) };
 }
 
+// JWT expired hatası alındığında otomatik token yenile ve isteği tekrar dene
+let _tokenYenileSozluk=null; // aynı anda birden fazla yenileme isteği açılmasın
+async function tokenYenileVeTekrarla(istek){
+  try{ return await istek(); }catch(e){
+    const hata=e.message||"";
+    if(!hata.includes("expired")&&!hata.includes("PGRST3")) throw e;
+    // Token süresi dolmuş — yenile
+    if(!_tokenYenileSozluk){
+      _tokenYenileSozluk=(async()=>{
+        try{
+          const stored=window.localStorage.getItem("kl_user");
+          const kullanici=stored?JSON.parse(stored):null;
+          if(!kullanici?.refresh_token) throw new Error("Oturum bilgisi bulunamadı");
+          const data=await sbTokenYenile(kullanici.refresh_token);
+          CURRENT_TOKEN=data.access_token;
+          const yeni={...kullanici,token:data.access_token,refresh_token:data.refresh_token};
+          window.localStorage.setItem("kl_user",JSON.stringify(yeni));
+          return true;
+        }catch{ return false; }finally{ _tokenYenileSozluk=null; }
+      })();
+    }
+    const basarili=await _tokenYenileSozluk;
+    if(!basarili) throw e;
+    return await istek(); // yeni token'la tekrar dene
+  }
+}
+
 // ── AUTH ─────────────────────────────────────────────────────────────────────
 async function sbLogin(email, sifre){
   const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=password`,{
@@ -66,6 +93,7 @@ async function kasadaHastaVarMi(ad){
 }
 
 async function sbGet(tablo, params=""){
+  return tokenYenileVeTekrarla(async()=>{
   const SAYFA=1000;
   let tumKayitlar=[];
   let bas=0;
@@ -80,20 +108,27 @@ async function sbGet(tablo, params=""){
     bas += SAYFA;
   }
   return tumKayitlar;
+  });
 }
 async function sbInsert(tablo, data){
+  return tokenYenileVeTekrarla(async()=>{
   const r = await fetch(`${SB_URL}/rest/v1/${tablo}`, {method:"POST", headers:{...HDR(),"Prefer":"return=representation"}, body:JSON.stringify(data)});
   if(!r.ok) throw new Error(await r.text());
   return r.json();
+  });
 }
 async function sbUpdate(tablo, id, data){
+  return tokenYenileVeTekrarla(async()=>{
   const r = await fetch(`${SB_URL}/rest/v1/${tablo}?id=eq.${id}`, {method:"PATCH", headers:{...HDR(),"Prefer":"return=representation"}, body:JSON.stringify(data)});
   if(!r.ok) throw new Error(await r.text());
   return r.json();
+  });
 }
 async function sbDelete(tablo, id){
+  return tokenYenileVeTekrarla(async()=>{
   const r = await fetch(`${SB_URL}/rest/v1/${tablo}?id=eq.${id}`, {method:"DELETE", headers:HDR()});
   if(!r.ok) throw new Error(await r.text());
+  });
 }
 async function sbUploadFile(path, file){
   const r = await fetch(`${SB_URL}/storage/v1/object/${EPILASYON_BUCKET}/${path}`, {
@@ -397,7 +432,10 @@ export default function App() {
     }
     yenile();
     const interval=setInterval(yenile,45*60*1000);
-    return()=>{iptal=true;clearInterval(interval);};
+    // Telefon/sekme arka plandan dönünce de token'ı hemen yenile (45 dk'lık interval telefon kilitliyken duruyor)
+    function gorunurlukTokenYenile(){ if(document.visibilityState==="visible") yenile(); }
+    document.addEventListener("visibilitychange",gorunurlukTokenYenile);
+    return()=>{iptal=true;clearInterval(interval);document.removeEventListener("visibilitychange",gorunurlukTokenYenile);};
   },[aktifKullanici?.login_name]);
 
 
@@ -2148,7 +2186,7 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
 
   function duzenlenebilirMi(tarih){
     const gunFarki=Math.round((new Date(today()+"T00:00:00")-new Date(tarih+"T00:00:00"))/86400000);
-    return gunFarki>=0&&gunFarki<=1; // sadece aynı gün ya da bir gün sonrasına kadar
+    return gunFarki>=0&&gunFarki<=2; // bugün, dün ve önceki gün (3 gün)
   }
 
   async function ziyaretSil(ziyaretId){
