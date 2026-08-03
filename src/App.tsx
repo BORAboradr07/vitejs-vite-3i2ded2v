@@ -3308,6 +3308,45 @@ function AnketSonucSekme({aktifRol}){
         {anketArama&&<span style={{fontSize:12,color:"#6366f1",fontWeight:600}}>{gosterilen.length} sonuç</span>}
       </div>}
 
+      {/* ── GÖRÜŞLER ── */}
+      {!sekreterModu&&(()=>{
+        const gorusMetniAl=a=>a.anket_tipi==="cilt"?a.cevaplar?.s9:a.cevaplar?.s10;
+        const gorusluler=anketler.filter(a=>gorusMetniAl(a)&&String(gorusMetniAl(a)).trim().length>0).sort((a,b)=>(b.tamamlama_tarih||"").localeCompare(a.tamamlama_tarih||""));
+        if(gorusluler.length===0)return null;
+        return(
+          <div style={{marginBottom:20,border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+            <div style={{background:"#f7f7f5",padding:"12px 16px",fontWeight:600,fontSize:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span>💬 Görüşler ({gorusluler.length})</span>
+            </div>
+            <div style={{maxHeight:400,overflowY:"auto"}}>
+              {gorusluler.map((a,i)=>{
+                const randevuSaati=randevuSaatMap.get(a.randevu_id);
+                const personelTahmini=a.oda==="alex"&&randevuSaati?alexPersoneliTahmini(a.randevu_tarih,randevuSaati):a.oda==="soprano"?"Hanife":null;
+                const puanRenk=a.puan>=9?"#16a34a":a.puan>=7?"#f59e0b":"#dc2626";
+                return(
+                  <div key={a.id||i} style={{padding:"12px 16px",borderBottom:i<gorusluler.length-1?"1px solid #f5f5f2":"none"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontWeight:600,fontSize:13}}>{a.hasta||"—"}</span>
+                        <span style={{fontSize:14,fontWeight:700,color:puanRenk}}>{a.puan}/10</span>
+                      </div>
+                      <span style={{fontSize:11,color:"#888"}}>{a.tamamlama_tarih||a.randevu_tarih||""}</span>
+                    </div>
+                    <div style={{fontSize:12,color:"#888",marginTop:2}}>
+                      {a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano":"—"}
+                      {personelTahmini&&<span style={{color:"#7c3aed",fontWeight:600}}> · 👤 {personelTahmini}{a.oda==="alex"?" (tahmini)":""}</span>}
+                    </div>
+                    <div style={{marginTop:6,fontSize:13,color:"#333",background:"#fafaf8",borderRadius:8,padding:"8px 12px",borderLeft:"3px solid "+puanRenk}}>
+                      "{gorusMetniAl(a)}"
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
         {[
           {l:"Toplam Anket",v:anketler.length,c:"#6366f1"},
