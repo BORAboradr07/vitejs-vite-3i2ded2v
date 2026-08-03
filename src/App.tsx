@@ -497,11 +497,17 @@ export default function App() {
   useEffect(()=>{
     let iptal=false;
     async function yukle(){
-      // hasta_id'si olan randevularda direkt kullan, olmayanlarda isimle hastalar tablosundan bul
+      // randevular.hasta_id özel hasta kodu (955 gibi), ama epilasyon tabloları hastalar.id (Supabase UUID) kullanıyor
+      // Her iki durumda da hastalar tablosu üzerinden UUID'ye çeviriyoruz
       const hastaIdMap={}; // randevu.id → hastalar.id (Supabase UUID)
       gunR.forEach(r=>{
-        if(r.hasta_id){hastaIdMap[r.id]=r.hasta_id;return;}
         const k=r.hasta?.toLowerCase().trim();
+        // Önce hasta kodundan (r.hasta_id) hastalar tablosunda ara
+        if(r.hasta_id){
+          const h=hastalar.find(h2=>String(h2.hasta_id)===String(r.hasta_id));
+          if(h){hastaIdMap[r.id]=h.id;return;}
+        }
+        // Bulunamadıysa isimden ara
         if(!k)return;
         const h=hastalar.find(h2=>h2.ad?.toLowerCase().trim()===k);
         if(h)hastaIdMap[r.id]=h.id;
@@ -725,7 +731,10 @@ export default function App() {
 
   async function blokEkle(yeniBloklar){
     try{
-      const inserted=await Promise.all(yeniBloklar.map(b=>sbInsert("bloklar",{oda:b.oda,tarih:b.tarih,saat:b.saat,sure:b.sure,baslik:b.baslik}).then(r=>({...b,id:r[0].id}))));
+      // Aynı tarih+oda+başlık için zaten blok varsa ekleme (tekrar önlemi)
+      const filtrelenmis=yeniBloklar.filter(b=>!bloklar.some(m=>m.tarih===b.tarih&&m.oda===b.oda&&m.baslik===b.baslik));
+      if(filtrelenmis.length===0){showToast("Bu blok(lar) zaten mevcut.");return;}
+      const inserted=await Promise.all(filtrelenmis.map(b=>sbInsert("bloklar",{oda:b.oda,tarih:b.tarih,saat:b.saat,sure:b.sure,baslik:b.baslik}).then(r=>({...b,id:r[0].id}))));
       setBloklar(prev=>[...prev,...inserted]);
       showToast(`${inserted.length} blok eklendi.`);
     } catch(e){showToast("Hata: "+e.message,"error");}
@@ -900,8 +909,9 @@ export default function App() {
   const gunIciSayisi=gunIciLog.filter(g=>(g.degTarih||g.deg_tarih)===today()).length;
 
   // Saati geçmiş ama durumu (Seans/Rütuş/Gelmedi) hâlâ işaretlenmemiş randevular — sadece Uygulayıcı (personel) için
+  const ucGunOnceGlobal=(()=>{const d=new Date();d.setDate(d.getDate()-3);return d.toISOString().slice(0,10);})();
   const gecikmisDurumsuzRandevular = aktifRol!=="personel" ? [] : randevular.filter(r=>
-    r.tarih<=today() && r.tarih>=BILDIRIM_TAKIP_BASLANGIC &&
+    r.tarih<=today() && r.tarih>=BILDIRIM_TAKIP_BASLANGIC && r.tarih>=ucGunOnceGlobal &&
     !(r.log||[]).some(l=>l.islem?.includes("Durum:")) &&
     new Date(`${r.tarih}T${r.saat}:00`).getTime()<Date.now() &&
     !gecikmisKapatilanlar.has(r.id)
@@ -1250,8 +1260,9 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
                 const esik=new Date();esik.setHours(18,30,0,0);
                 return Date.now()>=esik.getTime();
               };
-              const durumEksikVar=u.list.some(r=>r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&gunSonuGecti(r));
-              const epilasyonEksikVar=u.list.some(r=>r.tarih>=EPILASYON_UYARI_BASLANGIC&&r.durum!=="Gelmedi"&&!epilasyonMuafMi(r)&&epilasyonDurum?.[r.id]!=="yesil"&&gecikti1_5Saat(r));
+              const ucGunOnce=(()=>{const d=new Date();d.setDate(d.getDate()-3);return d.toISOString().slice(0,10);})();
+              const durumEksikVar=u.list.some(r=>r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&r.tarih>=ucGunOnce&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&gunSonuGecti(r));
+              const epilasyonEksikVar=u.list.some(r=>r.tarih>=EPILASYON_UYARI_BASLANGIC&&r.tarih>=ucGunOnce&&r.durum!=="Gelmedi"&&!epilasyonMuafMi(r)&&epilasyonDurum?.[r.id]!=="yesil"&&gecikti1_5Saat(r));
               const gecikmisEksik=durumEksikVar||epilasyonEksikVar;
               return(
                 <div key={u.id} onClick={()=>{if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}}
@@ -2619,8 +2630,8 @@ function BeklemeKarti({b,onRandevuyaCevir,onSil,onNotGuncelle,aktifRol,siraNo}){
 }
 
 // ── HASTALAR ─────────────────────────────────────────────────────────────────
-const BILDIRIM_TAKIP_BASLANGIC="2026-07-16"; // Bu tarihten önceki eksik işaretlemeler artık bildirime dahil edilmiyor (birikmiş eski kayıtları temizlemek için)
-const EPILASYON_UYARI_BASLANGIC="2026-07-20"; // Pazartesi — personel bu haftayı epilasyon kartı doldurmaya alışmak için kullansın, bu tarihten itibaren eksik kart da kırmızı çerçeveye dahil olsun
+const BILDIRIM_TAKIP_BASLANGIC="2026-08-03"; // Temiz başlangıç — eski bildirimleri sıfırla
+const EPILASYON_UYARI_BASLANGIC="2026-08-03"; // Temiz başlangıç — eski rozetleri sıfırla
 function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasyonAc}){
   const bugun=today();
   const durumEksik=randevular
@@ -2635,11 +2646,14 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
     async function yukle(){
       setYukleniyor(true);
       const adaylar=randevular.filter(r=>r.tarih<=bugun&&r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&r.durum!=="Gelmedi"&&!epilasyonMuafMi(r));
-      // hasta_id'si olan randevularda direkt kullan, olmayanlarda isimle hastalar tablosundan bul
+      // randevular.hasta_id özel hasta kodu — hastalar tablosu üzerinden Supabase UUID'ye çeviriyoruz
       const hastaIdMap={};
       adaylar.forEach(r=>{
-        if(r.hasta_id){hastaIdMap[r.id]=r.hasta_id;return;}
         const k=r.hasta?.toLowerCase().trim();
+        if(r.hasta_id){
+          const h=hastalar.find(h2=>String(h2.hasta_id)===String(r.hasta_id));
+          if(h){hastaIdMap[r.id]=h.id;return;}
+        }
         if(!k)return;
         const h=hastalar.find(h2=>h2.ad?.toLowerCase().trim()===k);
         if(h)hastaIdMap[r.id]=h.id;
