@@ -380,6 +380,7 @@ export default function App() {
   const [yukleniyor,setYukleniyor]   = useState(true);
   const [modal,setModal]             = useState(null);
   const [epilasyonModal,setEpilasyonModal] = useState(null); // {hasta, randevu}
+  const [epilasyonTetik,setEpilasyonTetik] = useState(0); // epilasyon kartı kapandığında rozeti yeniden hesalatmak için
   const [gecikmisPopupAcik,setGecikmisPopupAcik] = useState(false);
   const [gecikmisKapatilanlar,setGecikmisKapatilanlar] = useState(()=>new Set());
   const [toast,setToast]             = useState(null);
@@ -406,10 +407,13 @@ export default function App() {
   const aktifKullaniciRef=useRef(aktifKullanici);
   useEffect(()=>{aktifKullaniciRef.current=aktifKullanici;},[aktifKullanici]);
   const [tokenYenilendi,setTokenYenilendi]=useState(0);
+  const sonTokenYenilemeRef=useRef(0);
   useEffect(()=>{
     if(!aktifKullanici?.login_name)return;
     let iptal=false;
     async function yenile(){
+      // Son 60 saniye içinde yenilendiyse tekrar yenileme (döngü önlemi)
+      if(Date.now()-sonTokenYenilemeRef.current<60000)return;
       const guncelRefreshToken=aktifKullaniciRef.current?.refresh_token;
       if(!guncelRefreshToken){
         cikisYap();
@@ -419,12 +423,15 @@ export default function App() {
         const data=await sbTokenYenile(guncelRefreshToken);
         if(iptal)return;
         CURRENT_TOKEN=data.access_token;
-        setAktifKullanici(prev=>{
-          if(!prev)return prev;
+        sonTokenYenilemeRef.current=Date.now();
+        // aktifKullanici'yı güncellerken login_name değişmeyecek — sadece token/refresh_token güncelleniyor
+        const prev=aktifKullaniciRef.current;
+        if(prev){
           const yeni={...prev,token:data.access_token,refresh_token:data.refresh_token};
           try{window.localStorage.setItem("kl_user",JSON.stringify(yeni));}catch{}
-          return yeni;
-        });
+          aktifKullaniciRef.current=yeni;
+          // setAktifKullanici'yı çağırmıyoruz — ref üzerinden güncelliyoruz, yoksa useEffect tekrar tetiklenir
+        }
         setTokenYenilendi(v=>v+1);
       }catch(e){
         if(!iptal)cikisYap();
@@ -465,8 +472,17 @@ export default function App() {
     }
     yukle(false);
     // Sekme uzun süre açık kalabildiği için (özellikle uygulayıcılarda) arka planda sessizce tazele
-    const interval=setInterval(()=>yukle(true),3*60*1000); // 3 dakikada bir
-    function gorunurlukDegisti(){ if(document.visibilityState==="visible") yukle(true); }
+    // Modal/form açıkken yenileme yapma — kayıt sırasında state değişikliği sorun yaratır
+    const interval=setInterval(()=>{
+      if(document.querySelector("[data-modal-acik]"))return; // modal açıkken atla
+      yukle(true);
+    },3*60*1000);
+    function gorunurlukDegisti(){
+      if(document.visibilityState==="visible"){
+        if(document.querySelector("[data-modal-acik]"))return; // modal açıkken atla
+        yukle(true);
+      }
+    }
     document.addEventListener("visibilitychange",gorunurlukDegisti);
     return()=>{clearInterval(interval);document.removeEventListener("visibilitychange",gorunurlukDegisti);};
   },[tokenYenilendi]);
@@ -514,7 +530,7 @@ export default function App() {
     }
     yukle();
     return()=>{iptal=true;};
-  },[seciliTarih,randevular,hastalar]);
+  },[seciliTarih,randevular,hastalar,epilasyonTetik]);
 
   function cakismaVar(oda,tarih,saat,sure,excludeId=null){
     const yB=timeToMin(saat),yE=yB+sure;
@@ -990,8 +1006,8 @@ export default function App() {
         </ModalWrapper>
       )}
       {epilasyonModal&&(
-        <ModalWrapper onClose={()=>setEpilasyonModal(null)}>
-          <EpilasyonKart hasta={epilasyonModal.hasta} randevu={epilasyonModal.randevu} aktifKullanici={aktifKullanici} aktifRol={aktifRol} onKapat={()=>setEpilasyonModal(null)} showToast={showToast}/>
+        <ModalWrapper onClose={()=>{setEpilasyonModal(null);setEpilasyonTetik(t=>t+1);}}>
+          <EpilasyonKart hasta={epilasyonModal.hasta} randevu={epilasyonModal.randevu} aktifKullanici={aktifKullanici} aktifRol={aktifRol} onKapat={()=>{setEpilasyonModal(null);setEpilasyonTetik(t=>t+1);}} showToast={showToast}/>
         </ModalWrapper>
       )}
       {anketYollaAcik&&(
@@ -4185,7 +4201,7 @@ function SifreModal({hedef,aktifRol,onBasari,onKapat}){
 function ModalWrapper({children,onClose}){
   useEffect(()=>{const fn=e=>{if(e.key==="Escape")onClose();};window.addEventListener("keydown",fn);return()=>window.removeEventListener("keydown",fn);},[]);
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+    <div data-modal-acik="1" onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:"1.5rem",width:"100%",maxWidth:560,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
         {children}
       </div>
