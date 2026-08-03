@@ -1165,8 +1165,10 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
       ...bosluklar.map(bo=>({tip:"bosluk",b:bo.b,e:bo.e,veri:bo})),
     ].sort((a,b)=>a.b-b.b||a.e-b.e);
 
-    const toplamMesgul=satirlar.filter(s=>s.tip!=="bosluk").reduce((s,x)=>s+(x.e-x.b),0);
-    const doluluk=Math.round((toplamMesgul/odaTotal)*100);
+    const toplamMesgul=satirlar.filter(s=>s.tip==="randevu").reduce((s,x)=>s+(x.e-x.b),0);
+    const toplamBlok=satirlar.filter(s=>s.tip==="blok").reduce((s,x)=>s+(x.e-x.b),0);
+    const kullanilabilirSure=odaTotal-toplamBlok; // bloklar (öğle arası vb.) çıkarılıyor
+    const doluluk=kullanilabilirSure>0?Math.round((toplamMesgul/kullanilabilirSure)*100):0;
 
     return(
       <div>
@@ -1176,7 +1178,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
           </div>
         ):(
           <div style={{fontSize:11,color:"#888",background:"#fff",border:"1px solid #eee",borderRadius:8,padding:"5px 10px",marginBottom:8,display:"inline-block"}}>
-            Bugün: <b style={{color:renkOda}}>%{doluluk} dolu</b> ({Math.floor(toplamMesgul/60)}s {toplamMesgul%60}dk dolu / <b style={{fontSize:13,color:"#333"}}>{Math.floor((odaTotal-toplamMesgul)/60)}s {(odaTotal-toplamMesgul)%60}dk boş</b>)
+            Bugün: <b style={{color:renkOda}}>%{doluluk} dolu</b> ({Math.floor(toplamMesgul/60)}s {toplamMesgul%60}dk dolu / <b style={{fontSize:13,color:"#333"}}>{Math.floor((kullanilabilirSure-toplamMesgul)/60)}s {(kullanilabilirSure-toplamMesgul)%60}dk boş</b>)
           </div>
         )}
         <div style={{display:"flex",gap:10}}>
