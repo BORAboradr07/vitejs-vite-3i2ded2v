@@ -1962,7 +1962,8 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
 // ── RANDEVU DETAY ────────────────────────────────────────────────────────────
 function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc}){
   const [durum,setDurum]=useState(r.durum);const [odeme,setOdeme]=useState(r.odeme);
-  const hastaKaydi=(hastalar||[]).find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
+  const hastaKaydi=(hastalar||[]).find(h=>r.hasta_id&&h.hasta_id&&String(h.hasta_id)===String(r.hasta_id))
+    ||(hastalar||[]).find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
   const [hastaEdit,setHastaEdit]=useState(false);
   const [yeniHastaAd,setYeniHastaAd]=useState(r.hasta);
   const [yeniHastaTel,setYeniHastaTel]=useState(r.tel||"");
