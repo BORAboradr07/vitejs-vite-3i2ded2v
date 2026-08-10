@@ -463,6 +463,42 @@ export default function App() {
         h.forEach(hs=>{if(hs.ad)hastaMap[hs.ad.toLowerCase().trim()]={tel:hs.tel||"",cinsiyet:hs.cinsiyet||"Bayan"};});
         setRandevular(r.map(x=>({...x,bolgeler:x.bolgeler||[],log:x.log||[],tel:x.tel||(hastaMap[x.hasta?.toLowerCase().trim()]?.tel||""),cinsiyet:x.cinsiyet||(hastaMap[x.hasta?.toLowerCase().trim()]?.cinsiyet||"Bayan")})));
         setHastalar(h);
+        // Randevularda olup hastalar tablosunda olmayan hastaları otomatik oluştur (eski veri eksikliği düzeltmesi)
+        if(!sessiz){
+          const hastaAdSeti=new Set(h.map(hs=>hs.ad?.toLowerCase().trim()).filter(Boolean));
+          const hastaKodSeti=new Set(h.map(hs=>hs.hasta_id).filter(Boolean).map(String));
+          const eksikler=new Map(); // ad → {ad, hasta_id, tel, cinsiyet}
+          r.forEach(rv=>{
+            const ad=rv.hasta?.trim();
+            if(!ad)return;
+            const adKey=ad.toLowerCase().trim();
+            // Hem isim hem hasta_id ile kontrol — ikisinden biri eşleşiyorsa mevcut
+            if(hastaAdSeti.has(adKey))return;
+            if(rv.hasta_id && hastaKodSeti.has(String(rv.hasta_id)))return;
+            if(eksikler.has(adKey))return;
+            eksikler.set(adKey,{
+              ad:ad.toLocaleUpperCase("tr"),
+              hasta_id:rv.hasta_id||null,
+              tel:rv.tel||"",
+              cinsiyet:rv.cinsiyet||"Bayan"
+            });
+          });
+          if(eksikler.size>0){
+            try{
+              const yeniler=[];
+              for(const data of eksikler.values()){
+                const kayit={ad:data.ad,tel:data.tel,cinsiyet:data.cinsiyet};
+                if(data.hasta_id)kayit.hasta_id=data.hasta_id;
+                const [ins]=await sbInsert("hastalar",kayit);
+                yeniler.push(ins);
+              }
+              if(yeniler.length>0){
+                setHastalar(prev=>[...prev,...yeniler]);
+                console.log(`[OTO] ${yeniler.length} eksik hasta kaydı otomatik oluşturuldu:`,yeniler.map(y=>y.ad));
+              }
+            }catch(e){console.warn("Eksik hasta kayıtları oluşturulamadı:",e);}
+          }
+        }
         setBekleme(b.map(x=>({...x,bolgeler:x.bolgeler||[]})));
         setSilLog(sl.map(x=>({...x,bolgeler:x.bolgeler||[]})));
         setGunIciLog(gl.map(x=>({...x,bolgeler:x.bolgeler||[]})));
