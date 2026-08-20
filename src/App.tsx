@@ -3094,6 +3094,42 @@ function AnketSonucSekme({aktifRol}){
     <div>
       <h2 style={{fontSize:18,fontWeight:600,marginBottom:12}}>📊 Anket Sonuçları</h2>
 
+      {(()=>{
+        const yorumlar=anketler.filter(a=>{
+          const lazerYorum=a.cevaplar?.s10;
+          const ciltYorum=a.cevaplar?.s9;
+          const ekYorum=a.ek_geri_bildirim;
+          const metin=a.anket_tipi==="cilt"?ciltYorum:lazerYorum;
+          return(metin&&metin.trim())||(ekYorum&&ekYorum.trim());
+        }).sort((a,b)=>(b.tamamlama_tarih||"").localeCompare(a.tamamlama_tarih||""));
+        if(yorumlar.length===0)return null;
+        return(
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
+            <div style={{padding:"12px 16px",background:"#f0fdf4",borderBottom:"1px solid #bbf7d0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontWeight:600,fontSize:14,color:"#16a34a"}}>💬 Hasta Görüşleri ({yorumlar.length})</span>
+            </div>
+            <div style={{maxHeight:300,overflowY:"auto"}}>
+              {yorumlar.map((a,i)=>{
+                const metin=a.anket_tipi==="cilt"?a.cevaplar?.s9:a.cevaplar?.s10;
+                const ekYorum=a.ek_geri_bildirim;
+                const randevuSaati=randevuSaatMap.get(a.randevu_id);
+                const personel=a.oda==="alex"&&randevuSaati?alexPersoneliTahmini(a.randevu_tarih,randevuSaati):a.oda==="soprano"?"Hanife":null;
+                return(
+                  <div key={a.id||i} style={{padding:"10px 16px",borderBottom:i<yorumlar.length-1?"1px solid #f5f5f2":"none"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                      <span style={{fontWeight:600,fontSize:13}}>{a.hasta} <span style={{fontWeight:400,color:a.puan<=5?"#dc2626":a.puan<=8?"#f59e0b":"#16a34a",fontSize:12}}>{a.puan}/10</span></span>
+                      <span style={{fontSize:11,color:"#888"}}>{a.tamamlama_tarih} · {a.oda==="alex"?"Alex":"Soprano"}{personel&&<span style={{color:"#7c3aed"}}> · {personel}</span>}</span>
+                    </div>
+                    {metin&&metin.trim()&&<div style={{fontSize:12,color:"#555",background:"#f7f7f5",padding:"8px 10px",borderRadius:8,marginBottom:ekYorum?4:0}}>"{metin.trim()}"</div>}
+                    {ekYorum&&ekYorum.trim()&&<div style={{fontSize:12,color:"#dc2626",background:"#fef2f2",padding:"8px 10px",borderRadius:8}}>📝 Ek görüş: "{ekYorum.trim()}"</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {!sekreterModu&&<div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
         <button onClick={()=>{setFiltre("hepsi");setAnketArama("");}} style={{...chipStyle(filtre==="hepsi"&&!anketArama),fontSize:13}}>Tümü ({sirali.filter(a=>a.puan>0).length})</button>
         <button onClick={()=>{setFiltre("yuksek");setAnketArama("");}} style={{...chipStyle(filtre==="yuksek"&&!anketArama),fontSize:13,background:filtre==="yuksek"&&!anketArama?"#f0fdf4":undefined,color:filtre==="yuksek"&&!anketArama?"#16a34a":undefined,border:filtre==="yuksek"&&!anketArama?"1.5px solid #86efac":undefined}}>⭐ 9 ve üstü ({yuksekPuan.length})</button>
