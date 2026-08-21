@@ -527,7 +527,8 @@ export default function App() {
             setGunIciLog(prev=>[{...gl,id:ins.id,degTarih:gl.deg_tarih,degSaat:gl.deg_saat,kullanic:gl.kullanic,eskiSaat:gl.eski_saat,eskiSure:gl.eski_sure,yeniSaat:gl.yeni_saat,yeniSure:gl.yeni_sure},...prev]);
           }
         }catch(logErr){console.warn("Log kaydedilemedi:",logErr);}
-        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum,odeme:data.odeme,notlar:data.notlar||"",tel:data.tel,cinsiyet:data.cinsiyet,log:yeniLog};
+        const hastaObj1=hastalar.find(h=>h.id===data.hastaId)||hastalar.find(h=>h.id===eskiR?.hasta_id)||hastalar.find(h=>h.ad?.toLowerCase().trim()===data.hasta?.toLowerCase().trim());
+        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId||eskiR?.hasta_id||hastaObj1?.id||null,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum,odeme:data.odeme,notlar:data.notlar||"",tel:data.tel,cinsiyet:data.cinsiyet,log:yeniLog};
         await sbUpdate("randevular",data.id,sbData);
         setRandevular(prev=>prev.map(r=>r.id===data.id?{...r,...sbData,id:data.id}:r));
         showToast("Randevu güncellendi.");
@@ -1674,7 +1675,7 @@ const sureBtnStyle={width:32,height:32,border:"1px solid #ddd",borderRadius:8,ba
 // ── RANDEVU FORM ─────────────────────────────────────────────────────────────
 function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duzenleme}){
   const [oda,setOda]=useState(basData.oda||"alex");
-  const [hasta,setHasta]=useState(basData.hasta||"");const [hastaId,setHastaId]=useState(basData.hastaId||null);const [hastaTel,setHastaTel]=useState(basData.tel||"");const [hastaCinsiyet,setHastaCinsiyet]=useState(basData.cinsiyet||"Bayan");
+  const [hasta,setHasta]=useState(basData.hasta||"");const [hastaId,setHastaId]=useState(basData.hastaId||basData.hasta_id||null);const [hastaTel,setHastaTel]=useState(basData.tel||"");const [hastaCinsiyet,setHastaCinsiyet]=useState(basData.cinsiyet||"Bayan");
   const [tarih,setTarih]=useState(basData.tarih||today());const [saat,setSaat]=useState(basData.saat||"09:00");
   const [seciliBolgeler,setSeciliBolgeler]=useState(basData.bolgeler||[]);
   const [sure,setSure]=useState(basData.sure||15);const [manuelSure,setManuelSure]=useState(!!basData.sure);
