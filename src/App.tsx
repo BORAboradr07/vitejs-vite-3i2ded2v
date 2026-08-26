@@ -181,6 +181,26 @@ function odaKapanisSaat(oda){
   // Alex: son işlem 19:15'te bitecek şekilde; Soprano: son işlem 19:00'da bitecek şekilde
   return oda==="alex"?19*60+15:19*60;
 }
+function aktifCalismaKurali(kurallar,oda,tarih){
+  // Verilen oda+tarih için geçerli çalışma saati kuralını bulur (en son eklenen kural kazanır).
+  if(!kurallar||!kurallar.length)return null;
+  const uygun=kurallar.filter(k=>k.oda===oda&&k.baslangic_tarih<=tarih&&(!k.bitis_tarih||tarih<=k.bitis_tarih));
+  if(!uygun.length)return null;
+  return uygun.reduce((a,b)=>(b.id>a.id?b:a));
+}
+function efektifAcilis(kurallar,oda,tarih){
+  const k=aktifCalismaKurali(kurallar,oda,tarih);
+  return k?k.acilis:9*60;
+}
+function efektifKapanis(kurallar,oda,tarih){
+  const k=aktifCalismaKurali(kurallar,oda,tarih);
+  return k?k.kapanis:odaKapanisSaat(oda);
+}
+function efektifMola(kurallar,oda,tarih){
+  const k=aktifCalismaKurali(kurallar,oda,tarih);
+  if(k&&k.mola_bas!=null&&k.mola_bit!=null)return {bas:k.mola_bas,bit:k.mola_bit};
+  return null;
+}
 function today(){
   // Türkiye saat dilimine göre "bugün" — UTC bazlı toISOString() gece 00:00-03:00 arası yanlış gün verebiliyordu
   const parcalar=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Istanbul",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
@@ -339,6 +359,7 @@ export default function App() {
   const [silLog,setSilLog]           = useState([]);
   const [gunIciLog,setGunIciLog]     = useState([]);
   const [bloklar,setBloklar]         = useState([]);
+  const [calismaSaatleri,setCalismaSaatleri] = useState([]);
   const [yukleniyor,setYukleniyor]   = useState(true);
   const [modal,setModal]             = useState(null);
   const [epilasyonModal,setEpilasyonModal] = useState(null); // {hasta, randevu}
@@ -401,13 +422,14 @@ export default function App() {
     async function yukle(sessiz){
       try{
         if(!sessiz)setYukleniyor(true);
-        const [r,h,b,sl,gl,bl]=await Promise.all([
+        const [r,h,b,sl,gl,bl,cs]=await Promise.all([
           sbGet("randevular"),
           sbGet("hastalar"),
           sbGet("bekleme"),
           sbGet("sil_log","order=id.desc"),
           sbGet("gunici_log","order=id.desc"),
           sbGet("bloklar"),
+          sbGet("calisma_saatleri").catch(()=>[]),
         ]);
         const hastaMap={};
         h.forEach(hs=>{if(hs.ad)hastaMap[hs.ad.toLowerCase().trim()]={tel:hs.tel||"",cinsiyet:hs.cinsiyet||"Bayan"};});
@@ -417,6 +439,7 @@ export default function App() {
         setSilLog(sl.map(x=>({...x,bolgeler:x.bolgeler||[]})));
         setGunIciLog(gl.map(x=>({...x,bolgeler:x.bolgeler||[]})));
         setBloklar(bl);
+        setCalismaSaatleri(cs);
       } catch(e){ if(!sessiz)showToast("Veriler yüklenemedi: "+e.message,"error"); }
       finally{ if(!sessiz)setYukleniyor(false); }
     }
@@ -471,6 +494,8 @@ export default function App() {
     const bc=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih&&b.baslik!=="DR_YOK")
       .find(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return yB<be&&yE>bb;});
     if(bc) return {tip:"blok",mesaj:`⛔ Bu saat bloklu: "${bc.baslik}" (${bc.saat}, ${bc.sure} dk).`};
+    const mola=efektifMola(calismaSaatleri,oda,tarih);
+    if(mola&&yB<mola.bit&&yE>mola.bas) return {tip:"blok",mesaj:`⛔ Bu saat öğle molasında (${minToTime(mola.bas)}-${minToTime(mola.bit)}).`};
     if(rc){
       if(oda==="soprano") return {tip:"uyari",mesaj:`⚠️ Bu saatte ${rc.hasta} adlı hastanın randevusu var (${rc.saat}, ${rc.sure} dk). Yine de devam etmek istiyor musunuz?`};
       return {tip:"randevu",mesaj:`⚠️ Bu saatte ${rc.hasta} adlı hastanın randevusu var (${rc.saat}, ${rc.sure} dk).`};
@@ -496,7 +521,7 @@ export default function App() {
     }
     const saatMin=timeToMin(data.saat);
     const bitisMin=saatMin+data.sure;
-    const kapanisSaat=odaKapanisSaat(data.oda);
+    const kapanisSaat=efektifKapanis(calismaSaatleri,data.oda,tarihKontrol);
     if(bitisMin>kapanisSaat){
       showToast(`${data.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu randevu o saatten sonra bitiyor, oluşturulamaz.`,"error");
       return false;
@@ -660,6 +685,21 @@ export default function App() {
     try{
       await sbDelete("bloklar",id);
       setBloklar(prev=>prev.filter(x=>x.id!==id));
+    } catch(e){showToast("Hata: "+e.message,"error");}
+  }
+
+  async function calismaSaatiEkle(kural){
+    try{
+      const r=await sbInsert("calisma_saatleri",kural);
+      setCalismaSaatleri(prev=>[...prev,r[0]]);
+      showToast("Çalışma saati kuralı kaydedildi.");
+    } catch(e){showToast("Hata: "+e.message,"error");}
+  }
+
+  async function calismaSaatiSil(id){
+    try{
+      await sbDelete("calisma_saatleri",id);
+      setCalismaSaatleri(prev=>prev.filter(x=>x.id!==id));
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
 
@@ -902,7 +942,7 @@ export default function App() {
         </div>
       </nav>
       <div style={{maxWidth:1200,margin:"0 auto",padding:"1.25rem 1.5rem"}}>
-        {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast} epilasyonDurum={epilasyonDurum}/>}
+        {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} calismaSaatleri={calismaSaatleri} calismaSaatiEkle={calismaSaatiEkle} calismaSaatiSil={calismaSaatiSil} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast} epilasyonDurum={epilasyonDurum}/>}
         {aktifSekme==="bildirimler"&&<BildirimlerSekme randevular={randevular} hastalar={hastalar} aktifRol={aktifRol} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} hastaGuncelle={hastaGuncelle} aktifRol={aktifRol} showToast={showToast} randevular={randevular} silLog={silLog} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil} onEpilasyonAc={(hasta)=>setEpilasyonModal({hasta,randevu:null})}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle} onNotGuncelle={beklemeNotGuncelle}/>}
@@ -910,7 +950,7 @@ export default function App() {
         {aktifSekme==="anket_sonuc"&&<AnketSonucSekme aktifRol={aktifRol}/>}
         {aktifSekme==="alex_program"&&<AlexProgramSekme aktifRol={aktifRol}/>}
         {aktifSekme==="gelmeyenler"&&<GelmeyenlerSekme randevular={randevular} aktifRol={aktifRol} onDurumGuncelle={durumGuncelle}/>}
-        {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
+        {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} calismaSaatleri={calismaSaatleri} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
         {aktifSekme==="log"&&aktifRol==="yonetici"&&<LogSekme randevular={randevular} silLog={silLog} gunIciLog={gunIciLog}/>}
         {aktifSekme==="epilasyon_log"&&(aktifRol==="yonetici"||aktifRol==="sorumlu")&&<EpilasyonLogSekme/>}
       </div>
@@ -960,11 +1000,12 @@ export default function App() {
 }
 
 // ── TAKVİM ───────────────────────────────────────────────────────────────────
-function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkle,blokSil,randevular,aktifRol,onYeniRandevu,onRandevuTikla,showToast,onRandevuDuzenle,onRandevuTasi,epilasyonDurum}){
+function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calismaSaatleri,calismaSaatiEkle,calismaSaatiSil,blokEkle,blokSil,randevular,aktifRol,onYeniRandevu,onRandevuTikla,showToast,onRandevuDuzenle,onRandevuTasi,epilasyonDurum}){
   const [bosPanel,setBosPanel]=useState(false);
   const [blokPanel,setBlokPanel]=useState(false);
   const [hastaAraPanel,setHastaAraPanel]=useState(false);
   const [drYokPanel,setDrYokPanel]=useState(false);
+  const [calismaPanel,setCalismaPanel]=useState(false);
   const [aktifOda,setAktifOda]=useState("alex");
   const [mobil,setMobil]=useState(typeof window!=="undefined"&&window.matchMedia("(max-width: 680px)").matches);
   useEffect(()=>{
@@ -1215,13 +1256,15 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkl
           {(aktifRol==="yonetici"||aktifRol==="sekreter")&&<button onClick={()=>{setBlokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setDrYokPanel(false);}} style={{...navBtnStyle,background:blokPanel?"#fee2e2":"#f0f0ed",color:blokPanel?"#dc2626":"#444",border:blokPanel?"1px solid #fca5a5":"1px solid #ddd"}}>🔒 Blok Kapat</button>}
           {(aktifRol==="yonetici"||aktifRol==="sekreter")&&<button onClick={()=>{setDrYokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);}} style={{...navBtnStyle,background:drYokPanel?"#fff7ed":"#f0f0ed",color:drYokPanel?"#c2410c":"#444",border:drYokPanel?"1px solid #fed7aa":"1px solid #ddd"}}>🩺 Dr. Yok</button>}
           {(aktifRol==="yonetici"||aktifRol==="sorumlu")&&<button onClick={()=>{if(!kasaSifre){const s=window.prompt("Şifre:");if(s==="SON26"||s==="5555"){setKasaSifre(true);setKasaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}else{alert("Yanlış şifre!");}}else{setKasaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}}} style={{...navBtnStyle,background:kasaPanel?"#fef3c7":"#f0f0ed",color:kasaPanel?"#92400e":"#444",border:kasaPanel?"1px solid #fcd34d":"1px solid #ddd"}}>🔎 Kontrol</button>}
+          {aktifRol==="yonetici"&&<button onClick={()=>{setCalismaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}} style={{...navBtnStyle,background:calismaPanel?"#eef2ff":"#f0f0ed",color:calismaPanel?"#4338ca":"#444",border:calismaPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>⏰ Çalışma Saatleri</button>}
         </div>
       </div>
       {hastaAraPanel&&<HastaAraPanel randevular={randevular} onDuzenle={(r)=>{setHastaAraPanel(false);onRandevuDuzenle(r);}} onKapat={()=>setHastaAraPanel(false)}/>}
       {drYokPanel&&<DrYokPanel bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} seciliTarih={seciliTarih} showToast={showToast} onKapat={()=>setDrYokPanel(false)}/>}
       {kasaPanel&&<KasaKontrolPanel gunRandevular={[...alexR,...sopR]} seciliTarih={seciliTarih} onKapat={()=>setKasaPanel(false)}/>}
-      {bosPanel&&<BosRandevuPanel randevular={randevular} bloklar={bloklar} setSeciliTarih={setSeciliTarih} onYeniRandevu={onYeniRandevu} onKapat={()=>setBosPanel(false)}/>}
+      {bosPanel&&<BosRandevuPanel randevular={randevular} bloklar={bloklar} calismaSaatleri={calismaSaatleri} setSeciliTarih={setSeciliTarih} onYeniRandevu={onYeniRandevu} onKapat={()=>setBosPanel(false)}/>}
       {blokPanel&&<BlokPanel bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} seciliTarih={seciliTarih} showToast={showToast} onKapat={()=>setBlokPanel(false)}/>}
+      {calismaPanel&&<CalismaSaatleriPanel calismaSaatleri={calismaSaatleri} calismaSaatiEkle={calismaSaatiEkle} calismaSaatiSil={calismaSaatiSil} seciliTarih={seciliTarih} showToast={showToast} onKapat={()=>setCalismaPanel(false)}/>}
       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
         {Object.entries(RENK).filter(([k])=>k!=="blok"&&k!=="gelmedi").map(([k,v])=>(
           <div key={k} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#666"}}>
@@ -1506,7 +1549,7 @@ function KasaKontrolPanel({gunRandevular,seciliTarih,onKapat}){
 const navBtnStyle={background:"#f0f0ed",border:"1px solid #ddd",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:14,fontFamily:"inherit"};
 
 // ── BOŞ RANDEVU BUL ──────────────────────────────────────────────────────────
-function BosRandevuPanel({randevular,bloklar,setSeciliTarih,onYeniRandevu,onKapat}){
+function BosRandevuPanel({randevular,bloklar,calismaSaatleri,setSeciliTarih,onYeniRandevu,onKapat}){
   const [oda,setOda]=useState("alex");const [bolgeler,setBolgeler]=useState([]);const [sure,setSure]=useState(30);
   const [gunFiltre,setGunFiltre]=useState("hepsi");const [saatFiltre,setSaatFiltre]=useState("hepsi");
   const [aralikGun,setAralikGun]=useState(14);const [sonuclar,setSonuclar]=useState(null);
@@ -1521,12 +1564,14 @@ function BosRandevuPanel({randevular,bloklar,setSeciliTarih,onYeniRandevu,onKapa
       if(dow===0)continue; // Pazar günleri her zaman atla
       if(gunFiltre==="haftaici"&&dow===6)continue;
       if(gunFiltre==="haftasonu"&&dow!==6)continue;
-      const S=9*60,E=odaKapanisSaat(oda);
+      const S=efektifAcilis(calismaSaatleri,oda,tarih),E=efektifKapanis(calismaSaatleri,oda,tarih);
+      const mola=efektifMola(calismaSaatleri,oda,tarih);
       for(let t=S;t+sure<=E;t+=15){
         const saat=minToTime(t);const bitis=t+sure;
         if(saatFiltre==="sabah"&&t>=13*60)continue;
         if(saatFiltre==="ogle_sonrasi"&&(t<13*60||t>=17*60))continue;
         if(saatFiltre==="17_sonrasi"&&t<17*60)continue;
+        if(mola&&t<mola.bit&&bitis>mola.bas)continue;
         const rc=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).some(r=>{const b=timeToMin(r.saat),e=b+r.sure;return t<e&&bitis>b;});
         const bc=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih).some(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return t<be&&bitis>bb;});
         if(!rc&&!bc){if(!sonuc.some(s=>s.tarih===tarih&&s.saat===saat))sonuc.push({tarih,saat});if(sonuc.filter(s=>s.tarih===tarih).length>=3)break;}
@@ -1652,6 +1697,91 @@ function BlokPanel({bloklar,blokEkle,blokSil,seciliTarih,showToast,onKapat}){
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── ÇALIŞMA SAATLERİ PANEL ───────────────────────────────────────────────────
+function CalismaSaatleriPanel({calismaSaatleri,calismaSaatiEkle,calismaSaatiSil,seciliTarih,showToast,onKapat}){
+  const [oda,setOda]=useState("alex");
+  const [acilis,setAcilis]=useState("09:00");
+  const [kapanis,setKapanis]=useState("19:00");
+  const [molaVar,setMolaVar]=useState(false);
+  const [molaBas,setMolaBas]=useState("14:00");
+  const [molaBit,setMolaBit]=useState("15:00");
+  const [baslangicTarih,setBaslangicTarih]=useState(seciliTarih);
+  const [sure,setSure]=useState("surekli");
+  const [ozelBitis,setOzelBitis]=useState(addDays(seciliTarih,30));
+
+  function kaydet(){
+    if(timeToMin(acilis)>=timeToMin(kapanis)){showToast("Açılış saati, kapanıştan önce olmalı.","error");return;}
+    if(molaVar&&timeToMin(molaBas)>=timeToMin(molaBit)){showToast("Mola başlangıcı, bitişinden önce olmalı.","error");return;}
+    let bitisTarih=null;
+    if(sure==="1hafta")bitisTarih=addDays(baslangicTarih,7);
+    else if(sure==="1ay")bitisTarih=addDays(baslangicTarih,30);
+    else if(sure==="3ay")bitisTarih=addDays(baslangicTarih,90);
+    else if(sure==="6ay")bitisTarih=addDays(baslangicTarih,180);
+    else if(sure==="ozel")bitisTarih=ozelBitis;
+    // sure==="surekli" ise bitisTarih null kalır
+    calismaSaatiEkle({
+      oda,
+      baslangic_tarih:baslangicTarih,
+      bitis_tarih:bitisTarih,
+      acilis:timeToMin(acilis),
+      kapanis:timeToMin(kapanis),
+      mola_bas:molaVar?timeToMin(molaBas):null,
+      mola_bit:molaVar?timeToMin(molaBit):null,
+    });
+  }
+
+  const odaKurallari=(o)=>calismaSaatleri.filter(k=>k.oda===o).sort((a,b)=>b.id-a.id);
+
+  return(
+    <div style={{background:"#fff",border:"1.5px solid #a5b4fc",borderRadius:12,padding:"1.25rem",marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{fontSize:15,fontWeight:600,color:"#4338ca"}}>⏰ Çalışma Saatlerini Düzenle</div>
+        <button onClick={onKapat} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"#aaa"}}>✕</button>
+      </div>
+
+      <div style={{marginBottom:12}}><Label>Oda</Label><div style={{display:"flex",gap:6}}>{[["alex","Alex"],["soprano","Soprano"]].map(([k,l])=><button key={k} onClick={()=>setOda(k)} style={chipStyle(oda===k)}>{l}</button>)}</div></div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        <div><Label>Açılış Saati</Label><select value={acilis} onChange={e=>setAcilis(e.target.value)} style={inputStyle}>{SAATLER.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+        <div><Label>Kapanış Saati (son işlem bitişi)</Label><select value={kapanis} onChange={e=>setKapanis(e.target.value)} style={inputStyle}>{SAATLER.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        <button onClick={()=>setMolaVar(false)} style={chipStyle(!molaVar)}>Öğle Molası Yok</button>
+        <button onClick={()=>setMolaVar(true)} style={chipStyle(molaVar)}>Öğle Molası Var</button>
+      </div>
+      {molaVar&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        <div><Label>Mola Başlangıcı</Label><select value={molaBas} onChange={e=>setMolaBas(e.target.value)} style={inputStyle}>{SAATLER.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+        <div><Label>Mola Bitişi</Label><select value={molaBit} onChange={e=>setMolaBit(e.target.value)} style={inputStyle}>{SAATLER.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+      </div>}
+
+      <div style={{marginBottom:12}}><Label>Bu Değişiklik Ne Zaman Başlasın?</Label><input type="date" value={baslangicTarih} onChange={e=>setBaslangicTarih(e.target.value)} style={inputStyle}/></div>
+
+      <div style={{marginBottom:12}}>
+        <Label>Ne Kadar Süre Geçerli Olsun?</Label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {[["1hafta","1 Hafta"],["1ay","1 Ay"],["3ay","3 Ay"],["6ay","6 Ay"],["surekli","Sürekli"],["ozel","Özel Tarih"]].map(([k,l])=><button key={k} onClick={()=>setSure(k)} style={chipStyle(sure===k)}>{l}</button>)}
+        </div>
+      </div>
+      {sure==="ozel"&&<div style={{marginBottom:12}}><Label>Bitiş Tarihi</Label><input type="date" value={ozelBitis} onChange={e=>setOzelBitis(e.target.value)} style={inputStyle}/></div>}
+
+      <button onClick={kaydet} style={{...btnPrimary,background:"#4338ca",marginBottom:14}}>Kaydet</button>
+
+      {["alex","soprano"].map(o=>odaKurallari(o).length>0&&(
+        <div key={o} style={{marginTop:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:o==="alex"?"#2d6a35":"#5b3fa0",marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>{o==="alex"?"🟢 Alex":"🟣 Soprano"} — Kayıtlı Kurallar</div>
+          {odaKurallari(o).map(k=>(
+            <div key={k.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:"#f7f7f5",borderRadius:8,marginBottom:4,fontSize:13}}>
+              <span>{k.baslangic_tarih} → {k.bitis_tarih||"Sürekli"} · {minToTime(k.acilis)}-{minToTime(k.kapanis)}{k.mola_bas!=null?` · Mola ${minToTime(k.mola_bas)}-${minToTime(k.mola_bit)}`:""}</span>
+              <button onClick={()=>{if(window.confirm("Bu kuralı silmek istiyor musunuz?"))calismaSaatiSil(k.id);}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -2706,7 +2836,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
 // ── RAPOR ────────────────────────────────────────────────────────────────────
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme,onYeniRandevu}){
+function DashboardSekme({randevular,bloklar,calismaSaatleri,bekleme,setSeciliTarih,setAktifSekme,onYeniRandevu}){
   const bugun=today();
   const [offset,setOffset]=useState(0);
   const seciliGun=addDays(bugun,offset);
@@ -2716,11 +2846,12 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
     ["alex","soprano"].forEach(oda=>{
       const gunR=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat));
       const gunB=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih);
-      const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
+      const mola=efektifMola(calismaSaatleri,oda,tarih);
+      const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure})),...(mola?[{b:mola.bas,e:mola.bit}]:[])].sort((a,b)=>a.b-b.b);
       // Pazar günü ise boşluk gösterme
       if(new Date(tarih+"T00:00:00").getDay()===0) return;
-      let imlec=9*60;
-      const kapanis=odaKapanisSaat(oda);
+      let imlec=efektifAcilis(calismaSaatleri,oda,tarih);
+      const kapanis=efektifKapanis(calismaSaatleri,oda,tarih);
       mesgul.forEach(m=>{
         if(m.b>imlec+5){sonuc[oda].push({saat:minToTime(imlec),dk:m.b-imlec});}
         imlec=Math.max(imlec,m.e);
