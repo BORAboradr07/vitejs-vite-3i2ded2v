@@ -618,7 +618,7 @@ export default function App() {
       const r=randevular.find(x=>x.id===id);
       // Çakışma kontrolü - süre uzadıysa
       if(yeniSure>(r?.sure||0)){
-        const kapanisSaat=odaKapanisSaat(r.oda);
+        const kapanisSaat=efektifKapanis(calismaSaatleri,r.oda,r.tarih);
         if(timeToMin(r.saat)+yeniSure>kapanisSaat){
           showToast(`${r.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu süre uzatması o saatten sonra bitiyor, uygulanamaz.`,"error");
           return;
@@ -1058,10 +1058,10 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
     }
     return gruplar;
   }
-  function bosluklariBul(randevular,bloklar,bitisSaat){
-    const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
+  function bosluklariBul(randevular,bloklar,bitisSaat,baslangicSaat,mola){
+    const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure})),...(mola?[{b:mola.bas,e:mola.bit}]:[])].sort((a,b)=>a.b-b.b);
     const bosluklar=[];
-    let imlec=START;
+    let imlec=baslangicSaat;
     meşgul.forEach(m=>{
       if(m.b>imlec) bosluklar.push({b:imlec,e:m.b});
       imlec=Math.max(imlec,m.e);
@@ -1086,11 +1086,13 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
   }
   function renderOda(randevular,bloklar,odaId){
     const pazarMi=new Date(seciliTarih+"T00:00:00").getDay()===0;
-    const bitisSaat=odaKapanisSaat(odaId);
+    const acilisSaat=efektifAcilis(calismaSaatleri,odaId,seciliTarih);
+    const bitisSaat=efektifKapanis(calismaSaatleri,odaId,seciliTarih);
+    const mola=efektifMola(calismaSaatleri,odaId,seciliTarih);
     const odaTotal=bitisSaat-START;
     const gercekBloklar=bloklar.filter(b=>b.baslik!=="DR_YOK");
     const birlesik=ayniHastaBirlestir(randevular);
-    const bosluklar=bosluklariBul(randevular,gercekBloklar,bitisSaat);
+    const bosluklar=bosluklariBul(randevular,gercekBloklar,bitisSaat,acilisSaat,mola);
     const renkOda=odaId==="alex"?"#2d6a35":"#5b3fa0";
 
     // Tek zaman çizelgesi: randevular + bloklar + boşluklar, hepsi saate göre sıralı (Dr. Yok dahil değil — sadece bilgilendirme amaçlı ayrı gösteriliyor)
