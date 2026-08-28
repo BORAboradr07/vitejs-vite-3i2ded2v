@@ -1255,8 +1255,8 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
           <input type="date" value={seciliTarih} onChange={e=>setSeciliTarih(e.target.value)} style={{border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:13,fontFamily:"inherit"}}/>
           <button onClick={()=>{setHastaAraPanel(p=>!p);setBosPanel(false);setBlokPanel(false);}} style={{...navBtnStyle,background:hastaAraPanel?"#eef0ff":"#f0f0ed",color:hastaAraPanel?"#4338ca":"#444",border:hastaAraPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>👤 Hasta Ara</button>
           <button onClick={()=>{setBosPanel(p=>!p);setBlokPanel(false);setHastaAraPanel(false);}} style={{...navBtnStyle,background:bosPanel?"#eef0ff":"#f0f0ed",color:bosPanel?"#4338ca":"#444",border:bosPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>🔍 Boş Randevu Bul</button>
-          {(aktifRol==="yonetici"||aktifRol==="sekreter")&&<button onClick={()=>{setBlokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setDrYokPanel(false);}} style={{...navBtnStyle,background:blokPanel?"#fee2e2":"#f0f0ed",color:blokPanel?"#dc2626":"#444",border:blokPanel?"1px solid #fca5a5":"1px solid #ddd"}}>🔒 Blok Kapat</button>}
-          {(aktifRol==="yonetici"||aktifRol==="sekreter")&&<button onClick={()=>{setDrYokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);}} style={{...navBtnStyle,background:drYokPanel?"#fff7ed":"#f0f0ed",color:drYokPanel?"#c2410c":"#444",border:drYokPanel?"1px solid #fed7aa":"1px solid #ddd"}}>🩺 Dr. Yok</button>}
+          {(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="personel")&&<button onClick={()=>{setBlokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setDrYokPanel(false);}} style={{...navBtnStyle,background:blokPanel?"#fee2e2":"#f0f0ed",color:blokPanel?"#dc2626":"#444",border:blokPanel?"1px solid #fca5a5":"1px solid #ddd"}}>🔒 Blok Kapat</button>}
+          {(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="personel")&&<button onClick={()=>{setDrYokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);}} style={{...navBtnStyle,background:drYokPanel?"#fff7ed":"#f0f0ed",color:drYokPanel?"#c2410c":"#444",border:drYokPanel?"1px solid #fed7aa":"1px solid #ddd"}}>🩺 Dr. Yok</button>}
           {(aktifRol==="yonetici"||aktifRol==="sorumlu")&&<button onClick={()=>{if(!kasaSifre){const s=window.prompt("Şifre:");if(s==="SON26"||s==="5555"){setKasaSifre(true);setKasaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}else{alert("Yanlış şifre!");}}else{setKasaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}}} style={{...navBtnStyle,background:kasaPanel?"#fef3c7":"#f0f0ed",color:kasaPanel?"#92400e":"#444",border:kasaPanel?"1px solid #fcd34d":"1px solid #ddd"}}>🔎 Kontrol</button>}
           {aktifRol==="yonetici"&&<button onClick={()=>{setCalismaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}} style={{...navBtnStyle,background:calismaPanel?"#eef2ff":"#f0f0ed",color:calismaPanel?"#4338ca":"#444",border:calismaPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>⏰ Çalışma Saatleri</button>}
         </div>
@@ -1974,7 +1974,7 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
       <div style={{background:"#f7f7f5",borderRadius:10,padding:12,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
           <div style={{display:"flex",flexWrap:"wrap",gap:6,flex:1}}>{(bolgeEdit?seciliBolgeler:r.bolgeler||[]).map(b=><span key={b} style={{background:"#e8e6ff",color:"#5b5bd6",fontSize:13,padding:"2px 10px",borderRadius:20}}>{b}</span>)}</div>
-          {(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="sorumlu")&&!bolgeEdit&&<button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(true);}} style={{...btnSecondary,fontSize:11,padding:"3px 8px",flexShrink:0,marginLeft:8}}>✏️ Düzenle</button>}
+          {(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="sorumlu"||aktifRol==="personel")&&!bolgeEdit&&<button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(true);}} style={{...btnSecondary,fontSize:11,padding:"3px 8px",flexShrink:0,marginLeft:8}}>✏️ Düzenle</button>}
         </div>
         {bolgeEdit&&(
           <div style={{marginTop:8,marginBottom:8}}>
@@ -2555,9 +2555,9 @@ function BeklemeKarti({b,onRandevuyaCevir,onSil,onNotGuncelle,aktifRol,siraNo}){
           )}
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-          {!alindi&&aktifRol!=="personel"&&<button onClick={()=>onRandevuyaCevir(b)} style={{...btnPrimary,fontSize:12,padding:"7px 12px",whiteSpace:"nowrap"}}>📅 Randevuya Çevir</button>}
+          {!alindi&&<button onClick={()=>onRandevuyaCevir(b)} style={{...btnPrimary,fontSize:12,padding:"7px 12px",whiteSpace:"nowrap"}}>📅 Randevuya Çevir</button>}
           <button onClick={()=>setNotDuzenle(v=>!v)} style={{...btnSecondary,fontSize:12,padding:"6px 12px",whiteSpace:"nowrap"}}>✏️ Düzenle</button>
-          {aktifRol!=="personel"&&<button onClick={()=>onSil(b.id)} style={{...btnSecondary,fontSize:12,padding:"6px 12px",color:"#dc2626",borderColor:"#fca5a5"}}>Sil</button>}
+          <button onClick={()=>onSil(b.id)} style={{...btnSecondary,fontSize:12,padding:"6px 12px",color:"#dc2626",borderColor:"#fca5a5"}}>Sil</button>
         </div>
       </div>
     </div>
@@ -2690,7 +2690,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h2 style={{fontSize:18,fontWeight:600}}>Hasta Listesi ({hastalar.length})</h2>
-        {(aktifRol==="sekreter"||aktifRol==="yonetici")&&<button onClick={()=>{setForm("yeni");setAd("");setTel("");setCinsiyet("Bayan");setSeciliHasta(null);}} style={btnPrimary}>+ Yeni Hasta</button>}
+        {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel")&&<button onClick={()=>{setForm("yeni");setAd("");setTel("");setCinsiyet("Bayan");setSeciliHasta(null);}} style={btnPrimary}>+ Yeni Hasta</button>}
       </div>
       <input value={filtre} onChange={e=>setFiltre(e.target.value)} placeholder="İsim, ID veya telefon ile ara..." style={{...inputStyle,marginBottom:12}}/>
       {form==="yeni"&&(
