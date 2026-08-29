@@ -129,6 +129,7 @@ const BOLGE_SURELER = {
   "Koltuk Altı":10,"Karbon":20,"Cilt Bakımı":75,"Forma":45,"Tüy Sarartma":20,
   "Çene":10,"Bıyık":10,"Kulak Önü":10,"Alın":10,"Göğüs Ucu":10,
   "Alt Bacak":15,"Üst Bacak":20,"Yarım Kol":10,"Gövde":30,
+  "Kaş Arası":10,"Kasık Arası":10,"Yarım Sırt":15,"Yarım Gövde":15,
 };
 const ISLEM_KATEGORI = {"Karbon":"karbon","Cilt Bakımı":"cilt","Forma":"forma","Tüy Sarartma":"tuysarart"};
 const RENK = {
@@ -140,8 +141,8 @@ const RENK = {
   gelmedi:   {bg:"#7a3f3f",brd:"#9b5050",label:"Gelmedi"},
   blok:      {bg:"#555",brd:"#777",label:"Blok"},
 };
-const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde","Karbon","Cilt Bakımı","Forma","Tüy Sarartma"];
-const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde"];
+const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde","Kaş Arası","Kasık Arası","Yarım Sırt","Yarım Gövde","Karbon","Cilt Bakımı","Forma","Tüy Sarartma"];
+const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde","Kaş Arası","Kasık Arası","Yarım Sırt","Yarım Gövde"];
 const ODEME_TIPLERI    = ["Nakit","Kart","EFT","Ödeme Alınmadı"];
 const DURUMLAR_ALEX    = ["Seans","Rütuş","Gelmedi"];
 const DURUMLAR_SOPRANO = ["Seans","Gelmedi"];
@@ -457,7 +458,8 @@ export default function App() {
   const gunB    = bloklar.filter(b=>b.tarih===seciliTarih);
 
   // ── Epilasyon kartı durumu (yeşil=seans var, sarı=sadece foto/not var, gri=hiç yok) ──
-  const [epilasyonDurum,setEpilasyonDurum]=useState({}); // { "ad soyad (küçük harf)": "yesil"|"sari" }
+  const [epilasyonDurum,setEpilasyonDurum]=useState({}); // { randevu_id: "yesil" } — o SPESİFİK randevuya seans girildi mi
+  const [epilasyonKartNotu,setEpilasyonKartNotu]=useState({}); // { "ad soyad (küçük harf)": "sari" } — hastanın genel kağıt kart notu (tarihten bağımsız, sadece "arşivde bir yerde kaydı var" bilgisi)
   useEffect(()=>{
     let iptal=false;
     async function yukle(){
@@ -470,17 +472,24 @@ export default function App() {
       try{
         const [gecmisler,ziyaretler]=await Promise.all([
           sbGet("epilasyon_gecmis",`hasta_id=in.(${idler.join(",")})&select=hasta_id`),
-          sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id`),
+          sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id,randevu_id,tarih`),
         ]);
         if(iptal)return;
-        const ziyaretIdSeti=new Set(ziyaretler.map(z=>z.hasta_id));
         const gecmisIdSeti=new Set(gecmisler.map(g=>g.hasta_id));
+        // 1) randevu_id doğrudan varsa: en kesin eşleşme, o SPESİFİK randevu için "yeşil"
         const yeniDurum={};
-        Object.entries(idMap).forEach(([ad,id])=>{
-          if(ziyaretIdSeti.has(id))yeniDurum[ad]="yesil";
-          else if(gecmisIdSeti.has(id))yeniDurum[ad]="sari";
+        ziyaretler.forEach(z=>{ if(z.randevu_id)yeniDurum[z.randevu_id]="yesil"; });
+        // 2) randevu_id boş olan eski/manuel kayıtlar için: hasta+tarih eşleşmesiyle o güne ait randevu(lar)ı bul (oda ayrımı yapamıyoruz ama en azından gün karışmasını önler)
+        const tarihFallback={}; // "hastaId|tarih" -> true
+        ziyaretler.forEach(z=>{ if(!z.randevu_id&&z.tarih)tarihFallback[`${z.hasta_id}|${z.tarih}`]=true; });
+        gunR.forEach(r=>{
+          const hid=idMap[r.hasta?.toLowerCase().trim()];
+          if(hid&&tarihFallback[`${hid}|${r.tarih}`])yeniDurum[r.id]="yesil";
         });
         setEpilasyonDurum(yeniDurum);
+        const yeniNot={};
+        Object.entries(idMap).forEach(([ad,id])=>{ if(gecmisIdSeti.has(id))yeniNot[ad]="sari"; });
+        setEpilasyonKartNotu(yeniNot);
       }catch(e){/* sessizce geç — bu sadece görsel bir gösterge */}
     }
     yukle();
@@ -587,6 +596,36 @@ export default function App() {
       showToast("Güncellendi.");
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
+
+  async function sonlandirVeKasayaGonder(r){
+    try{
+      const ciltTipleri=["Cilt Bakımı","Karbon","Tüy Sarartma","Forma"];
+      const ciltIslemi=(r.bolgeler||[]).find(b=>ciltTipleri.includes(b));
+      const islemTipi=ciltIslemi||(r.oda==="alex"?"Alex Lazer":"Soprano Lazer");
+      const resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY,"Prefer":"return=representation"},
+        body:JSON.stringify({
+          randevu_id:r.id,
+          hasta_ad:r.hasta,
+          hasta_tel:r.tel||null,
+          cinsiyet:r.cinsiyet||null,
+          tarih:r.tarih,
+          oda:r.oda,
+          islem_tipi:islemTipi,
+          bolgeler:r.bolgeler||[],
+          durum:"bekliyor",
+          gonderen:kullaniciEtiket(),
+        }),
+      });
+      if(!resp.ok){const t=await resp.text();throw new Error(t);}
+      const zaman=new Date().toISOString();
+      await sbUpdate("randevular",r.id,{kasaya_gonderildi:zaman});
+      setRandevular(prev=>prev.map(x=>x.id===r.id?{...x,kasaya_gonderildi:zaman}:x));
+      showToast("Hasta kasaya gönderildi.");
+    } catch(e){showToast("Kasaya gönderilemedi: "+e.message,"error");}
+  }
+
 
   async function randevuHastaBilgisiDuzenle(r,yeniAd,yeniTel){
     const ad=yeniAd.trim(),tel=yeniTel.trim();
@@ -942,7 +981,7 @@ export default function App() {
         </div>
       </nav>
       <div style={{maxWidth:1200,margin:"0 auto",padding:"1.25rem 1.5rem"}}>
-        {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} calismaSaatleri={calismaSaatleri} calismaSaatiEkle={calismaSaatiEkle} calismaSaatiSil={calismaSaatiSil} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast} epilasyonDurum={epilasyonDurum}/>}
+        {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} calismaSaatleri={calismaSaatleri} calismaSaatiEkle={calismaSaatiEkle} calismaSaatiSil={calismaSaatiSil} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast} epilasyonDurum={epilasyonDurum} epilasyonKartNotu={epilasyonKartNotu}/>}
         {aktifSekme==="bildirimler"&&<BildirimlerSekme randevular={randevular} hastalar={hastalar} aktifRol={aktifRol} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} hastaGuncelle={hastaGuncelle} aktifRol={aktifRol} showToast={showToast} randevular={randevular} silLog={silLog} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil} onEpilasyonAc={(hasta)=>setEpilasyonModal({hasta,randevu:null})}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle} onNotGuncelle={beklemeNotGuncelle}/>}
@@ -957,7 +996,7 @@ export default function App() {
       {modal&&(
         <ModalWrapper onClose={()=>setModal(null)}>
           {modal.tip==="yeni"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={async(data)=>{const ok=await randevuKaydet(data);if(ok&&modal.beklemdeId)await beklemeRandevuAlindi(modal.beklemdeId);}} onIptal={()=>setModal(null)}/>}
-          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} hastalar={hastalar} randevular={randevular} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={randevuHastaBilgisiDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
+          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} hastalar={hastalar} randevular={randevular} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={randevuHastaBilgisiDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})} onSonlandirKasa={sonlandirVeKasayaGonder} showToast={showToast}/>}
           {modal.tip==="duzenle"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={randevuKaydet} onIptal={()=>setModal(null)} duzenleme/>}
         </ModalWrapper>
       )}
@@ -1000,7 +1039,7 @@ export default function App() {
 }
 
 // ── TAKVİM ───────────────────────────────────────────────────────────────────
-function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calismaSaatleri,calismaSaatiEkle,calismaSaatiSil,blokEkle,blokSil,randevular,aktifRol,onYeniRandevu,onRandevuTikla,showToast,onRandevuDuzenle,onRandevuTasi,epilasyonDurum}){
+function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calismaSaatleri,calismaSaatiEkle,calismaSaatiSil,blokEkle,blokSil,randevular,aktifRol,onYeniRandevu,onRandevuTikla,showToast,onRandevuDuzenle,onRandevuTasi,epilasyonDurum,epilasyonKartNotu}){
   const [bosPanel,setBosPanel]=useState(false);
   const [blokPanel,setBlokPanel]=useState(false);
   const [hastaAraPanel,setHastaAraPanel]=useState(false);
@@ -1186,7 +1225,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
                 return Date.now()>=esik.getTime();
               };
               const durumEksikVar=u.list.some(r=>r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&gunSonuGecti(r));
-              const epilasyonEksikVar=u.list.some(r=>r.tarih>=EPILASYON_UYARI_BASLANGIC&&r.durum!=="Gelmedi"&&epilasyonDurum?.[r.hasta?.toLowerCase().trim()]!=="yesil"&&gecikti1_5Saat(r));
+              const epilasyonEksikVar=u.list.some(r=>r.tarih>=EPILASYON_UYARI_BASLANGIC&&r.durum!=="Gelmedi"&&epilasyonDurum?.[r.id]!=="yesil"&&gecikti1_5Saat(r));
               const gecikmisEksik=durumEksikVar||epilasyonEksikVar;
               return(
                 <div key={u.id} onClick={()=>{if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}}
@@ -1196,20 +1235,22 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
                   <div style={{fontSize:11,fontWeight:700,color:"#fff",width:42,flexShrink:0}}>{u.saat}</div>
                   <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",display:"flex",alignItems:"center",gap:6}}>
                     {(()=>{
-                      const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];
+                      const yesilVarMi=u.list.some(r=>epilasyonDurum?.[r.id]==="yesil");
+                      const sariVarMi=!!epilasyonKartNotu?.[u.hasta?.toLowerCase().trim()];
                       const bugunVeyaGelecekMi=u.list.some(r=>r.tarih>=today());
                       if(!bugunVeyaGelecekMi)return null; // geçmiş günlerde dosya çıkarma ihtiyacı yok
-                      // Dosya çıkarma göstergesi: dijital kaydı hiç olmayan hastada, randevu GÜNÜ DAHİL görünür — personel o sabah dosyayı arşivden çıkarır; seans/foto girilince kendiliğinden kaybolur
-                      if(ed==="yesil"||ed==="sari")return null; // dijital kayıt zaten var, dosya çıkarmaya gerek yok
+                      // Dosya çıkarma göstergesi: BU RANDEVUYA ait dijital kaydı hiç olmayan hastada, randevu GÜNÜ DAHİL görünür — personel o sabah dosyayı arşivden çıkarır; seans/foto girilince kendiliğinden kaybolur
+                      if(yesilVarMi||sariVarMi)return null; // dijital kayıt zaten var, dosya çıkarmaya gerek yok
                       return <span title="Arşivden dosyası çıkacak" style={{fontSize:12,flexShrink:0}}>📁</span>;
                     })()}
                     <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.hasta}</span>
                     {(()=>{
-                      const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];
+                      const yesilVarMi=u.list.some(r=>epilasyonDurum?.[r.id]==="yesil");
+                      const sariVarMi=!!epilasyonKartNotu?.[u.hasta?.toLowerCase().trim()];
                       const gelecekMi=u.list.some(r=>r.tarih>today());
                       if(gelecekMi)return null; // dosya ikonu zaten ismin solunda gösterildi
-                      const renkKart=ed==="yesil"?"#22c55e":ed==="sari"?"#eab308":"#9ca3af";
-                      const baslikKart=ed==="yesil"?"Epilasyon kartı var (dijital seans girilmiş)":ed==="sari"?"Sadece kağıt kart fotoğrafı/notu var":"Epilasyon kartı yok — arşivden dosya gerekebilir";
+                      const renkKart=yesilVarMi?"#22c55e":sariVarMi?"#eab308":"#9ca3af";
+                      const baslikKart=yesilVarMi?"Epilasyon kartı var (bu randevu için dijital seans girilmiş)":sariVarMi?"Sadece kağıt kart fotoğrafı/notu var":"Epilasyon kartı yok — arşivden dosya gerekebilir";
                       return <span title={baslikKart} style={{width:11,height:8,minWidth:11,borderRadius:2,background:renkKart,flexShrink:0,border:"1px solid rgba(0,0,0,0.15)"}}/>;
                     })()}
                     {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",borderRadius:8,padding:"1px 6px",fontWeight:700,flexShrink:0}}>{u.list.length} işlem</span>}
@@ -1937,7 +1978,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
 }
 
 // ── RANDEVU DETAY ────────────────────────────────────────────────────────────
-function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc}){
+function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc,onSonlandirKasa,showToast}){
   const [durum,setDurum]=useState(r.durum);const [odeme,setOdeme]=useState(r.odeme);
   const hastaKaydi=(hastalar||[]).find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
   const [hastaEdit,setHastaEdit]=useState(false);
@@ -1950,6 +1991,7 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
   const bolgeListesi=r.oda==="alex"?ALEX_BOLGELER:SOPRANO_BOLGELER;
   function toggleBolge(b){setSeciliBolgeler(prev=>prev.includes(b)?prev.filter(x=>x!==b):[...prev,b]);}
   const yeniSure=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||10),0);
+  const [gonderiliyor,setGonderiliyor]=useState(false);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
@@ -2015,6 +2057,15 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
       )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{onDurumGuncelle(r.id,durum,odeme);onKapat();}} style={btnPrimary}>Kaydet</button>
+        {durum==="Seans"&&!r.kasaya_gonderildi&&<button disabled={gonderiliyor} onClick={async()=>{
+          setGonderiliyor(true);
+          try{
+            if(durum!==r.durum||odeme!==r.odeme) await onDurumGuncelle(r.id,durum,odeme);
+            await onSonlandirKasa({...r,durum,odeme});
+            onKapat();
+          } finally{ setGonderiliyor(false); }
+        }} style={{...btnPrimary,background:"#16a34a",opacity:gonderiliyor?0.6:1}}>{gonderiliyor?"Gönderiliyor...":"✅ Sonlandır ve Kasaya Gönder"}</button>}
+        {r.kasaya_gonderildi&&<span style={{...chipStyle(true),background:"#dcfce7",color:"#16a34a",cursor:"default"}}>✅ Kasaya gönderildi</span>}
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={onDuzenle} style={btnSecondary}>Düzenle</button>}
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={()=>setHastaEdit(true)} style={btnSecondary}>👤 Hasta Bilgilerini Düzenle</button>}
         {hastaKaydi&&<button onClick={()=>onEpilasyonAc(hastaKaydi,r)} style={{...btnSecondary,color:"#6366f1",borderColor:"#a5b4fc"}}>📋 Epilasyon Kartı</button>}
@@ -2587,11 +2638,16 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
       const idler=[...new Set(Object.values(idMap))];
       if(idler.length===0){if(!iptal){setEpilasyonEksik([]);setYukleniyor(false);}return;}
       try{
-        const ziyaretler=await sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id`);
+        const ziyaretler=await sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id,randevu_id,tarih`);
         if(iptal)return;
-        const doluSet=new Set(ziyaretler.map(z=>z.hasta_id));
-        const eksikAdSeti=new Set(Object.entries(idMap).filter(([ad,id])=>!doluSet.has(id)).map(([ad])=>ad));
-        const eksikRandevular=adaylar.filter(r=>eksikAdSeti.has(r.hasta?.toLowerCase().trim()));
+        const doluRandevuSet=new Set(ziyaretler.filter(z=>z.randevu_id).map(z=>z.randevu_id));
+        const tarihFallback=new Set(ziyaretler.filter(z=>!z.randevu_id&&z.tarih).map(z=>`${z.hasta_id}|${z.tarih}`));
+        const eksikRandevular=adaylar.filter(r=>{
+          if(doluRandevuSet.has(r.id))return false; // bu SPESİFİK randevu için kayıt zaten var
+          const hid=idMap[r.hasta?.toLowerCase().trim()];
+          if(hid&&tarihFallback.has(`${hid}|${r.tarih}`))return false; // eski/manuel kayıt, tarih eşleşmesiyle bulundu
+          return true;
+        });
         const map=new Map();
         eksikRandevular.forEach(r=>{
           const k=r.hasta?.toLowerCase().trim();
