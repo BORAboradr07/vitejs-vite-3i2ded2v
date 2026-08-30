@@ -978,6 +978,7 @@ export default function App() {
       <nav style={{background:"#fff",borderBottom:"1px solid #e8e6e0",padding:"0 1.5rem"}}>
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex"}}>
           {[["takvim","📅 Takvim",0],...(aktifRol!=="sekreter"?[["bildirimler","🔔 Bildirimler",bildirimSayisi]]:[]),["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
+            ["whatsapp","💬 WhatsApp Takip",0],
             ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["rapor","📊 Rapor",0]]:[]),
             ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
             ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["epilasyon_log","📋 Epilasyon Kartı Log",0]]:[]),
@@ -1003,6 +1004,7 @@ export default function App() {
       <div style={{maxWidth:1200,margin:"0 auto",padding:"1.25rem 1.5rem"}}>
         {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} calismaSaatleri={calismaSaatleri} calismaSaatiEkle={calismaSaatiEkle} calismaSaatiSil={calismaSaatiSil} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast} epilasyonDurum={epilasyonDurum} epilasyonKartNotu={epilasyonKartNotu}/>}
         {aktifSekme==="bildirimler"&&<BildirimlerSekme randevular={randevular} hastalar={hastalar} aktifRol={aktifRol} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
+        {aktifSekme==="whatsapp"&&<WhatsAppTakipSekme aktifKullanici={aktifKullanici} aktifRol={aktifRol} hastalar={hastalar} showToast={showToast}/>}
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} hastaGuncelle={hastaGuncelle} aktifRol={aktifRol} showToast={showToast} randevular={randevular} silLog={silLog} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil} onEpilasyonAc={(hasta)=>setEpilasyonModal({hasta,randevu:null})}/>}
         {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle} onNotGuncelle={beklemeNotGuncelle}/>}
         {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular} aktifRol={aktifRol}/>}
@@ -2937,6 +2939,134 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
 // ── RAPOR ────────────────────────────────────────────────────────────────────
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
+// ── WHATSAPP TAKİP ──────────────────────────────────────────────────────────
+function WhatsAppTakipSekme({aktifKullanici,aktifRol,hastalar,showToast}){
+  const [kayitlar,setKayitlar]=useState([]);
+  const [personeller,setPersoneller]=useState([]);
+  const [yukleniyor,setYukleniyor]=useState(true);
+  const [hata,setHata]=useState("");
+  const [formAcik,setFormAcik]=useState(false);
+  const [raporAralik,setRaporAralik]=useState("bugun");
+  const [durumFiltre,setDurumFiltre]=useState("acik");
+  const [ara,setAra]=useState("");
+  const [simdi,setSimdi]=useState(Date.now());
+  const [form,setForm]=useState({hasta:"",tel:"",sorumlu:aktifKullanici?.login_name||"",gelis_zamani:"",notlar:""});
+
+  const kullanici=aktifKullanici?.login_name||"Bilinmiyor";
+  const yoneticiMi=aktifRol==="yonetici"||aktifRol==="sorumlu";
+  const trTarihSaat=(d)=>new Intl.DateTimeFormat("tr-TR",{timeZone:"Europe/Istanbul",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}).format(new Date(d));
+  const yerelInputZamani=()=>{
+    const d=new Date(Date.now()+3*60*60*1000);
+    return d.toISOString().slice(0,16);
+  };
+  const inputtanIso=(v)=>v?new Date(v+":00+03:00").toISOString():new Date().toISOString();
+  const dakikaFarki=(bas,bit)=>Math.max(0,Math.round((new Date(bit||simdi)-new Date(bas))/60000));
+  const sureMetni=(dk)=>dk<60?`${dk} dk`:`${Math.floor(dk/60)} sa ${dk%60} dk`;
+  const renk=(dk,kapali)=>kapali?"#16a34a":dk>=20?"#dc2626":dk>=10?"#d97706":"#16a34a";
+
+  const yukle=useCallback(async(sessiz=false)=>{
+    try{
+      if(!sessiz)setYukleniyor(true);
+      setHata("");
+      const [w,p]=await Promise.all([
+        sbGet("whatsapp_takip","order=gelis_zamani.desc"),
+        sbGet("personel_listesi","select=login_name").catch(()=>[])
+      ]);
+      setKayitlar(w.sort((a,b)=>new Date(b.gelis_zamani)-new Date(a.gelis_zamani)));
+      const adlar=[...new Set([kullanici,...p.map(x=>x.login_name),...w.map(x=>x.sorumlu)].filter(Boolean))];
+      setPersoneller(adlar.sort((a,b)=>a.localeCompare(b,"tr")));
+    }catch(e){
+      const tabloYok=/whatsapp_takip|42P01|schema cache/i.test(e.message||"");
+      setHata(tabloYok?"WhatsApp takip tablosu henüz oluşturulmamış. Kurulum SQL dosyasını Supabase SQL Editor'de bir kez çalıştırın.":"Kayıtlar yüklenemedi: "+e.message);
+    }finally{if(!sessiz)setYukleniyor(false);}
+  },[kullanici]);
+
+  useEffect(()=>{yukle(false);const i=setInterval(()=>yukle(true),60*1000);return()=>clearInterval(i);},[yukle]);
+  useEffect(()=>{const i=setInterval(()=>setSimdi(Date.now()),30*1000);return()=>clearInterval(i);},[]);
+
+  async function yeniKaydet(){
+    if(!form.hasta.trim()){showToast("Hasta adı gerekli.","error");return;}
+    if(!form.sorumlu){showToast("Sorumlu personel seçin.","error");return;}
+    try{
+      const data={hasta:form.hasta.trim(),tel:form.tel.trim(),gelis_zamani:inputtanIso(form.gelis_zamani||yerelInputZamani()),sorumlu:form.sorumlu,durum:"Yeni",notlar:form.notlar.trim(),kaydeden:kullanici,guncelleyen:kullanici};
+      const [ins]=await sbInsert("whatsapp_takip",data);
+      setKayitlar(prev=>[ins,...prev]);
+      setForm({hasta:"",tel:"",sorumlu:kullanici,gelis_zamani:yerelInputZamani(),notlar:""});
+      setFormAcik(false);showToast("WhatsApp görüşmesi kaydedildi.");
+    }catch(e){showToast("Kayıt eklenemedi: "+e.message,"error");}
+  }
+
+  async function guncelle(k,data,mesaj){
+    try{
+      const payload={...data,guncelleyen:kullanici};
+      const [up]=await sbUpdate("whatsapp_takip",k.id,payload);
+      setKayitlar(prev=>prev.map(x=>x.id===k.id?{...x,...up}:x));
+      if(mesaj)showToast(mesaj);
+    }catch(e){showToast("Güncellenemedi: "+e.message,"error");}
+  }
+  const cevaplandi=(k)=>guncelle(k,{durum:"Cevaplandı",cevap_zamani:k.cevap_zamani||new Date().toISOString()},"Cevap süresi kaydedildi.");
+  const sonuc=(k,durum)=>guncelle(k,{durum,kapatma_zamani:new Date().toISOString(),cevap_zamani:k.cevap_zamani||new Date().toISOString()},durum==="Randevu Verildi"?"Randevuya dönüştü olarak kapatıldı.":"Görüşme kapatıldı.");
+  async function sil(k){
+    if(!yoneticiMi||!window.confirm(`${k.hasta} kaydı silinsin mi?`))return;
+    try{await sbDelete("whatsapp_takip",k.id);setKayitlar(prev=>prev.filter(x=>x.id!==k.id));showToast("Kayıt silindi.");}catch(e){showToast("Silinemedi: "+e.message,"error");}
+  }
+
+  const baslangic=raporAralik==="bugun"?today():addDays(today(),raporAralik==="7gun"?-6:-29);
+  const aralikKayitlar=kayitlar.filter(k=>{
+    const t=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Istanbul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(k.gelis_zamani));
+    return t>=baslangic&&t<=today();
+  });
+  const kapaliMi=k=>["Randevu Verildi","Sonuçlanmadı","Tamamlandı"].includes(k.durum);
+  const aciklar=kayitlar.filter(k=>!kapaliMi(k));
+  const geciken=aciklar.filter(k=>!k.cevap_zamani&&dakikaFarki(k.gelis_zamani)>=20);
+  const cevapSureleri=aralikKayitlar.filter(k=>k.cevap_zamani).map(k=>dakikaFarki(k.gelis_zamani,k.cevap_zamani));
+  const ortalama=cevapSureleri.length?Math.round(cevapSureleri.reduce((a,b)=>a+b,0)/cevapSureleri.length):0;
+  const donusen=aralikKayitlar.filter(k=>k.durum==="Randevu Verildi").length;
+  const gorunen=kayitlar.filter(k=>{
+    if(durumFiltre==="acik"&&kapaliMi(k))return false;
+    if(durumFiltre==="kapali"&&!kapaliMi(k))return false;
+    const q=ara.toLocaleLowerCase("tr");return !q||(k.hasta||"").toLocaleLowerCase("tr").includes(q)||(k.tel||"").includes(q)||(k.sorumlu||"").toLocaleLowerCase("tr").includes(q);
+  });
+  const personelRaporu=personeller.map(p=>{
+    const list=aralikKayitlar.filter(k=>k.sorumlu===p),cevapli=list.filter(k=>k.cevap_zamani);
+    const ort=cevapli.length?Math.round(cevapli.reduce((s,k)=>s+dakikaFarki(k.gelis_zamani,k.cevap_zamani),0)/cevapli.length):0;
+    return{ad:p,toplam:list.length,cevapli:cevapli.length,ort,donusen:list.filter(k=>k.durum==="Randevu Verildi").length,acik:list.filter(k=>!kapaliMi(k)).length};
+  }).filter(x=>x.toplam>0).sort((a,b)=>b.toplam-a.toplam);
+
+  if(yukleniyor)return <div style={{textAlign:"center",padding:"3rem",color:"#888"}}>⏳ WhatsApp kayıtları yükleniyor...</div>;
+  if(hata)return <div style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:12,padding:"1.25rem",color:"#9a3412"}}><strong>Kurulum gerekli</strong><div style={{fontSize:13,marginTop:6}}>{hata}</div></div>;
+
+  return <div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:16}}>
+      <div><h2 style={{fontSize:19,fontWeight:600,margin:0}}>💬 WhatsApp Takip</h2><div style={{fontSize:12,color:"#888",marginTop:4}}>Mesaj içeriği kaydedilmez; yalnızca cevap süresi ve sonuç takip edilir.</div></div>
+      <button onClick={()=>{setFormAcik(true);setForm(f=>({...f,sorumlu:f.sorumlu||kullanici,gelis_zamani:yerelInputZamani()}));}} style={{...btnPrimary,background:"#16a34a"}}>+ Yeni Mesaj Kaydı</button>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:16}}>
+      {[["Açık görüşme",aciklar.length,"#2563eb"],["20 dk geçen",geciken.length,"#dc2626"],["Ort. ilk cevap",sureMetni(ortalama),ortalama>=20?"#dc2626":ortalama>=10?"#d97706":"#16a34a"],["Randevuya dönüşen",donusen,"#7c3aed"]].map(([l,v,c])=><div key={l} style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:11,padding:"13px 15px"}}><div style={{fontSize:12,color:"#888"}}>{l}</div><div style={{fontSize:23,fontWeight:700,color:c,marginTop:3}}>{v}</div></div>)}
+    </div>
+    {geciken.length>0&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",color:"#991b1b",borderRadius:10,padding:"9px 13px",fontSize:13,fontWeight:600,marginBottom:12}}>🚨 {geciken.length} hastaya 20 dakikadan uzun süredir ilk cevap verilmemiş.</div>}
+    <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:12,marginBottom:14,display:"flex",gap:8,flexWrap:"wrap"}}>
+      <input value={ara} onChange={e=>setAra(e.target.value)} placeholder="Hasta, telefon veya personel ara" style={{...inputStyle,flex:"1 1 240px",width:"auto"}}/>
+      <select value={durumFiltre} onChange={e=>setDurumFiltre(e.target.value)} style={{...inputStyle,width:150}}><option value="acik">Açık görüşmeler</option><option value="kapali">Kapananlar</option><option value="tumu">Tüm kayıtlar</option></select>
+      <button onClick={()=>yukle(false)} style={btnSecondary}>↻ Yenile</button>
+    </div>
+    <div style={{display:"grid",gap:9}}>{gorunen.length===0?<div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>Bu filtrede kayıt bulunamadı.</div>:gorunen.map(k=>{
+      const dk=dakikaFarki(k.gelis_zamani,k.cevap_zamani),kapali=kapaliMi(k),c=renk(dk,!!k.cevap_zamani);
+      return <div key={k.id} style={{background:"#fff",border:`1px solid ${!k.cevap_zamani&&dk>=20?"#fca5a5":"#e8e6e0"}`,borderLeft:`5px solid ${c}`,borderRadius:11,padding:"12px 14px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><div><div style={{fontSize:15,fontWeight:700,color:"#1f2937"}}>{k.hasta}</div><div style={{fontSize:12,color:"#777",marginTop:3}}>{k.tel||"Telefon yok"} · Geldi: {trTarihSaat(k.gelis_zamani)} · 👤 {k.sorumlu}</div>{k.notlar&&<div style={{fontSize:12,color:"#555",marginTop:5}}>📝 {k.notlar}</div>}</div><div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:700,color:c}}>{k.cevap_zamani?`İlk cevap: ${sureMetni(dk)}`:`Bekliyor: ${sureMetni(dk)}`}</div><div style={{fontSize:11,color:"#888",marginTop:2}}>{k.durum}</div></div></div>
+        <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:10}}>
+          {!k.cevap_zamani&&<button onClick={()=>cevaplandi(k)} style={{...btnPrimary,padding:"7px 11px",fontSize:12,background:"#16a34a"}}>✓ Cevaplandı</button>}
+          {!kapali&&<button onClick={()=>sonuc(k,"Randevu Verildi")} style={{...btnPrimary,padding:"7px 11px",fontSize:12,background:"#7c3aed"}}>📅 Randevu Verildi</button>}
+          {!kapali&&<button onClick={()=>sonuc(k,"Sonuçlanmadı")} style={{...btnSecondary,padding:"7px 11px",fontSize:12}}>Sonuçlanmadı</button>}
+          {!kapali&&<select value={k.sorumlu||""} onChange={e=>guncelle(k,{sorumlu:e.target.value},"Sorumlu değiştirildi.")} style={{...inputStyle,width:145,padding:"6px 9px",fontSize:12}}>{personeller.map(p=><option key={p}>{p}</option>)}</select>}
+          {yoneticiMi&&<button onClick={()=>sil(k)} style={{...btnSecondary,padding:"7px 10px",fontSize:12,color:"#dc2626",marginLeft:"auto"}}>Sil</button>}
+        </div>
+      </div>})}</div>
+    {yoneticiMi&&<div style={{marginTop:22}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}><h3 style={{fontSize:16,margin:0}}>Personel Raporu</h3><select value={raporAralik} onChange={e=>setRaporAralik(e.target.value)} style={{...inputStyle,width:145}}><option value="bugun">Bugün</option><option value="7gun">Son 7 gün</option><option value="30gun">Son 30 gün</option></select></div><div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}><thead><tr style={{background:"#f8f7f4",color:"#666"}}>{["Personel","Görüşme","Cevaplanan","Ort. cevap","Randevu","Açık"].map(x=><th key={x} style={{textAlign:x==="Personel"?"left":"center",padding:"10px 12px"}}>{x}</th>)}</tr></thead><tbody>{personelRaporu.length===0?<tr><td colSpan="6" style={{padding:18,textAlign:"center",color:"#aaa"}}>Bu dönemde kayıt yok.</td></tr>:personelRaporu.map(p=><tr key={p.ad} style={{borderTop:"1px solid #eee"}}><td style={{padding:"10px 12px",fontWeight:600}}>{p.ad}</td><td style={{textAlign:"center"}}>{p.toplam}</td><td style={{textAlign:"center"}}>{p.cevapli}</td><td style={{textAlign:"center",fontWeight:600,color:p.ort>=20?"#dc2626":p.ort>=10?"#d97706":"#16a34a"}}>{p.cevapli?sureMetni(p.ort):"—"}</td><td style={{textAlign:"center"}}>{p.donusen}</td><td style={{textAlign:"center",color:p.acik?"#dc2626":"#16a34a",fontWeight:600}}>{p.acik}</td></tr>)}</tbody></table></div></div>}
+    {formAcik&&<ModalWrapper onClose={()=>setFormAcik(false)}><div><h2 style={modalTitleStyle}>💬 Yeni WhatsApp Mesajı</h2><div style={{marginBottom:12}}><Label>Hasta adı *</Label><input autoFocus list="wa-hastalar" value={form.hasta} onChange={e=>{const ad=e.target.value,h=hastalar.find(x=>x.ad?.toLocaleLowerCase("tr")===ad.toLocaleLowerCase("tr"));setForm(f=>({...f,hasta:ad,tel:h?.tel||f.tel}));}} style={inputStyle}/><datalist id="wa-hastalar">{hastalar.map(h=><option key={h.id} value={h.ad}/>)}</datalist></div><div style={{marginBottom:12}}><Label>Telefon</Label><input value={form.tel} onChange={e=>setForm(f=>({...f,tel:e.target.value}))} style={inputStyle}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}><div><Label>Mesaj geliş zamanı</Label><input type="datetime-local" value={form.gelis_zamani} onChange={e=>setForm(f=>({...f,gelis_zamani:e.target.value}))} style={inputStyle}/></div><div><Label>Sorumlu *</Label><select value={form.sorumlu} onChange={e=>setForm(f=>({...f,sorumlu:e.target.value}))} style={inputStyle}>{personeller.map(p=><option key={p}>{p}</option>)}</select></div></div><div style={{marginBottom:16}}><Label>Kısa not (mesaj içeriğini yazmayın)</Label><input value={form.notlar} onChange={e=>setForm(f=>({...f,notlar:e.target.value}))} placeholder="Örn. fiyat bilgisi / randevu talebi" style={inputStyle}/></div><div style={{display:"flex",gap:8}}><button onClick={yeniKaydet} style={{...btnPrimary,flex:1,background:"#16a34a"}}>Kaydet ve Sayacı Başlat</button><button onClick={()=>setFormAcik(false)} style={{...btnSecondary,flex:1}}>İptal</button></div></div></ModalWrapper>}
+  </div>;
+}
+
 function DashboardSekme({randevular,bloklar,calismaSaatleri,bekleme,setSeciliTarih,setAktifSekme,onYeniRandevu}){
   const bugun=today();
   const [offset,setOffset]=useState(0);
@@ -4201,7 +4331,7 @@ function LogSekme({randevular,silLog,gunIciLog}){
   const ayBaslangic=bugun.slice(0,7);
   const buAySilinen=silLog.filter(s=>s.randevu_tarih&&s.sil_tarih&&s.randevu_tarih===s.sil_tarih&&s.sil_tarih.startsWith(ayBaslangic));
   // ── Kasa Takip: kasaya gönderilip orada tamamlanmayanlar + hiç gönderilmeyenler ──
-  const KASA_TAKIP_BASLANGIC="2026-08-30"; // bu özelliğin (kasaya_gonderildi alanı) devreye girdiği tarih — öncesi hiç izlenmiyordu
+  const KASA_TAKIP_BASLANGIC=addDays(bugun,-30); // son 30 gün — çok eski geçmişi listeleyip gürültü yapmasın
   const kasaGonderilenIdSeti=new Set((kasaKayitlar||[]).filter(k=>k.durum==="bekliyor").map(k=>k.randevu_id));
   const tamamlanmayanlar=randevular.filter(r=>r.kasaya_gonderildi&&r.tarih>=KASA_TAKIP_BASLANGIC&&kasaGonderilenIdSeti.has(r.id)).sort((a,b)=>b.tarih.localeCompare(a.tarih));
   const gonderilmeyenler=randevular.filter(r=>r.tarih>=KASA_TAKIP_BASLANGIC&&r.tarih<=bugun&&r.durum!=="Gelmedi"&&r.durum!=="Rütuş"&&!r.kasaya_gonderildi&&(r.tarih<bugun||r.durum==="Seans")).sort((a,b)=>b.tarih.localeCompare(a.tarih));
