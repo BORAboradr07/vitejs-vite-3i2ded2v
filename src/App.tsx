@@ -1338,9 +1338,23 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
           <div style={{width:10,height:10,borderRadius:3,background:"repeating-linear-gradient(45deg,#888,#888 2px,#aaa 2px,#aaa 4px)",flexShrink:0}}/>Blok
         </div>
       </div>
-      <div style={{display:"flex",gap:8,marginBottom:12}}>
-        {[{l:"Alex",v:alexR.length,c:"#2d6a35"},{l:"Soprano",v:sopR.length,c:"#5b3fa0"},{l:"Gelmedi",v:[...alexR,...sopR].filter(r=>r.durum==="Gelmedi").length,c:"#b45309"},{l:"Toplam",v:alexR.length+sopR.length,c:"#555"}]
-          .map(s=><div key={s.l} style={{flex:1,background:"#fff",border:"1px solid #e8e6e0",borderRadius:10,padding:"8px 12px"}}><div style={{fontSize:11,color:"#888"}}>{s.l}</div><div style={{fontSize:20,fontWeight:600,color:s.c}}>{s.v}</div></div>)}
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        {(()=>{
+          const hepsi=[...alexR,...sopR];
+          const seansSay=hepsi.filter(r=>r.durum==="Seans").length;
+          const rutusSay=hepsi.filter(r=>r.durum==="Rütuş").length;
+          const isaretlenmemis=hepsi.filter(r=>r.durum!=="Seans"&&r.durum!=="Rütuş"&&r.durum!=="Gelmedi");
+          const isaretlenmemisTitle=isaretlenmemis.length?isaretlenmemis.map(r=>`${r.hasta} (${r.uygulayici||"atanmamış"}) · ${r.oda==="alex"?"Alex":"Soprano"} ${r.saat}`).join("\n"):"Tüm randevular işaretlenmiş";
+          return [
+            {l:"Alex",v:alexR.length,c:"#2d6a35"},
+            {l:"Soprano",v:sopR.length,c:"#5b3fa0"},
+            {l:"Gelmedi",v:hepsi.filter(r=>r.durum==="Gelmedi").length,c:"#b45309"},
+            {l:"Toplam",v:alexR.length+sopR.length,c:"#555"},
+            {l:"Seans",v:seansSay,c:"#16a34a"},
+            {l:"Rütuş",v:rutusSay,c:"#7c3aed"},
+            {l:"İşaretlenmedi",v:isaretlenmemis.length,c:"#dc2626",title:isaretlenmemisTitle},
+          ];
+        })().map(s=><div key={s.l} title={s.title} style={{flex:1,minWidth:80,background:"#fff",border:"1px solid #e8e6e0",borderRadius:10,padding:"8px 12px",cursor:s.title?"help":"default"}}><div style={{fontSize:11,color:"#888"}}>{s.l}</div><div style={{fontSize:20,fontWeight:600,color:s.c}}>{s.v}</div></div>)}
       </div>
       {mobil?(
         <>
