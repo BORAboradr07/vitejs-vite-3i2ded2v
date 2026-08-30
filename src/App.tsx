@@ -599,30 +599,50 @@ export default function App() {
 
   async function sonlandirVeKasayaGonder(r){
     try{
+      // Kasa tarafındaki GERÇEK durumu kontrol et — arayüz eski/önbellekli olabilir
+      const kasaResp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan?randevu_id=eq.${r.id}&select=id,durum`,{
+        headers:{"apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY},
+      });
+      const mevcut=(await kasaResp.json())?.[0];
+      if(mevcut?.durum==="tamamlandi"){
+        showToast("Bu hasta kasada zaten işlenmiş (ödeme alınmış) — buradan düzeltilemez, düzeltme kasa sisteminden yapılmalı.","error");
+        return;
+      }
       const ciltTipleri=["Cilt Bakımı","Karbon","Tüy Sarartma","Forma"];
       const ciltIslemi=(r.bolgeler||[]).find(b=>ciltTipleri.includes(b));
       const islemTipi=ciltIslemi||(r.oda==="alex"?"Alex Lazer":"Soprano Lazer");
-      const resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY,"Prefer":"return=representation"},
-        body:JSON.stringify({
-          randevu_id:r.id,
-          hasta_ad:r.hasta,
-          hasta_tel:r.tel||null,
-          cinsiyet:r.cinsiyet||null,
-          tarih:r.tarih,
-          oda:r.oda,
-          islem_tipi:islemTipi,
-          bolgeler:r.bolgeler||[],
-          durum:"bekliyor",
-          gonderen:kullaniciEtiket(),
-        }),
-      });
-      if(!resp.ok){const t=await resp.text();throw new Error(t);}
+      const govdeVeri={
+        hasta_ad:r.hasta, hasta_tel:r.tel||null, cinsiyet:r.cinsiyet||null,
+        tarih:r.tarih, oda:r.oda, islem_tipi:islemTipi, bolgeler:r.bolgeler||[],
+        durum:"bekliyor", gonderen:kullaniciEtiket(),
+      };
+      let resp;
+      if(mevcut){
+        // Daha önce gönderilmiş ama kasada henüz işlenmemiş — var olan kaydı güncelle (yeni satır oluşturma)
+        resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan?id=eq.${mevcut.id}`,{
+          method:"PATCH",
+          headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY,"Prefer":"return=representation"},
+          body:JSON.stringify(govdeVeri),
+        });
+      } else {
+        resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan`,{
+          method:"POST",
+          headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY,"Prefer":"return=representation"},
+          body:JSON.stringify({randevu_id:r.id,...govdeVeri}),
+        });
+      }
+      if(!resp.ok){
+        const t=await resp.text();
+        if(t.includes("duplicate key")||t.includes("23505")){
+          showToast("Bu randevu az önce başka bir cihazdan gönderilmiş — sayfayı yenileyip tekrar deneyin.","error");
+          return;
+        }
+        throw new Error(t);
+      }
       const zaman=new Date().toISOString();
       await sbUpdate("randevular",r.id,{kasaya_gonderildi:zaman});
       setRandevular(prev=>prev.map(x=>x.id===r.id?{...x,kasaya_gonderildi:zaman}:x));
-      showToast("Hasta kasaya gönderildi.");
+      showToast(mevcut?"Kasadaki kayıt güncellendi.":"Hasta kasaya gönderildi.");
     } catch(e){showToast("Kasaya gönderilemedi: "+e.message,"error");}
   }
 
@@ -1992,6 +2012,7 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
   function toggleBolge(b){setSeciliBolgeler(prev=>prev.includes(b)?prev.filter(x=>x!==b):[...prev,b]);}
   const yeniSure=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||10),0);
   const [gonderiliyor,setGonderiliyor]=useState(false);
+  const [kasaGonderModu,setKasaGonderModu]=useState(false); // bölge onay adımı "Sonlandır ve Kasaya Gönder" akışından mı açıldı
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
@@ -2020,16 +2041,30 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
         </div>
         {bolgeEdit&&(
           <div style={{marginTop:8,marginBottom:8}}>
+            {kasaGonderModu&&<div style={{fontSize:12,color:"#16a34a",fontWeight:600,marginBottom:8}}>✅ Kasaya göndermeden önce, hastaya BUGÜN gerçekte yapılan bölgeleri onaylayın/düzeltin (eksik olanı kaldırın, fazladan yapılanı ekleyin):</div>}
             <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
               {bolgeListesi.map(b=><button key={b} onClick={()=>toggleBolge(b)} style={{...chipStyle(seciliBolgeler.includes(b)),fontSize:12,padding:"3px 10px"}}>{b}</button>)}
             </div>
             <div style={{fontSize:12,color:"#6366f1",marginBottom:8}}>Yeni süre: <strong>{yeniSure} dk</strong></div>
             <div style={{display:"flex",gap:8}}>
-              <button onClick={async()=>{
-                if(onBolgeGuncelle) await onBolgeGuncelle(r.id,seciliBolgeler,yeniSure);
-                setBolgeEdit(false);
-              }} style={{...btnPrimary,fontSize:12,padding:"5px 14px"}}>Kaydet</button>
-              <button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(false);}} style={{...btnSecondary,fontSize:12,padding:"5px 14px"}}>İptal</button>
+              {kasaGonderModu?(
+                <button disabled={gonderiliyor} onClick={async()=>{
+                  if(seciliBolgeler.length===0){showToast("En az bir bölge seçin.","error");return;}
+                  setGonderiliyor(true);
+                  try{
+                    if(JSON.stringify(seciliBolgeler)!==JSON.stringify(r.bolgeler||[])&&onBolgeGuncelle) await onBolgeGuncelle(r.id,seciliBolgeler,yeniSure);
+                    if(durum!==r.durum||odeme!==r.odeme) await onDurumGuncelle(r.id,durum,odeme);
+                    await onSonlandirKasa({...r,durum,odeme,bolgeler:seciliBolgeler,sure:yeniSure});
+                    onKapat();
+                  } finally{ setGonderiliyor(false); }
+                }} style={{...btnPrimary,background:"#16a34a",fontSize:12,padding:"5px 14px",opacity:gonderiliyor?0.6:1}}>{gonderiliyor?"Gönderiliyor...":"✅ Onayla ve Kasaya Gönder"}</button>
+              ):(
+                <button onClick={async()=>{
+                  if(onBolgeGuncelle) await onBolgeGuncelle(r.id,seciliBolgeler,yeniSure);
+                  setBolgeEdit(false);
+                }} style={{...btnPrimary,fontSize:12,padding:"5px 14px"}}>Kaydet</button>
+              )}
+              <button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(false);setKasaGonderModu(false);}} style={{...btnSecondary,fontSize:12,padding:"5px 14px"}}>İptal</button>
             </div>
           </div>
         )}
@@ -2057,15 +2092,9 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
       )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{onDurumGuncelle(r.id,durum,odeme);onKapat();}} style={btnPrimary}>Kaydet</button>
-        {durum==="Seans"&&!r.kasaya_gonderildi&&<button disabled={gonderiliyor} onClick={async()=>{
-          setGonderiliyor(true);
-          try{
-            if(durum!==r.durum||odeme!==r.odeme) await onDurumGuncelle(r.id,durum,odeme);
-            await onSonlandirKasa({...r,durum,odeme});
-            onKapat();
-          } finally{ setGonderiliyor(false); }
-        }} style={{...btnPrimary,background:"#16a34a",opacity:gonderiliyor?0.6:1}}>{gonderiliyor?"Gönderiliyor...":"✅ Sonlandır ve Kasaya Gönder"}</button>}
+        {durum==="Seans"&&!r.kasaya_gonderildi&&!bolgeEdit&&<button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(true);setKasaGonderModu(true);}} style={{...btnPrimary,background:"#16a34a"}}>✅ Sonlandır ve Kasaya Gönder</button>}
         {r.kasaya_gonderildi&&<span style={{...chipStyle(true),background:"#dcfce7",color:"#16a34a",cursor:"default"}}>✅ Kasaya gönderildi</span>}
+        {r.kasaya_gonderildi&&durum==="Seans"&&!bolgeEdit&&<button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(true);setKasaGonderModu(true);}} style={{...btnSecondary,fontSize:12}}>🔄 Düzelt ve Yeniden Gönder</button>}
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={onDuzenle} style={btnSecondary}>Düzenle</button>}
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={()=>setHastaEdit(true)} style={btnSecondary}>👤 Hasta Bilgilerini Düzenle</button>}
         {hastaKaydi&&<button onClick={()=>onEpilasyonAc(hastaKaydi,r)} style={{...btnSecondary,color:"#6366f1",borderColor:"#a5b4fc"}}>📋 Epilasyon Kartı</button>}
@@ -4139,6 +4168,17 @@ function EpilasyonLogSekme(){
 
 function LogSekme({randevular,silLog,gunIciLog}){
   const [aktifTab,setAktifTab]=useState("gunici");
+  const [kasaKayitlar,setKasaKayitlar]=useState(null); // null: henüz yüklenmedi
+  useEffect(()=>{
+    if(aktifTab!=="kasatakip"||kasaKayitlar!==null)return;
+    (async()=>{
+      try{
+        const resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan?select=randevu_id,durum`,{headers:{"apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY}});
+        const data=await resp.json();
+        setKasaKayitlar(Array.isArray(data)?data:[]);
+      }catch(e){ setKasaKayitlar([]); }
+    })();
+  },[aktifTab]);
   const tumLog=randevular.flatMap(r=>(r.log||[]).map(l=>({...l,hasta:r.hasta,tarih:r.tarih}))).sort((a,b)=>b.saat?.localeCompare(a.saat||"")||0);
   const bugunGunIci=gunIciLog.filter(g=>(g.degTarih||g.deg_tarih)===today());
   // Gün içi silmeler: randevu tarihi = silindiği tarih
@@ -4146,16 +4186,63 @@ function LogSekme({randevular,silLog,gunIciLog}){
   const bugunSilinen=silLog.filter(s=>s.randevu_tarih===bugun&&s.sil_tarih===bugun);
   const ayBaslangic=bugun.slice(0,7);
   const buAySilinen=silLog.filter(s=>s.randevu_tarih&&s.sil_tarih&&s.randevu_tarih===s.sil_tarih&&s.sil_tarih.startsWith(ayBaslangic));
+  // ── Kasa Takip: kasaya gönderilip orada tamamlanmayanlar + hiç gönderilmeyenler ──
+  const KASA_TAKIP_BASLANGIC="2026-08-30"; // bu özelliğin (kasaya_gonderildi alanı) devreye girdiği tarih — öncesi hiç izlenmiyordu
+  const kasaGonderilenIdSeti=new Set((kasaKayitlar||[]).filter(k=>k.durum==="bekliyor").map(k=>k.randevu_id));
+  const tamamlanmayanlar=randevular.filter(r=>r.kasaya_gonderildi&&r.tarih>=KASA_TAKIP_BASLANGIC&&kasaGonderilenIdSeti.has(r.id)).sort((a,b)=>b.tarih.localeCompare(a.tarih));
+  const gonderilmeyenler=randevular.filter(r=>r.tarih>=KASA_TAKIP_BASLANGIC&&r.tarih<=bugun&&r.durum!=="Gelmedi"&&r.durum!=="Rütuş"&&!r.kasaya_gonderildi&&(r.tarih<bugun||r.durum==="Seans")).sort((a,b)=>b.tarih.localeCompare(a.tarih));
+  function gunGrupla(liste){
+    const gruplar={};
+    liste.forEach(r=>{ (gruplar[r.tarih]=gruplar[r.tarih]||[]).push(r); });
+    return Object.entries(gruplar).sort((a,b)=>b[0].localeCompare(a[0]));
+  }
   return(
     <div>
       <h2 style={{fontSize:18,fontWeight:600,marginBottom:14}}>Yönetici Logu</h2>
-      <div style={{display:"flex",gap:4,background:"#f0f0ed",padding:4,borderRadius:10,marginBottom:16,width:"fit-content"}}>
-        {[["gunici","⚠️ Gün İçi",bugunGunIci.length],["gunicisilme","🚨 Gün İçi Silme",bugunSilinen.length],["islem","📋 İşlem Logu",0],["silme","🗑️ Silme Logu",silLog.length]].map(([k,l,badge])=>(
+      <div style={{display:"flex",gap:4,background:"#f0f0ed",padding:4,borderRadius:10,marginBottom:16,width:"fit-content",flexWrap:"wrap"}}>
+        {[["gunici","⚠️ Gün İçi",bugunGunIci.length],["gunicisilme","🚨 Gün İçi Silme",bugunSilinen.length],["islem","📋 İşlem Logu",0],["silme","🗑️ Silme Logu",silLog.length],["kasatakip","💰 Kasa Takip",tamamlanmayanlar.length+gonderilmeyenler.length]].map(([k,l,badge])=>(
           <button key={k} onClick={()=>setAktifTab(k)} style={{padding:"7px 14px",border:"none",borderRadius:8,background:aktifTab===k?"#fff":"transparent",color:aktifTab===k?"#333":"#888",fontWeight:aktifTab===k?600:400,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:aktifTab===k?"0 1px 3px rgba(0,0,0,0.1)":"none",whiteSpace:"nowrap"}}>
             {l}{badge>0&&<span style={{background:k==="gunici"?"#f59e0b":"#ef4444",color:"#fff",fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:20,marginLeft:5}}>{badge}</span>}
           </button>
         ))}
       </div>
+      {aktifTab==="kasatakip"&&(
+        <div>
+          {kasaKayitlar===null?<div style={{padding:"2rem",textAlign:"center",color:"#aaa"}}>Yükleniyor...</div>:(
+          <>
+          <div style={{fontSize:14,fontWeight:600,color:"#555",marginBottom:10}}>⏳ Kasaya Gönderildi ama Kasada Tamamlanmadı ({tamamlanmayanlar.length})</div>
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden",marginBottom:20}}>
+            {tamamlanmayanlar.length===0?<div style={{padding:"1.5rem",textAlign:"center",color:"#aaa",fontSize:13}}>✅ Hepsi kasada tamamlanmış.</div>:
+            gunGrupla(tamamlanmayanlar).map(([gun,liste])=>(
+              <div key={gun} style={{borderBottom:"1px solid #f5f5f2"}}>
+                <div style={{background:"#fef3c7",padding:"6px 16px",fontSize:12,fontWeight:700,color:"#92400e"}}>{gun}</div>
+                {liste.map(r=>(
+                  <div key={r.id} style={{padding:"10px 16px",borderBottom:"1px solid #f5f5f2"}}>
+                    <div style={{fontWeight:600,fontSize:14}}>{r.hasta}</div>
+                    <div style={{fontSize:12,color:"#888",marginTop:2}}>{r.saat} · {r.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · Kasaya gönderildi: {new Date(r.kasaya_gonderildi).toLocaleString("tr-TR")}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:14,fontWeight:600,color:"#555",marginBottom:10}}>❌ Seans Yapıldı ama Kasaya Hiç Gönderilmedi ({gonderilmeyenler.length})</div>
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
+            {gonderilmeyenler.length===0?<div style={{padding:"1.5rem",textAlign:"center",color:"#aaa",fontSize:13}}>✅ Eksik gönderim yok.</div>:
+            gunGrupla(gonderilmeyenler).map(([gun,liste])=>(
+              <div key={gun} style={{borderBottom:"1px solid #f5f5f2"}}>
+                <div style={{background:"#fee2e2",padding:"6px 16px",fontSize:12,fontWeight:700,color:"#dc2626"}}>{gun}</div>
+                {liste.map(r=>(
+                  <div key={r.id} style={{padding:"10px 16px",borderBottom:"1px solid #f5f5f2"}}>
+                    <div style={{fontWeight:600,fontSize:14}}>{r.hasta}</div>
+                    <div style={{fontSize:12,color:"#888",marginTop:2}}>{r.saat} · {r.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · Durum: {r.durum||"(belirtilmemiş)"}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          </>)}
+        </div>
+      )}
       {aktifTab==="gunicisilme"&&(
         <div>
           {bugunSilinen.length>0&&(
