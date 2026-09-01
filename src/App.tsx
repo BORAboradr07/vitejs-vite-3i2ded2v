@@ -459,15 +459,11 @@ export default function App() {
 
   // ── Epilasyon kartı durumu (yeşil=seans var, sarı=sadece foto/not var, gri=hiç yok) ──
   const [epilasyonDurum,setEpilasyonDurum]=useState({}); // { randevu_id: "yesil" } — o SPESİFİK randevuya seans girildi mi
-  const [epilasyonKartNotu,setEpilasyonKartNotu]=useState({}); // { "ad soyad (küçük harf)": "sari" } — hastanın genel kağıt kart notu (tarihten bağımsız, sadece "arşivde bir yerde kaydı var" bilgisi)
+  const [epilasyonKartNotu,setEpilasyonKartNotu]=useState({}); // { hasta_id: "sari" } — hastanın genel kağıt kart notu (tarihten bağımsız, sadece "arşivde bir yerde kaydı var" bilgisi). Hasta_id kullanılıyor, isim DEĞİL — çünkü aynı isimde birden fazla hasta kaydı olabilir (bkz. Gamze Ateş vakası)
   useEffect(()=>{
     let iptal=false;
     async function yukle(){
-      const adlar=[...new Set(gunR.map(r=>r.hasta?.toLowerCase().trim()).filter(Boolean))];
-      if(adlar.length===0)return;
-      const idMap={}; // ad(küçük) -> hastalar.id
-      hastalar.forEach(h=>{const k=h.ad?.toLowerCase().trim();if(k&&adlar.includes(k))idMap[k]=h.id;});
-      const idler=[...new Set(Object.values(idMap))];
+      const idler=[...new Set(gunR.map(r=>r.hasta_id).filter(Boolean))];
       if(idler.length===0)return;
       try{
         const [gecmisler,ziyaretler]=await Promise.all([
@@ -479,22 +475,21 @@ export default function App() {
         // 1) randevu_id doğrudan varsa: en kesin eşleşme, o SPESİFİK randevu için "yeşil"
         const yeniDurum={};
         ziyaretler.forEach(z=>{ if(z.randevu_id)yeniDurum[z.randevu_id]="yesil"; });
-        // 2) randevu_id boş olan eski/manuel kayıtlar için: hasta+tarih eşleşmesiyle o güne ait randevu(lar)ı bul (oda ayrımı yapamıyoruz ama en azından gün karışmasını önler)
+        // 2) randevu_id boş olan eski/manuel kayıtlar için: hasta_id+tarih eşleşmesiyle o güne ait randevu(lar)ı bul (oda ayrımı yapamıyoruz ama en azından gün karışmasını önler)
         const tarihFallback={}; // "hastaId|tarih" -> true
         ziyaretler.forEach(z=>{ if(!z.randevu_id&&z.tarih)tarihFallback[`${z.hasta_id}|${z.tarih}`]=true; });
         gunR.forEach(r=>{
-          const hid=idMap[r.hasta?.toLowerCase().trim()];
-          if(hid&&tarihFallback[`${hid}|${r.tarih}`])yeniDurum[r.id]="yesil";
+          if(r.hasta_id&&tarihFallback[`${r.hasta_id}|${r.tarih}`])yeniDurum[r.id]="yesil";
         });
         setEpilasyonDurum(yeniDurum);
         const yeniNot={};
-        Object.entries(idMap).forEach(([ad,id])=>{ if(gecmisIdSeti.has(id))yeniNot[ad]="sari"; });
+        idler.forEach(id=>{ if(gecmisIdSeti.has(id))yeniNot[id]="sari"; });
         setEpilasyonKartNotu(yeniNot);
       }catch(e){/* sessizce geç — bu sadece görsel bir gösterge */}
     }
     yukle();
     return()=>{iptal=true;};
-  },[seciliTarih,randevular,hastalar]);
+  },[seciliTarih,randevular]);
 
   function cakismaVar(oda,tarih,saat,sure,excludeId=null){
     const yB=timeToMin(saat),yE=yB+sure;
@@ -1256,7 +1251,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
                   <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",display:"flex",alignItems:"center",gap:6}}>
                     {(()=>{
                       const yesilVarMi=u.list.some(r=>epilasyonDurum?.[r.id]==="yesil");
-                      const sariVarMi=!!epilasyonKartNotu?.[u.hasta?.toLowerCase().trim()];
+                      const sariVarMi=u.list.some(r=>epilasyonKartNotu?.[r.hasta_id]==="sari");
                       const bugunVeyaGelecekMi=u.list.some(r=>r.tarih>=today());
                       if(!bugunVeyaGelecekMi)return null; // geçmiş günlerde dosya çıkarma ihtiyacı yok
                       // Dosya çıkarma göstergesi: BU RANDEVUYA ait dijital kaydı hiç olmayan hastada, randevu GÜNÜ DAHİL görünür — personel o sabah dosyayı arşivden çıkarır; seans/foto girilince kendiliğinden kaybolur
@@ -1266,7 +1261,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
                     <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.hasta}</span>
                     {(()=>{
                       const yesilVarMi=u.list.some(r=>epilasyonDurum?.[r.id]==="yesil");
-                      const sariVarMi=!!epilasyonKartNotu?.[u.hasta?.toLowerCase().trim()];
+                      const sariVarMi=u.list.some(r=>epilasyonKartNotu?.[r.hasta_id]==="sari");
                       const gelecekMi=u.list.some(r=>r.tarih>today());
                       if(gelecekMi)return null; // dosya ikonu zaten ismin solunda gösterildi
                       const renkKart=yesilVarMi?"#22c55e":sariVarMi?"#eab308":"#9ca3af";
@@ -2684,10 +2679,7 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
     async function yukle(){
       setYukleniyor(true);
       const adaylar=randevular.filter(r=>r.tarih<=bugun&&r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&r.durum!=="Gelmedi");
-      const adlar=[...new Set(adaylar.map(r=>r.hasta?.toLowerCase().trim()).filter(Boolean))];
-      const idMap={};
-      hastalar.forEach(h=>{const k=h.ad?.toLowerCase().trim();if(k&&adlar.includes(k))idMap[k]=h.id;});
-      const idler=[...new Set(Object.values(idMap))];
+      const idler=[...new Set(adaylar.map(r=>r.hasta_id).filter(Boolean))];
       if(idler.length===0){if(!iptal){setEpilasyonEksik([]);setYukleniyor(false);}return;}
       try{
         const ziyaretler=await sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id,randevu_id,tarih`);
@@ -2696,13 +2688,12 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
         const tarihFallback=new Set(ziyaretler.filter(z=>!z.randevu_id&&z.tarih).map(z=>`${z.hasta_id}|${z.tarih}`));
         const eksikRandevular=adaylar.filter(r=>{
           if(doluRandevuSet.has(r.id))return false; // bu SPESİFİK randevu için kayıt zaten var
-          const hid=idMap[r.hasta?.toLowerCase().trim()];
-          if(hid&&tarihFallback.has(`${hid}|${r.tarih}`))return false; // eski/manuel kayıt, tarih eşleşmesiyle bulundu
+          if(r.hasta_id&&tarihFallback.has(`${r.hasta_id}|${r.tarih}`))return false; // eski/manuel kayıt, tarih eşleşmesiyle bulundu
           return true;
         });
         const map=new Map();
         eksikRandevular.forEach(r=>{
-          const k=r.hasta?.toLowerCase().trim();
+          const k=r.hasta_id||r.hasta?.toLowerCase().trim(); // hasta_id varsa onu kullan (aynı isimde farklı hastaları ayırt etmek için), yoksa isme düş
           if(!map.has(k)||r.tarih>map.get(k).tarih)map.set(k,r);
         });
         setEpilasyonEksik([...map.values()].filter(r=>bildirimGorunurMu(r,aktifRol)).sort((a,b)=>a.tarih.localeCompare(b.tarih)));
@@ -2711,7 +2702,7 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
     }
     yukle();
     return()=>{iptal=true;};
-  },[randevular,hastalar]);
+  },[randevular]);
 
   return(
     <div>
