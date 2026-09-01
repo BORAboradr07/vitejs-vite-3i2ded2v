@@ -2416,7 +2416,16 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
 
   async function seansKaydet(satirlar,tarih,uygulayici){
     try{
-      const [ziyaret]=await sbInsert("epilasyon_ziyaretleri",{hasta_id:hasta.id,randevu_id:randevu?.id||null,tarih,uygulayan_personel:uygulayici});
+      let randevuId=randevu?.id||null;
+      if(!randevuId){
+        // Epilasyon Kartı bir randevu üzerinden değil, Hastalar sekmesinden açılmış olabilir — o güne ait randevuyu otomatik bul ve bağla
+        try{
+          const eslesen=await sbGet("randevular",`hasta_id=eq.${hasta.id}&tarih=eq.${tarih}&select=id`);
+          if(eslesen?.length===1) randevuId=eslesen[0].id;
+          // Birden fazla ya da hiç eşleşme yoksa güvenli tarafta kal, null bırak (yanlış randevuya bağlamamak için)
+        }catch(_e){ /* bağlantı bulunamazsa sessizce null kalsın, kayıt yine de alınsın */ }
+      }
+      const [ziyaret]=await sbInsert("epilasyon_ziyaretleri",{hasta_id:hasta.id,randevu_id:randevuId,tarih,uygulayan_personel:uygulayici});
       for(const s of satirlar){
         await sbInsert("epilasyon_bolge_uygulamalari",{
           ziyaret_id:ziyaret.id,bolge:s.bolge,cihaz:s.cihaz,
