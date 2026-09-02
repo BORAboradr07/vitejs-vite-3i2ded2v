@@ -209,6 +209,13 @@ function today(){
   return `${y}-${m}-${d}`;
 }
 function addDays(d,n){const[y,mo,dy]=d.split("-").map(Number);const dt=new Date(y,mo-1,dy);dt.setDate(dt.getDate()+n);return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;}
+// İsimle hasta bulmak SON ÇARE olmalı (hasta_id her zaman önce denenmeli) — aynı isimde birden fazla hasta varsa (ki klinikte haftalık oluyor), YANLIŞ TAHMİN yapmamak için sadece TEK eşleşme varsa sonuç döner, birden fazla/hiç yoksa null döner.
+function isimleTekHastaBul(hastalar,ad){
+  if(!ad)return null;
+  const norm=ad.toLowerCase().trim();
+  const eslesenler=(hastalar||[]).filter(h=>h.ad?.toLowerCase().trim()===norm);
+  return eslesenler.length===1?eslesenler[0]:null;
+}
 function sonIsGunuTarihi(gunSayisi){
   // Bugünden geriye doğru, Pazar günlerini saymadan gunSayisi kadar iş günü geriye gider
   let tarih=today(),sayilan=0;
@@ -556,17 +563,17 @@ export default function App() {
             setGunIciLog(prev=>[{...gl,id:ins.id,degTarih:gl.deg_tarih,degSaat:gl.deg_saat,kullanic:gl.kullanic,eskiSaat:gl.eski_saat,eskiSure:gl.eski_sure,yeniSaat:gl.yeni_saat,yeniSure:gl.yeni_sure},...prev]);
           }
         }catch(logErr){console.warn("Log kaydedilemedi:",logErr);}
-        const hastaObj1=hastalar.find(h=>h.id===data.hastaId)||hastalar.find(h=>h.id===eskiR?.hasta_id)||hastalar.find(h=>h.ad?.toLowerCase().trim()===data.hasta?.toLowerCase().trim());
+        const hastaObj1=hastalar.find(h=>h.id===data.hastaId)||hastalar.find(h=>h.id===eskiR?.hasta_id)||isimleTekHastaBul(hastalar,data.hasta);
         const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId||eskiR?.hasta_id||hastaObj1?.id||null,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum,odeme:data.odeme,notlar:data.notlar||"",tel:data.tel,cinsiyet:data.cinsiyet,log:yeniLog};
         await sbUpdate("randevular",data.id,sbData);
         setRandevular(prev=>prev.map(r=>r.id===data.id?{...r,...sbData,id:data.id}:r));
         showToast("Randevu güncellendi.");
       } else {
-        const hastaObj2=hastalar.find(h=>h.id===data.hastaId)||hastalar.find(h=>h.ad?.toLowerCase().trim()===data.hasta?.toLowerCase().trim());
+        const hastaObj2=hastalar.find(h=>h.id===data.hastaId)||isimleTekHastaBul(hastalar,data.hasta);
         const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId||hastaObj2?.id,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum||"Seans",odeme:data.odeme,notlar:data.notlar||"",tel:data.tel||hastaObj2?.tel||"",cinsiyet:data.cinsiyet||hastaObj2?.cinsiyet||"Bayan",log:[{saat:now,kullanici:kullaniciEtiket(),islem:"Randevu oluşturuldu"}]};
         const [ins]=await sbInsert("randevular",sbData);
         // hastalar tablosundan tel ve cinsiyet bilgisini al
-        const hastaObj=hastalar.find(h=>h.ad?.toLowerCase().trim()===sbData.hasta?.toLowerCase().trim());
+        const hastaObj=isimleTekHastaBul(hastalar,sbData.hasta);
         setRandevular(prev=>[...prev,{...sbData,id:ins.id,tel:sbData.tel||hastaObj?.tel||"",cinsiyet:sbData.cinsiyet||hastaObj?.cinsiyet||"Bayan"}]);
         showToast("Randevu oluşturuldu.");
       }
@@ -646,8 +653,8 @@ export default function App() {
     const ad=yeniAd.trim(),tel=yeniTel.trim();
     if(!ad){showToast("Ad soyad boş olamaz.","error");return false;}
     // Bu hastanın "hastalar" tablosunda kaydı var mı? (hasta_id ya da isimle eşleştir)
-    const hastaKaydi=hastalar.find(h=>h.hasta_id&&r.hasta_id&&String(h.hasta_id)===String(r.hasta_id))
-      ||hastalar.find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
+    const hastaKaydi=hastalar.find(h=>h.id===r.hasta_id)
+      ||isimleTekHastaBul(hastalar,r.hasta);
     if(hastaKaydi){
       // Varsa: hastalar tablosu + bu hastaya ait TÜM randevu kayıtları birlikte güncellenir
       const ok=await hastaGuncelle(hastaKaydi,ad,tel,hastaKaydi.cinsiyet||"Bayan");
@@ -803,12 +810,20 @@ export default function App() {
     try{
       // Önce state'te ara
       const varMi=hastalar.find(h=>h.ad?.toLowerCase().trim()===ad.toLowerCase().trim());
-      if(varMi) return varMi;
+      if(varMi){
+        const aynıKisiMi=window.confirm(`"${ad}" isminde zaten kayıtlı bir hasta var (tel: ${varMi.tel||"kayıtlı değil"}).\n\nBu AYNI kişi mi?\n\nTAMAM: Evet, mevcut kayda git.\nİPTAL: Hayır, bu farklı bir kişi — yeni ayrı bir kayıt oluştur.`);
+        if(aynıKisiMi) return varMi;
+        // Farklı kişi: aşağıya devam et, yeni ayrı kayıt oluşturulacak
+      }
       // State'te yoksa DB'de de kontrol et (state gecikmiş olabilir)
       const dbKontrol=await sbGet("hastalar",`ad=ilike.${encodeURIComponent(ad.trim())}`);
-      if(dbKontrol.length>0){
-        setHastalar(prev=>[...prev,...dbKontrol.filter(d=>!prev.some(p=>p.id===d.id))]);
-        return dbKontrol[0];
+      if(dbKontrol.length>0&&!varMi){
+        const aynıKisiMi=window.confirm(`"${ad}" isminde zaten kayıtlı bir hasta var (tel: ${dbKontrol[0].tel||"kayıtlı değil"}).\n\nBu AYNI kişi mi?\n\nTAMAM: Evet, mevcut kayda git.\nİPTAL: Hayır, bu farklı bir kişi — yeni ayrı bir kayıt oluştur.`);
+        if(aynıKisiMi){
+          setHastalar(prev=>[...prev,...dbKontrol.filter(d=>!prev.some(p=>p.id===d.id))]);
+          return dbKontrol[0];
+        }
+        // Farklı kişi: yeni ayrı kayıt oluşturulacak
       }
       // Gerçekten yoksa yeni kayıt oluştur
       const maxId=hastalar.reduce((max,h)=>{
@@ -902,7 +917,7 @@ export default function App() {
     const ikiAyOncesi=addDays(today(),-60);
     // Son 2 ay içinde bu hastaya (adı ne olursa olsun, hangi randevusundan olursa olsun) zaten anket gönderilmiş mi?
     const yakinZamandaGonderilenHastalar=new Set(
-      randevular.filter(r=>r.tarih>=ikiAyOncesi&&r.anket_durum==="gonderildi").map(r=>r.hasta?.toLowerCase().trim())
+      randevular.filter(r=>r.tarih>=ikiAyOncesi&&r.anket_durum==="gonderildi").map(r=>r.hasta_id||r.hasta?.toLowerCase().trim())
     );
     const saatiGecti5=r=>(Date.now()-new Date(`${r.tarih}T${r.saat}:00`).getTime())/(1000*60*60)>=5;
     const adaylar=randevular.filter(r=>
@@ -910,12 +925,12 @@ export default function App() {
       saatiGecti5(r)&&
       r.anket_durum!=="gonderildi"&&
       r.durum!=="Gelmedi"&&
-      !yakinZamandaGonderilenHastalar.has(r.hasta?.toLowerCase().trim())
+      !yakinZamandaGonderilenHastalar.has(r.hasta_id||r.hasta?.toLowerCase().trim())
     );
     // Aynı hasta (örn. bir gün Alex, ertesi gün Soprano) birden fazla kez çıkmasın — en erken randevusunu göster
     const map=new Map();
     adaylar.forEach(r=>{
-      const k=r.hasta?.toLowerCase().trim();
+      const k=r.hasta_id||r.hasta?.toLowerCase().trim(); // hasta_id varsa onu kullan — aynı isimde farklı hastaları ayırt etmek için
       if(!map.has(k)||r.tarih<map.get(k).tarih)map.set(k,r);
     });
     return[...map.values()].sort((a,b)=>a.tarih.localeCompare(b.tarih)||(a.saat||"").localeCompare(b.saat||""));
@@ -2009,7 +2024,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
 // ── RANDEVU DETAY ────────────────────────────────────────────────────────────
 function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc,onSonlandirKasa,showToast}){
   const [durum,setDurum]=useState(r.durum);const [odeme,setOdeme]=useState(r.odeme);
-  const hastaKaydi=(hastalar||[]).find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
+  const hastaKaydi=(hastalar||[]).find(h=>h.id===r.hasta_id)||isimleTekHastaBul(hastalar,r.hasta);
   const [hastaEdit,setHastaEdit]=useState(false);
   const [yeniHastaAd,setYeniHastaAd]=useState(r.hasta);
   const [yeniHastaTel,setYeniHastaTel]=useState(r.tel||"");
@@ -2135,7 +2150,7 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
           {!r.anket_durum&&(
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>{
-                const dahaOnceGonderildi=(randevular||[]).some(x=>x.id!==r.id&&x.hasta?.toLowerCase().trim()===r.hasta?.toLowerCase().trim()&&x.anket_durum==="gonderildi");
+                const dahaOnceGonderildi=(randevular||[]).some(x=>x.id!==r.id&&(r.hasta_id?x.hasta_id===r.hasta_id:x.hasta?.toLowerCase().trim()===r.hasta?.toLowerCase().trim())&&x.anket_durum==="gonderildi");
                 if(dahaOnceGonderildi){
                   if(!window.confirm("⚠️ Bu hastaya daha önce anket gönderildi. Yine de göndermek istiyor musunuz?"))return;
                 }
@@ -2741,7 +2756,7 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
         ):(
           <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
             {epilasyonEksik.map((r,i)=>{
-              const hastaKaydi=hastalar.find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
+              const hastaKaydi=hastalar.find(h=>h.id===r.hasta_id)||isimleTekHastaBul(hastalar,r.hasta);
               return(
                 <div key={r.id} onClick={()=>hastaKaydi&&onEpilasyonAc(hastaKaydi,r)} style={{padding:"10px 16px",borderBottom:i<epilasyonEksik.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",gap:10}}>
                   <div>
@@ -2771,7 +2786,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
   const filtreliHastalar=filtre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(filtre.toLowerCase())||h.tel?.includes(filtre)||h.hasta_id?.includes(filtre)):[];
   async function kaydet(){if(!ad.trim())return;await hastaEkleDB(ad.trim(),tel.trim(),cinsiyet);showToast("Hasta eklendi.");setForm(null);setAd("");setTel("");setCinsiyet("Bayan");}
 
-  const hastaRandevular=seciliHasta?randevular.filter(r=>r.hasta?.toLowerCase().trim()===seciliHasta.ad?.toLowerCase().trim()).sort((a,b)=>a.tarih>b.tarih?1:-1):[];
+  const hastaRandevular=seciliHasta?randevular.filter(r=>r.hasta_id?r.hasta_id===seciliHasta.id:r.hasta?.toLowerCase().trim()===seciliHasta.ad?.toLowerCase().trim()).sort((a,b)=>a.tarih>b.tarih?1:-1):[];
   const gelmedListesi=hastaRandevular.filter(r=>r.durum==="Gelmedi"&&r.tarih>=GELMEDI_TAKIP_BASLANGIC);
   // "Haber verdi": SADECE randevu günü aynı gün silinen ya da aynı gün başka tarihe alınan durumlar
   const ayniGunSilinen=seciliHasta?silLog.filter(s=>{
