@@ -661,13 +661,17 @@ export default function App() {
       if(ok)setModal(null);
       return ok;
     }
-    // Yoksa (hastalar tablosunda kaydı yoksa): sadece bu randevu kaydını güncelle
+    // Yoksa (hastalar tablosunda kaydı yoksa): YENİ bir hasta kaydı oluştur ve randevuyu ona bağla (aksi halde Epilasyon Kartı gibi hasta_id'ye bağlı özellikler hiçbir zaman çalışmaz)
     const now=nowTime();
-    const yeniLog=[...(r?.log||[]),{saat:now,kullanici:kullaniciEtiket(),islem:`Hasta bilgisi değiştirildi: "${r?.hasta}" → "${ad}"`}];
     try{
-      await sbUpdate("randevular",r.id,{hasta:ad,tel,log:yeniLog});
-      setRandevular(prev=>prev.map(x=>x.id!==r.id?x:{...x,hasta:ad,tel,log:yeniLog}));
-      showToast("Hasta bilgileri güncellendi.");
+      const maxId=hastalar.reduce((max,h)=>{const n=parseInt(h.hasta_id||"0");return n>max?n:max;},0);
+      const yeniHastaId=String(maxId+1).padStart(4,"0");
+      const [ins]=await sbInsert("hastalar",{ad,tel,cinsiyet:r.cinsiyet||"Bayan",hasta_id:yeniHastaId});
+      const yeniLog=[...(r?.log||[]),{saat:now,kullanici:kullaniciEtiket(),islem:`Hasta bilgisi değiştirildi ve hasta kaydı oluşturuldu: "${r?.hasta}" → "${ad}"`}];
+      await sbUpdate("randevular",r.id,{hasta:ad,tel,hasta_id:ins.id,log:yeniLog});
+      setHastalar(prev=>[...prev,{id:ins.id,ad,tel,cinsiyet:r.cinsiyet||"Bayan",hasta_id:yeniHastaId}]);
+      setRandevular(prev=>prev.map(x=>x.id!==r.id?x:{...x,hasta:ad,tel,hasta_id:ins.id,log:yeniLog}));
+      showToast("Hasta kaydı oluşturuldu ve randevuya bağlandı.");
       setModal(null);
       return true;
     }catch(e){showToast("Hata: "+e.message,"error");return false;}
@@ -1141,9 +1145,9 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
     return bosluklar.filter(bo=>bo.e-bo.b>0);
   }
   function drYokAraligi(oda){
-    return bloklar.filter(b=>b.oda===oda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK")
-      .map(b=>`${b.saat}-${minToTime(timeToMin(b.saat)+b.sure)}`)
-      .join(", ");
+    const araliklar=bloklar.filter(b=>b.oda===oda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK")
+      .map(b=>`${b.saat}-${minToTime(timeToMin(b.saat)+b.sure)}`);
+    return [...new Set(araliklar)].join(", "); // aynı aralık birden fazla kayıtta olsa bile ekranda TEKRARLANMASIN
   }
   function digerOdaDurumu(saat,digerOda){
     const digerRandevular=digerOda==="alex"?alexR:sopR;
