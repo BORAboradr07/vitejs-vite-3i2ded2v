@@ -896,7 +896,7 @@ export default function App() {
   async function beklemeyiRandevuyaCevir(b,secilenSlot){
     const tarih=secilenSlot?.tarih||seciliTarih;
     const saat=secilenSlot?.saat||b.tercihSaat||b.tercih_saat||"09:00";
-    setModal({tip:"yeni",data:{oda:b.oda||"alex",hasta:b.ad,hastaId:null,tarih,saat,bolgeler:b.bolgeler||[]},beklemdeId:b.id});
+    setModal({tip:"yeni",data:{oda:b.oda||"alex",hasta:b.ad,hastaId:null,tel:b.tel||"",tarih,saat,bolgeler:b.bolgeler||[]},beklemdeId:b.id});
   }
 
   async function beklemeRandevuAlindi(id){
@@ -1973,6 +1973,11 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
       if(hastaTel.trim()){
         const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel,hastaCinsiyet,ilkKezEpilasyon);
         if(yeni) aktifHastaId=yeni.id;
+        else {
+          showToast("Hasta kaydı oluşturulamadı — randevu kaydedilmedi. Lütfen tekrar deneyin.","error");
+          setKayitYapiliyor(false);
+          return;
+        }
       }
     }
     await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar,tel:hastaTel,cinsiyet:hastaCinsiyet});
@@ -2038,7 +2043,11 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
               <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>"{hastaFiltre}" listede yok — bilgileri girin:</div>
               <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
               <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
-              <button onClick={()=>{setHasta(hastaFiltre.toLocaleUpperCase("tr"));setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12}}>✓ Bu isimle devam et</button>
+              <button type="button" onClick={()=>setIlkKezEpilasyon(v=>!v)} style={{padding:"12px",borderRadius:10,border:ilkKezEpilasyon?"2px solid #16a34a":"2px solid #d1d5db",background:ilkKezEpilasyon?"#dcfce7":"#fff",color:ilkKezEpilasyon?"#166534":"#555",fontWeight:700,fontSize:14,cursor:"pointer",textAlign:"center"}}>
+                {ilkKezEpilasyon?"✅ ":"🆕 "}Bu Hasta Epilasyona İlk Kez Geliyor
+              </button>
+              {!(hastaTel.trim()&&hastaCinsiyet)&&<div style={{fontSize:12,color:"#dc2626",textAlign:"center"}}>⚠️ Devam etmeden önce telefon girin ve cinsiyet seçin</div>}
+              <button disabled={!(hastaTel.trim()&&hastaCinsiyet)} onClick={()=>{setHasta(hastaFiltre.toLocaleUpperCase("tr"));setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12,opacity:(hastaTel.trim()&&hastaCinsiyet)?1:0.4,cursor:(hastaTel.trim()&&hastaCinsiyet)?"pointer":"not-allowed"}}>✓ Bu isimle devam et</button>
             </div>
           )}
         </div>
@@ -4452,7 +4461,7 @@ function ModalWrapper({children,onClose}){
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 const Label=({children})=><div style={{fontSize:12,fontWeight:600,color:"#888",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>{children}</div>;
 const inputStyle={width:"100%",padding:"9px 12px",border:"1px solid #ddd",borderRadius:8,fontSize:14,fontFamily:"inherit",color:"#333",background:"#fff",outline:"none"};
-const chipStyle=a=>({padding:"6px 14px",border:a?"1.5px solid #6366f1":"1px solid #ddd",borderRadius:20,background:a?"#eef0ff":"#fafaf8",color:a?"#4338ca":"#555",fontSize:13,cursor:"pointer",fontWeight:a?500:400,fontFamily:"inherit"});
+const chipStyle=a=>({padding:"6px 14px",border:a?"1.5px solid #6366f1":"1px solid #ddd",borderRadius:20,background:a?"#eef0ff":"#fafaf8",color:a?"#4338ca":"#555",fontSize:13,cursor:"pointer",fontWeight:a?500:400,fontFamily:"inherit",outline:"none"});
 const btnPrimary={padding:"9px 18px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:500,cursor:"pointer",fontFamily:"inherit"};
 const btnSecondary={padding:"9px 18px",background:"transparent",color:"#555",border:"1px solid #ddd",borderRadius:8,fontSize:14,cursor:"pointer",fontFamily:"inherit"};
 const modalTitleStyle={fontSize:19,fontWeight:600,marginBottom:18};
