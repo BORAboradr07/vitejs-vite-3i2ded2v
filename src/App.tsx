@@ -3217,7 +3217,7 @@ function AnketSonucSekme({aktifRol}){
   const [istatistikYukleniyor,setIstatistikYukleniyor]=useState(true);
   const [yukleniyor,setYukleniyor]=useState(true);
   const [filtre,setFiltre]=useState("hepsi"); // "hepsi" | "yuksek" | "dusuk"
-  const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEAE/review";
+  const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEA0/review";
   const LAZER_SORULAR_METIN={s1:"Randevu ve karşılama sürecinden memnun kaldınız mı?",s2:"Personelimizin ilgi ve iletişimini nasıl değerlendirirsiniz?",s3:"İşlem sırasında kendinizi rahat ve güvende hissettiniz mi?",s4:"Mahremiyetinize yeterince özen gösterildiğini düşünüyor musunuz?",s5:"Klinik hijyenini nasıl değerlendirirsiniz?",s6:"İşlem öncesinde yeterince bilgilendirildiniz mi?",s7:"Genel memnuniyet puanı (1-10)",s8:"Tekrar aynı personelden hizmet almak ister misiniz?",s9:"Kliniğimizi yakınlarınıza tavsiye eder misiniz?",s10:"Görüş veya önerileriniz"};
   const CILT_SORULAR_METIN={s1:"İşlem öncesinde size yeterli bilgilendirme yapıldı mı?",s2:"Personelimizin ilgisini ve iletişimini nasıl değerlendirirsiniz?",s3:"İşlem sırasında kendinizi rahat hissettiniz mi?",s4:"Klinik hijyenini nasıl değerlendirirsiniz?",s5:"İşlem sonrasında öneriler ve bakım tavsiyeleri yeterince anlatıldı mı?",s6:"Genel memnuniyet puanı (1-10)",s7:"Aynı personelden tekrar hizmet almak ister misiniz?",s8:"Kliniğimizi yakınlarınıza tavsiye eder misiniz?",s9:"Görüş, öneri veya paylaşmak istediğiniz başka bir konu"};
   function soruMetni(anketTipi,key){const m=anketTipi==="lazer"?LAZER_SORULAR_METIN:CILT_SORULAR_METIN;return m[key]||key;}
@@ -3429,7 +3429,7 @@ function AnketSonucSekme({aktifRol}){
   const ortalama=anketler.length>0?(anketler.reduce((s,a)=>s+(a.puan||0),0)/anketler.length).toFixed(1):"-";
 
   function googleGonder(a){
-    const msg="Merhaba "+(a.hasta||"değerli hastamız")+", kliniğimize verdiğiniz destek için teşekkür ederiz! Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilirsiniz 🌸\n\n👉 "+GOOGLE_LINK;
+    const msg="Merhaba 🌸\nKliniğimizde aldığınız hizmetten memnun kaldıysanız, deneyiminizi Google'da paylaşmanız bizi çok mutlu eder.\nYorumlarınız hem bize hem de kliniğimizi araştıran kişilere yardımcı oluyor.\nGoogle yorum linkimiz:\n"+GOOGLE_LINK+"\nDr. Duygu Coşkun Özbakır\nDermatoloji ve Kozmetoloji Kliniği";
     window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
   }
 
@@ -3770,6 +3770,10 @@ function AnketSonucSekme({aktifRol}){
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <span style={{background:"#f0fdf4",color:"#16a34a",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
+                  {aktifRol==="yonetici"&&a.puan===10&&(a.google_tiklandi_zaman?
+                    <span title={`Tıkladı: ${new Date(a.google_tiklandi_zaman).toLocaleString("tr-TR")}`} style={{fontSize:11,color:"#16a34a",fontWeight:600,background:"#f0fdf4",padding:"3px 8px",borderRadius:10}}>✅ Tıkladı</span>
+                    :<span style={{fontSize:11,color:"#dc2626",fontWeight:600,background:"#fee2e2",padding:"3px 8px",borderRadius:10}}>— Tıklamadı</span>
+                  )}
                   <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#4285f4",whiteSpace:"nowrap"}}>Google'a Yönlendir</button>
                 </div>
               </div>
