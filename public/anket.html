@@ -55,7 +55,7 @@
 <script>
 const SB_URL="https://ukqfxyarurvrxjtumjfm.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVrcWZ4eWFydXJ2cnhqdHVtamZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MjcxMzYsImV4cCI6MjA5NTIwMzEzNn0.5SpZ5q4B1-qB5IcPFNUCFcxoKJuddThph_A16mE3gMk";
-const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEAE/review";
+const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEA0/review";
 const HDR={"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY};
 
 const token=location.pathname.split("/").pop()||location.hash.replace("#","");
@@ -230,6 +230,15 @@ function gosterTesekkurDusuk(){
   goster(html);
 }
 
+function googleTiklandi(){
+  // Hastanın Google butonuna tıkladığını kaydet (fire-and-forget, tıklamayı engellemez)
+  fetch(`${SB_URL}/rest/v1/anketler?token=eq.${token}`,{
+    method:"PATCH",
+    headers:{...HDR,"Prefer":"return=minimal"},
+    body:JSON.stringify({google_tiklandi_zaman:new Date().toISOString()})
+  }).catch(()=>{});
+}
+
 function hepsiOlumluMu(sorular,cevaplar,genelPuan){
   if(genelPuan!==10)return false;
   for(const s of sorular){
@@ -250,7 +259,7 @@ function gosterTesekkur(puan,cevaplar,sorular){
     html+=`<p style="margin-bottom:4px;">🌸 Bizi 10 üzerinden 10 puanla değerlendirdiğiniz için çok teşekkür ederiz!</p>`;
     html+=`<p style="margin-bottom:4px;">Sizlerin memnuniyeti bizim için en büyük motivasyondur.</p>`;
     html+=`<p style="margin-bottom:16px;">Deneyiminizi Google'da paylaşmanız, bizi tercih edecek diğer hastalarımıza da yardımcı olacaktır.</p>`;
-    html+=`<a class="google-btn" href="${GOOGLE_LINK}" target="_blank" rel="noopener">⭐ Google'da Yorum Yap</a>`;
+    html+=`<a class="google-btn" href="${GOOGLE_LINK}" target="_blank" rel="noopener" onclick="googleTiklandi()">⭐ Google'da Yorum Yap</a>`;
   } else if(puan>=8){
     html+=`<div class="icon">🌟</div>`;
     html+=`<h2>Teşekkürler!</h2>`;
