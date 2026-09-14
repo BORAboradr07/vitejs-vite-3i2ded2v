@@ -129,7 +129,6 @@ const BOLGE_SURELER = {
   "Koltuk Altı":10,"Karbon":20,"Cilt Bakımı":75,"Forma":45,"Tüy Sarartma":20,
   "Çene":10,"Bıyık":10,"Kulak Önü":10,"Alın":10,"Göğüs Ucu":10,
   "Alt Bacak":15,"Üst Bacak":20,"Yarım Kol":10,"Gövde":30,
-  "Kaş Arası":10,"Kasık Arası":10,"Yarım Sırt":15,"Yarım Gövde":15,
 };
 const ISLEM_KATEGORI = {"Karbon":"karbon","Cilt Bakımı":"cilt","Forma":"forma","Tüy Sarartma":"tuysarart"};
 const RENK = {
@@ -141,8 +140,8 @@ const RENK = {
   gelmedi:   {bg:"#7a3f3f",brd:"#9b5050",label:"Gelmedi"},
   blok:      {bg:"#555",brd:"#777",label:"Blok"},
 };
-const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde","Kaş Arası","Kasık Arası","Yarım Sırt","Yarım Gövde","Karbon","Cilt Bakımı","Forma","Tüy Sarartma"];
-const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde","Kaş Arası","Kasık Arası","Yarım Sırt","Yarım Gövde"];
+const SOPRANO_BOLGELER = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltukaltı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde","Karbon","Cilt Bakımı","Forma","Tüy Sarartma"];
+const ALEX_BOLGELER    = ["T.Bacak","T.Kol","Göbek","Sırt","Yüz","Koltuk Altı","Genital","Ense","Sakal Üstü","Boyun","Bel","Göğüs Arası","Omuz","Popo","Çene","Bıyık","Kulak Önü","Alın","Göğüs Ucu","Alt Bacak","Üst Bacak","Yarım Kol","Gövde"];
 const ODEME_TIPLERI    = ["Nakit","Kart","EFT","Ödeme Alınmadı"];
 const DURUMLAR_ALEX    = ["Seans","Rütuş","Gelmedi"];
 const DURUMLAR_SOPRANO = ["Seans","Gelmedi"];
@@ -182,26 +181,6 @@ function odaKapanisSaat(oda){
   // Alex: son işlem 19:15'te bitecek şekilde; Soprano: son işlem 19:00'da bitecek şekilde
   return oda==="alex"?19*60+15:19*60;
 }
-function aktifCalismaKurali(kurallar,oda,tarih){
-  // Verilen oda+tarih için geçerli çalışma saati kuralını bulur (en son eklenen kural kazanır).
-  if(!kurallar||!kurallar.length)return null;
-  const uygun=kurallar.filter(k=>k.oda===oda&&k.baslangic_tarih<=tarih&&(!k.bitis_tarih||tarih<=k.bitis_tarih));
-  if(!uygun.length)return null;
-  return uygun.reduce((a,b)=>(b.id>a.id?b:a));
-}
-function efektifAcilis(kurallar,oda,tarih){
-  const k=aktifCalismaKurali(kurallar,oda,tarih);
-  return k?k.acilis:9*60;
-}
-function efektifKapanis(kurallar,oda,tarih){
-  const k=aktifCalismaKurali(kurallar,oda,tarih);
-  return k?k.kapanis:odaKapanisSaat(oda);
-}
-function efektifMola(kurallar,oda,tarih){
-  const k=aktifCalismaKurali(kurallar,oda,tarih);
-  if(k&&k.mola_bas!=null&&k.mola_bit!=null)return {bas:k.mola_bas,bit:k.mola_bit};
-  return null;
-}
 function today(){
   // Türkiye saat dilimine göre "bugün" — UTC bazlı toISOString() gece 00:00-03:00 arası yanlış gün verebiliyordu
   const parcalar=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Istanbul",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
@@ -209,13 +188,6 @@ function today(){
   return `${y}-${m}-${d}`;
 }
 function addDays(d,n){const[y,mo,dy]=d.split("-").map(Number);const dt=new Date(y,mo-1,dy);dt.setDate(dt.getDate()+n);return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;}
-// İsimle hasta bulmak SON ÇARE olmalı (hasta_id her zaman önce denenmeli) — aynı isimde birden fazla hasta varsa (ki klinikte haftalık oluyor), YANLIŞ TAHMİN yapmamak için sadece TEK eşleşme varsa sonuç döner, birden fazla/hiç yoksa null döner.
-function isimleTekHastaBul(hastalar,ad){
-  if(!ad)return null;
-  const norm=ad.toLowerCase().trim();
-  const eslesenler=(hastalar||[]).filter(h=>h.ad?.toLowerCase().trim()===norm);
-  return eslesenler.length===1?eslesenler[0]:null;
-}
 function sonIsGunuTarihi(gunSayisi){
   // Bugünden geriye doğru, Pazar günlerini saymadan gunSayisi kadar iş günü geriye gider
   let tarih=today(),sayilan=0;
@@ -367,7 +339,6 @@ export default function App() {
   const [silLog,setSilLog]           = useState([]);
   const [gunIciLog,setGunIciLog]     = useState([]);
   const [bloklar,setBloklar]         = useState([]);
-  const [calismaSaatleri,setCalismaSaatleri] = useState([]);
   const [yukleniyor,setYukleniyor]   = useState(true);
   const [modal,setModal]             = useState(null);
   const [epilasyonModal,setEpilasyonModal] = useState(null); // {hasta, randevu}
@@ -430,14 +401,13 @@ export default function App() {
     async function yukle(sessiz){
       try{
         if(!sessiz)setYukleniyor(true);
-        const [r,h,b,sl,gl,bl,cs]=await Promise.all([
+        const [r,h,b,sl,gl,bl]=await Promise.all([
           sbGet("randevular"),
           sbGet("hastalar"),
           sbGet("bekleme"),
           sbGet("sil_log","order=id.desc"),
           sbGet("gunici_log","order=id.desc"),
           sbGet("bloklar"),
-          sbGet("calisma_saatleri").catch(()=>[]),
         ]);
         const hastaMap={};
         h.forEach(hs=>{if(hs.ad)hastaMap[hs.ad.toLowerCase().trim()]={tel:hs.tel||"",cinsiyet:hs.cinsiyet||"Bayan"};});
@@ -447,7 +417,6 @@ export default function App() {
         setSilLog(sl.map(x=>({...x,bolgeler:x.bolgeler||[]})));
         setGunIciLog(gl.map(x=>({...x,bolgeler:x.bolgeler||[]})));
         setBloklar(bl);
-        setCalismaSaatleri(cs);
       } catch(e){ if(!sessiz)showToast("Veriler yüklenemedi: "+e.message,"error"); }
       finally{ if(!sessiz)setYukleniyor(false); }
     }
@@ -465,38 +434,35 @@ export default function App() {
   const gunB    = bloklar.filter(b=>b.tarih===seciliTarih);
 
   // ── Epilasyon kartı durumu (yeşil=seans var, sarı=sadece foto/not var, gri=hiç yok) ──
-  const [epilasyonDurum,setEpilasyonDurum]=useState({}); // { randevu_id: "yesil" } — o SPESİFİK randevuya seans girildi mi
-  const [epilasyonKartNotu,setEpilasyonKartNotu]=useState({}); // { hasta_id: "sari" } — hastanın genel kağıt kart notu (tarihten bağımsız, sadece "arşivde bir yerde kaydı var" bilgisi). Hasta_id kullanılıyor, isim DEĞİL — çünkü aynı isimde birden fazla hasta kaydı olabilir (bkz. Gamze Ateş vakası)
+  const [epilasyonDurum,setEpilasyonDurum]=useState({}); // { "ad soyad (küçük harf)": "yesil"|"sari" }
   useEffect(()=>{
     let iptal=false;
     async function yukle(){
-      const idler=[...new Set(gunR.map(r=>r.hasta_id).filter(Boolean))];
+      const adlar=[...new Set(gunR.map(r=>r.hasta?.toLowerCase().trim()).filter(Boolean))];
+      if(adlar.length===0)return;
+      const idMap={}; // ad(küçük) -> hastalar.id
+      hastalar.forEach(h=>{const k=h.ad?.toLowerCase().trim();if(k&&adlar.includes(k))idMap[k]=h.id;});
+      const idler=[...new Set(Object.values(idMap))];
       if(idler.length===0)return;
       try{
         const [gecmisler,ziyaretler]=await Promise.all([
           sbGet("epilasyon_gecmis",`hasta_id=in.(${idler.join(",")})&select=hasta_id`),
-          sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id,randevu_id,tarih`),
+          sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id`),
         ]);
         if(iptal)return;
+        const ziyaretIdSeti=new Set(ziyaretler.map(z=>z.hasta_id));
         const gecmisIdSeti=new Set(gecmisler.map(g=>g.hasta_id));
-        // 1) randevu_id doğrudan varsa: en kesin eşleşme, o SPESİFİK randevu için "yeşil"
         const yeniDurum={};
-        ziyaretler.forEach(z=>{ if(z.randevu_id)yeniDurum[z.randevu_id]="yesil"; });
-        // 2) randevu_id boş olan eski/manuel kayıtlar için: hasta_id+tarih eşleşmesiyle o güne ait randevu(lar)ı bul (oda ayrımı yapamıyoruz ama en azından gün karışmasını önler)
-        const tarihFallback={}; // "hastaId|tarih" -> true
-        ziyaretler.forEach(z=>{ if(!z.randevu_id&&z.tarih)tarihFallback[`${z.hasta_id}|${z.tarih}`]=true; });
-        gunR.forEach(r=>{
-          if(r.hasta_id&&tarihFallback[`${r.hasta_id}|${r.tarih}`])yeniDurum[r.id]="yesil";
+        Object.entries(idMap).forEach(([ad,id])=>{
+          if(ziyaretIdSeti.has(id))yeniDurum[ad]="yesil";
+          else if(gecmisIdSeti.has(id))yeniDurum[ad]="sari";
         });
         setEpilasyonDurum(yeniDurum);
-        const yeniNot={};
-        idler.forEach(id=>{ if(gecmisIdSeti.has(id))yeniNot[id]="sari"; });
-        setEpilasyonKartNotu(yeniNot);
       }catch(e){/* sessizce geç — bu sadece görsel bir gösterge */}
     }
     yukle();
     return()=>{iptal=true;};
-  },[seciliTarih,randevular]);
+  },[seciliTarih,randevular,hastalar]);
 
   function cakismaVar(oda,tarih,saat,sure,excludeId=null){
     const yB=timeToMin(saat),yE=yB+sure;
@@ -505,8 +471,6 @@ export default function App() {
     const bc=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih&&b.baslik!=="DR_YOK")
       .find(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return yB<be&&yE>bb;});
     if(bc) return {tip:"blok",mesaj:`⛔ Bu saat bloklu: "${bc.baslik}" (${bc.saat}, ${bc.sure} dk).`};
-    const mola=efektifMola(calismaSaatleri,oda,tarih);
-    if(mola&&yB<mola.bit&&yE>mola.bas) return {tip:"blok",mesaj:`⛔ Bu saat öğle molasında (${minToTime(mola.bas)}-${minToTime(mola.bit)}).`};
     if(rc){
       if(oda==="soprano") return {tip:"uyari",mesaj:`⚠️ Bu saatte ${rc.hasta} adlı hastanın randevusu var (${rc.saat}, ${rc.sure} dk). Yine de devam etmek istiyor musunuz?`};
       return {tip:"randevu",mesaj:`⚠️ Bu saatte ${rc.hasta} adlı hastanın randevusu var (${rc.saat}, ${rc.sure} dk).`};
@@ -532,7 +496,7 @@ export default function App() {
     }
     const saatMin=timeToMin(data.saat);
     const bitisMin=saatMin+data.sure;
-    const kapanisSaat=efektifKapanis(calismaSaatleri,data.oda,tarihKontrol);
+    const kapanisSaat=odaKapanisSaat(data.oda);
     if(bitisMin>kapanisSaat){
       showToast(`${data.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu randevu o saatten sonra bitiyor, oluşturulamaz.`,"error");
       return false;
@@ -563,17 +527,16 @@ export default function App() {
             setGunIciLog(prev=>[{...gl,id:ins.id,degTarih:gl.deg_tarih,degSaat:gl.deg_saat,kullanic:gl.kullanic,eskiSaat:gl.eski_saat,eskiSure:gl.eski_sure,yeniSaat:gl.yeni_saat,yeniSure:gl.yeni_sure},...prev]);
           }
         }catch(logErr){console.warn("Log kaydedilemedi:",logErr);}
-        const hastaObj1=hastalar.find(h=>h.id===data.hastaId)||hastalar.find(h=>h.id===eskiR?.hasta_id)||isimleTekHastaBul(hastalar,data.hasta);
-        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId||eskiR?.hasta_id||hastaObj1?.id||null,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum,odeme:data.odeme,notlar:data.notlar||"",tel:data.tel,cinsiyet:data.cinsiyet,log:yeniLog};
+        const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum,odeme:data.odeme,notlar:data.notlar||"",tel:data.tel,cinsiyet:data.cinsiyet,log:yeniLog};
         await sbUpdate("randevular",data.id,sbData);
         setRandevular(prev=>prev.map(r=>r.id===data.id?{...r,...sbData,id:data.id}:r));
         showToast("Randevu güncellendi.");
       } else {
-        const hastaObj2=hastalar.find(h=>h.id===data.hastaId)||isimleTekHastaBul(hastalar,data.hasta);
+        const hastaObj2=hastalar.find(h=>h.id===data.hastaId)||hastalar.find(h=>h.ad?.toLowerCase().trim()===data.hasta?.toLowerCase().trim());
         const sbData={oda:data.oda,hasta:data.hasta,hasta_id:data.hastaId||hastaObj2?.id,tarih:data.tarih||seciliTarih,saat:data.saat,sure:data.sure,bolgeler:data.bolgeler||[],durum:data.durum||"Seans",odeme:data.odeme,notlar:data.notlar||"",tel:data.tel||hastaObj2?.tel||"",cinsiyet:data.cinsiyet||hastaObj2?.cinsiyet||"Bayan",log:[{saat:now,kullanici:kullaniciEtiket(),islem:"Randevu oluşturuldu"}]};
         const [ins]=await sbInsert("randevular",sbData);
         // hastalar tablosundan tel ve cinsiyet bilgisini al
-        const hastaObj=isimleTekHastaBul(hastalar,sbData.hasta);
+        const hastaObj=hastalar.find(h=>h.ad?.toLowerCase().trim()===sbData.hasta?.toLowerCase().trim());
         setRandevular(prev=>[...prev,{...sbData,id:ins.id,tel:sbData.tel||hastaObj?.tel||"",cinsiyet:sbData.cinsiyet||hastaObj?.cinsiyet||"Bayan"}]);
         showToast("Randevu oluşturuldu.");
       }
@@ -599,79 +562,25 @@ export default function App() {
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
 
-  async function sonlandirVeKasayaGonder(r){
-    try{
-      // Kasa tarafındaki GERÇEK durumu kontrol et — arayüz eski/önbellekli olabilir
-      const kasaResp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan?randevu_id=eq.${r.id}&select=id,durum`,{
-        headers:{"apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY},
-      });
-      const mevcut=(await kasaResp.json())?.[0];
-      if(mevcut?.durum==="tamamlandi"){
-        showToast("Bu hasta kasada zaten işlenmiş (ödeme alınmış) — buradan düzeltilemez, düzeltme kasa sisteminden yapılmalı.","error");
-        return;
-      }
-      const ciltTipleri=["Cilt Bakımı","Karbon","Tüy Sarartma","Forma"];
-      const ciltIslemi=(r.bolgeler||[]).find(b=>ciltTipleri.includes(b));
-      const islemTipi=ciltIslemi||(r.oda==="alex"?"Alex Lazer":"Soprano Lazer");
-      const govdeVeri={
-        hasta_ad:r.hasta, hasta_tel:r.tel||null, cinsiyet:r.cinsiyet||null,
-        tarih:r.tarih, oda:r.oda, islem_tipi:islemTipi, bolgeler:r.bolgeler||[],
-        durum:"bekliyor", gonderen:kullaniciEtiket(),
-      };
-      let resp;
-      if(mevcut){
-        // Daha önce gönderilmiş ama kasada henüz işlenmemiş — var olan kaydı güncelle (yeni satır oluşturma)
-        resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan?id=eq.${mevcut.id}`,{
-          method:"PATCH",
-          headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY,"Prefer":"return=representation"},
-          body:JSON.stringify(govdeVeri),
-        });
-      } else {
-        resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan`,{
-          method:"POST",
-          headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY,"Prefer":"return=representation"},
-          body:JSON.stringify({randevu_id:r.id,...govdeVeri}),
-        });
-      }
-      if(!resp.ok){
-        const t=await resp.text();
-        if(t.includes("duplicate key")||t.includes("23505")){
-          showToast("Bu randevu az önce başka bir cihazdan gönderilmiş — sayfayı yenileyip tekrar deneyin.","error");
-          return;
-        }
-        throw new Error(t);
-      }
-      const zaman=new Date().toISOString();
-      await sbUpdate("randevular",r.id,{kasaya_gonderildi:zaman});
-      setRandevular(prev=>prev.map(x=>x.id===r.id?{...x,kasaya_gonderildi:zaman}:x));
-      showToast(mevcut?"Kasadaki kayıt güncellendi.":"Hasta kasaya gönderildi.");
-    } catch(e){showToast("Kasaya gönderilemedi: "+e.message,"error");}
-  }
-
-
   async function randevuHastaBilgisiDuzenle(r,yeniAd,yeniTel){
     const ad=yeniAd.trim(),tel=yeniTel.trim();
     if(!ad){showToast("Ad soyad boş olamaz.","error");return false;}
     // Bu hastanın "hastalar" tablosunda kaydı var mı? (hasta_id ya da isimle eşleştir)
-    const hastaKaydi=hastalar.find(h=>h.id===r.hasta_id)
-      ||isimleTekHastaBul(hastalar,r.hasta);
+    const hastaKaydi=hastalar.find(h=>h.hasta_id&&r.hasta_id&&String(h.hasta_id)===String(r.hasta_id))
+      ||hastalar.find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
     if(hastaKaydi){
       // Varsa: hastalar tablosu + bu hastaya ait TÜM randevu kayıtları birlikte güncellenir
       const ok=await hastaGuncelle(hastaKaydi,ad,tel,hastaKaydi.cinsiyet||"Bayan");
       if(ok)setModal(null);
       return ok;
     }
-    // Yoksa (hastalar tablosunda kaydı yoksa): YENİ bir hasta kaydı oluştur ve randevuyu ona bağla (aksi halde Epilasyon Kartı gibi hasta_id'ye bağlı özellikler hiçbir zaman çalışmaz)
+    // Yoksa (hastalar tablosunda kaydı yoksa): sadece bu randevu kaydını güncelle
     const now=nowTime();
+    const yeniLog=[...(r?.log||[]),{saat:now,kullanici:kullaniciEtiket(),islem:`Hasta bilgisi değiştirildi: "${r?.hasta}" → "${ad}"`}];
     try{
-      const maxId=hastalar.reduce((max,h)=>{const n=parseInt(h.hasta_id||"0");return n>max?n:max;},0);
-      const yeniHastaId=String(maxId+1).padStart(4,"0");
-      const [ins]=await sbInsert("hastalar",{ad,tel,cinsiyet:r.cinsiyet||"Bayan",hasta_id:yeniHastaId});
-      const yeniLog=[...(r?.log||[]),{saat:now,kullanici:kullaniciEtiket(),islem:`Hasta bilgisi değiştirildi ve hasta kaydı oluşturuldu: "${r?.hasta}" → "${ad}"`}];
-      await sbUpdate("randevular",r.id,{hasta:ad,tel,hasta_id:ins.id,log:yeniLog});
-      setHastalar(prev=>[...prev,{id:ins.id,ad,tel,cinsiyet:r.cinsiyet||"Bayan",hasta_id:yeniHastaId}]);
-      setRandevular(prev=>prev.map(x=>x.id!==r.id?x:{...x,hasta:ad,tel,hasta_id:ins.id,log:yeniLog}));
-      showToast("Hasta kaydı oluşturuldu ve randevuya bağlandı.");
+      await sbUpdate("randevular",r.id,{hasta:ad,tel,log:yeniLog});
+      setRandevular(prev=>prev.map(x=>x.id!==r.id?x:{...x,hasta:ad,tel,log:yeniLog}));
+      showToast("Hasta bilgileri güncellendi.");
       setModal(null);
       return true;
     }catch(e){showToast("Hata: "+e.message,"error");return false;}
@@ -683,7 +592,7 @@ export default function App() {
       const r=randevular.find(x=>x.id===id);
       // Çakışma kontrolü - süre uzadıysa
       if(yeniSure>(r?.sure||0)){
-        const kapanisSaat=efektifKapanis(calismaSaatleri,r.oda,r.tarih);
+        const kapanisSaat=odaKapanisSaat(r.oda);
         if(timeToMin(r.saat)+yeniSure>kapanisSaat){
           showToast(`${r.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu süre uzatması o saatten sonra bitiyor, uygulanamaz.`,"error");
           return;
@@ -753,21 +662,6 @@ export default function App() {
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
 
-  async function calismaSaatiEkle(kural){
-    try{
-      const r=await sbInsert("calisma_saatleri",kural);
-      setCalismaSaatleri(prev=>[...prev,r[0]]);
-      showToast("Çalışma saati kuralı kaydedildi.");
-    } catch(e){showToast("Hata: "+e.message,"error");}
-  }
-
-  async function calismaSaatiSil(id){
-    try{
-      await sbDelete("calisma_saatleri",id);
-      setCalismaSaatleri(prev=>prev.filter(x=>x.id!==id));
-    } catch(e){showToast("Hata: "+e.message,"error");}
-  }
-
   async function hastaGuncelle(hasta,yeniAd,yeniTel,yeniCinsiyet,yeniHastaId){
     try{
       const eskiAd=hasta.ad;
@@ -810,24 +704,16 @@ export default function App() {
     }catch(e){showToast("Hata: "+e.message,"error");return false;}
   }
 
-  async function hastaEkleDB(ad,tel,cinsiyet="Bayan",ilkKez=false){
+  async function hastaEkleDB(ad,tel,cinsiyet="Bayan"){
     try{
       // Önce state'te ara
       const varMi=hastalar.find(h=>h.ad?.toLowerCase().trim()===ad.toLowerCase().trim());
-      if(varMi){
-        const aynıKisiMi=window.confirm(`"${ad}" isminde zaten kayıtlı bir hasta var (tel: ${varMi.tel||"kayıtlı değil"}).\n\nBu AYNI kişi mi?\n\nTAMAM: Evet, mevcut kayda git.\nİPTAL: Hayır, bu farklı bir kişi — yeni ayrı bir kayıt oluştur.`);
-        if(aynıKisiMi) return varMi;
-        // Farklı kişi: aşağıya devam et, yeni ayrı kayıt oluşturulacak
-      }
+      if(varMi) return varMi;
       // State'te yoksa DB'de de kontrol et (state gecikmiş olabilir)
       const dbKontrol=await sbGet("hastalar",`ad=ilike.${encodeURIComponent(ad.trim())}`);
-      if(dbKontrol.length>0&&!varMi){
-        const aynıKisiMi=window.confirm(`"${ad}" isminde zaten kayıtlı bir hasta var (tel: ${dbKontrol[0].tel||"kayıtlı değil"}).\n\nBu AYNI kişi mi?\n\nTAMAM: Evet, mevcut kayda git.\nİPTAL: Hayır, bu farklı bir kişi — yeni ayrı bir kayıt oluştur.`);
-        if(aynıKisiMi){
-          setHastalar(prev=>[...prev,...dbKontrol.filter(d=>!prev.some(p=>p.id===d.id))]);
-          return dbKontrol[0];
-        }
-        // Farklı kişi: yeni ayrı kayıt oluşturulacak
+      if(dbKontrol.length>0){
+        setHastalar(prev=>[...prev,...dbKontrol.filter(d=>!prev.some(p=>p.id===d.id))]);
+        return dbKontrol[0];
       }
       // Gerçekten yoksa yeni kayıt oluştur
       const maxId=hastalar.reduce((max,h)=>{
@@ -835,8 +721,8 @@ export default function App() {
         return n>max?n:max;
       },0);
       const yeniId=String(maxId+1).padStart(4,"0");
-      const [ins]=await sbInsert("hastalar",{ad,tel,cinsiyet,hasta_id:yeniId,ilk_kez_epilasyon:ilkKez});
-      const yeni={id:ins.id,ad,tel,cinsiyet,hasta_id:yeniId,ilk_kez_epilasyon:ilkKez};
+      const [ins]=await sbInsert("hastalar",{ad,tel,cinsiyet,hasta_id:yeniId});
+      const yeni={id:ins.id,ad,tel,cinsiyet,hasta_id:yeniId};
       setHastalar(prev=>[...prev,yeni]);
       return yeni;
     } catch(e){showToast("Hata: "+e.message,"error");return null;}
@@ -893,10 +779,8 @@ export default function App() {
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
 
-  async function beklemeyiRandevuyaCevir(b,secilenSlot){
-    const tarih=secilenSlot?.tarih||seciliTarih;
-    const saat=secilenSlot?.saat||b.tercihSaat||b.tercih_saat||"09:00";
-    setModal({tip:"yeni",data:{oda:b.oda||"alex",hasta:b.ad,hastaId:null,tel:b.tel||"",tarih,saat,bolgeler:b.bolgeler||[]},beklemdeId:b.id});
+  async function beklemeyiRandevuyaCevir(b){
+    setModal({tip:"yeni",data:{oda:b.oda||"alex",hasta:b.ad,hastaId:null,tarih:seciliTarih,saat:b.tercihSaat||b.tercih_saat||"09:00",bolgeler:b.bolgeler||[]},beklemdeId:b.id});
   }
 
   async function beklemeRandevuAlindi(id){
@@ -923,7 +807,7 @@ export default function App() {
     const ikiAyOncesi=addDays(today(),-60);
     // Son 2 ay içinde bu hastaya (adı ne olursa olsun, hangi randevusundan olursa olsun) zaten anket gönderilmiş mi?
     const yakinZamandaGonderilenHastalar=new Set(
-      randevular.filter(r=>r.tarih>=ikiAyOncesi&&r.anket_durum==="gonderildi").map(r=>r.hasta_id||r.hasta?.toLowerCase().trim())
+      randevular.filter(r=>r.tarih>=ikiAyOncesi&&r.anket_durum==="gonderildi").map(r=>r.hasta?.toLowerCase().trim())
     );
     const saatiGecti5=r=>(Date.now()-new Date(`${r.tarih}T${r.saat}:00`).getTime())/(1000*60*60)>=5;
     const adaylar=randevular.filter(r=>
@@ -931,12 +815,12 @@ export default function App() {
       saatiGecti5(r)&&
       r.anket_durum!=="gonderildi"&&
       r.durum!=="Gelmedi"&&
-      !yakinZamandaGonderilenHastalar.has(r.hasta_id||r.hasta?.toLowerCase().trim())
+      !yakinZamandaGonderilenHastalar.has(r.hasta?.toLowerCase().trim())
     );
     // Aynı hasta (örn. bir gün Alex, ertesi gün Soprano) birden fazla kez çıkmasın — en erken randevusunu göster
     const map=new Map();
     adaylar.forEach(r=>{
-      const k=r.hasta_id||r.hasta?.toLowerCase().trim(); // hasta_id varsa onu kullan — aynı isimde farklı hastaları ayırt etmek için
+      const k=r.hasta?.toLowerCase().trim();
       if(!map.has(k)||r.tarih<map.get(k).tarih)map.set(k,r);
     });
     return[...map.values()].sort((a,b)=>a.tarih.localeCompare(b.tarih)||(a.saat||"").localeCompare(b.saat||""));
@@ -1017,22 +901,22 @@ export default function App() {
         </div>
       </nav>
       <div style={{maxWidth:1200,margin:"0 auto",padding:"1.25rem 1.5rem"}}>
-        {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} calismaSaatleri={calismaSaatleri} calismaSaatiEkle={calismaSaatiEkle} calismaSaatiSil={calismaSaatiSil} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} hastalar={hastalar} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast} epilasyonDurum={epilasyonDurum} epilasyonKartNotu={epilasyonKartNotu}/>}
+        {aktifSekme==="takvim"&&<TakvimSekme seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast} epilasyonDurum={epilasyonDurum}/>}
         {aktifSekme==="bildirimler"&&<BildirimlerSekme randevular={randevular} hastalar={hastalar} aktifRol={aktifRol} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
         {aktifSekme==="hastalar"&&<HastalarSekme hastalar={hastalar} hastaEkleDB={hastaEkleDB} hastaGuncelle={hastaGuncelle} aktifRol={aktifRol} showToast={showToast} randevular={randevular} silLog={silLog} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuSil={randevuSil} onEpilasyonAc={(hasta)=>setEpilasyonModal({hasta,randevu:null})}/>}
-        {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle} onNotGuncelle={beklemeNotGuncelle} randevular={randevular} bloklar={bloklar} calismaSaatleri={calismaSaatleri}/>}
+        {aktifSekme==="bekleme"&&<BeklemeListesi bekleme={bekleme} aktifRol={aktifRol} showToast={showToast} onRandevuyaCevir={beklemeyiRandevuyaCevir} onSil={beklemeSil} onEkle={beklemeyeEkle} onNotGuncelle={beklemeNotGuncelle}/>}
         {aktifSekme==="rapor"&&<RaporSekme seciliTarih={seciliTarih} randevular={randevular} aktifRol={aktifRol}/>}
         {aktifSekme==="anket_sonuc"&&<AnketSonucSekme aktifRol={aktifRol}/>}
         {aktifSekme==="alex_program"&&<AlexProgramSekme aktifRol={aktifRol}/>}
         {aktifSekme==="gelmeyenler"&&<GelmeyenlerSekme randevular={randevular} aktifRol={aktifRol} onDurumGuncelle={durumGuncelle}/>}
-        {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} calismaSaatleri={calismaSaatleri} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
+        {aktifSekme==="dashboard"&&<DashboardSekme randevular={randevular} bloklar={bloklar} bekleme={bekleme} setSeciliTarih={(t)=>{setSeciliTarih(t);}} setAktifSekme={setAktifSekme} onYeniRandevu={(oda,saat,tarih)=>{setSeciliTarih(tarih);setAktifSekme("takvim");setTimeout(()=>setModal({tip:"yeni",data:{oda,saat,tarih}}),50);}}/>}
         {aktifSekme==="log"&&aktifRol==="yonetici"&&<LogSekme randevular={randevular} silLog={silLog} gunIciLog={gunIciLog}/>}
         {aktifSekme==="epilasyon_log"&&(aktifRol==="yonetici"||aktifRol==="sorumlu")&&<EpilasyonLogSekme/>}
       </div>
       {modal&&(
         <ModalWrapper onClose={()=>setModal(null)}>
           {modal.tip==="yeni"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={async(data)=>{const ok=await randevuKaydet(data);if(ok&&modal.beklemdeId)await beklemeRandevuAlindi(modal.beklemdeId);}} onIptal={()=>setModal(null)}/>}
-          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} hastalar={hastalar} randevular={randevular} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={randevuHastaBilgisiDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})} onSonlandirKasa={sonlandirVeKasayaGonder} showToast={showToast}/>}
+          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} hastalar={hastalar} randevular={randevular} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={randevuHastaBilgisiDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
           {modal.tip==="duzenle"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={randevuKaydet} onIptal={()=>setModal(null)} duzenleme/>}
         </ModalWrapper>
       )}
@@ -1075,12 +959,11 @@ export default function App() {
 }
 
 // ── TAKVİM ───────────────────────────────────────────────────────────────────
-function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calismaSaatleri,calismaSaatiEkle,calismaSaatiSil,blokEkle,blokSil,randevular,hastalar,aktifRol,onYeniRandevu,onRandevuTikla,showToast,onRandevuDuzenle,onRandevuTasi,epilasyonDurum,epilasyonKartNotu}){
+function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,blokEkle,blokSil,randevular,aktifRol,onYeniRandevu,onRandevuTikla,showToast,onRandevuDuzenle,onRandevuTasi,epilasyonDurum}){
   const [bosPanel,setBosPanel]=useState(false);
   const [blokPanel,setBlokPanel]=useState(false);
   const [hastaAraPanel,setHastaAraPanel]=useState(false);
   const [drYokPanel,setDrYokPanel]=useState(false);
-  const [calismaPanel,setCalismaPanel]=useState(false);
   const [aktifOda,setAktifOda]=useState("alex");
   const [mobil,setMobil]=useState(typeof window!=="undefined"&&window.matchMedia("(max-width: 680px)").matches);
   useEffect(()=>{
@@ -1133,10 +1016,10 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
     }
     return gruplar;
   }
-  function bosluklariBul(randevular,bloklar,bitisSaat,baslangicSaat,mola){
-    const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure})),...(mola?[{b:mola.bas,e:mola.bit}]:[])].sort((a,b)=>a.b-b.b);
+  function bosluklariBul(randevular,bloklar,bitisSaat){
+    const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
     const bosluklar=[];
-    let imlec=baslangicSaat;
+    let imlec=START;
     meşgul.forEach(m=>{
       if(m.b>imlec) bosluklar.push({b:imlec,e:m.b});
       imlec=Math.max(imlec,m.e);
@@ -1145,9 +1028,9 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
     return bosluklar.filter(bo=>bo.e-bo.b>0);
   }
   function drYokAraligi(oda){
-    const araliklar=bloklar.filter(b=>b.oda===oda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK")
-      .map(b=>`${b.saat}-${minToTime(timeToMin(b.saat)+b.sure)}`);
-    return [...new Set(araliklar)].join(", "); // aynı aralık birden fazla kayıtta olsa bile ekranda TEKRARLANMASIN
+    return bloklar.filter(b=>b.oda===oda&&b.tarih===seciliTarih&&b.baslik==="DR_YOK")
+      .map(b=>`${b.saat}-${minToTime(timeToMin(b.saat)+b.sure)}`)
+      .join(", ");
   }
   function digerOdaDurumu(saat,digerOda){
     const digerRandevular=digerOda==="alex"?alexR:sopR;
@@ -1161,13 +1044,11 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
   }
   function renderOda(randevular,bloklar,odaId){
     const pazarMi=new Date(seciliTarih+"T00:00:00").getDay()===0;
-    const acilisSaat=efektifAcilis(calismaSaatleri,odaId,seciliTarih);
-    const bitisSaat=efektifKapanis(calismaSaatleri,odaId,seciliTarih);
-    const mola=efektifMola(calismaSaatleri,odaId,seciliTarih);
+    const bitisSaat=odaKapanisSaat(odaId);
     const odaTotal=bitisSaat-START;
     const gercekBloklar=bloklar.filter(b=>b.baslik!=="DR_YOK");
     const birlesik=ayniHastaBirlestir(randevular);
-    const bosluklar=bosluklariBul(randevular,gercekBloklar,bitisSaat,acilisSaat,mola);
+    const bosluklar=bosluklariBul(randevular,gercekBloklar,bitisSaat);
     const renkOda=odaId==="alex"?"#2d6a35":"#5b3fa0";
 
     // Tek zaman çizelgesi: randevular + bloklar + boşluklar, hepsi saate göre sıralı (Dr. Yok dahil değil — sadece bilgilendirme amaçlı ayrı gösteriliyor)
@@ -1261,7 +1142,7 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
                 return Date.now()>=esik.getTime();
               };
               const durumEksikVar=u.list.some(r=>r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&gunSonuGecti(r));
-              const epilasyonEksikVar=u.list.some(r=>r.tarih>=EPILASYON_UYARI_BASLANGIC&&r.durum!=="Gelmedi"&&epilasyonDurum?.[r.id]!=="yesil"&&gecikti1_5Saat(r));
+              const epilasyonEksikVar=u.list.some(r=>r.tarih>=EPILASYON_UYARI_BASLANGIC&&r.durum!=="Gelmedi"&&epilasyonDurum?.[r.hasta?.toLowerCase().trim()]!=="yesil"&&gecikti1_5Saat(r));
               const gecikmisEksik=durumEksikVar||epilasyonEksikVar;
               return(
                 <div key={u.id} onClick={()=>{if(u.list.length===1)onRandevuTikla(u.list[0]);else setKumePopup({liste:u.list});}}
@@ -1271,23 +1152,20 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
                   <div style={{fontSize:11,fontWeight:700,color:"#fff",width:42,flexShrink:0}}>{u.saat}</div>
                   <div style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#fff",display:"flex",alignItems:"center",gap:6}}>
                     {(()=>{
-                      const yesilVarMi=u.list.some(r=>epilasyonDurum?.[r.id]==="yesil");
-                      const sariVarMi=u.list.some(r=>epilasyonKartNotu?.[r.hasta_id]==="sari");
-                      const ilkKezMi=u.list.some(r=>(hastalar||[]).find(h=>h.id===r.hasta_id)?.ilk_kez_epilasyon);
+                      const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];
                       const bugunVeyaGelecekMi=u.list.some(r=>r.tarih>=today());
                       if(!bugunVeyaGelecekMi)return null; // geçmiş günlerde dosya çıkarma ihtiyacı yok
-                      // Dosya çıkarma göstergesi: BU RANDEVUYA ait dijital kaydı hiç olmayan hastada, randevu GÜNÜ DAHİL görünür — personel o sabah dosyayı arşivden çıkarır; seans/foto girilince kendiliğinden kaybolur
-                      if(yesilVarMi||sariVarMi||ilkKezMi)return null; // dijital kayıt zaten var YA DA hasta ilk kez geliyor (arşivde dosyası hiç yok) — dosya çıkarmaya gerek yok
+                      // Dosya çıkarma göstergesi: dijital kaydı hiç olmayan hastada, randevu GÜNÜ DAHİL görünür — personel o sabah dosyayı arşivden çıkarır; seans/foto girilince kendiliğinden kaybolur
+                      if(ed==="yesil"||ed==="sari")return null; // dijital kayıt zaten var, dosya çıkarmaya gerek yok
                       return <span title="Arşivden dosyası çıkacak" style={{fontSize:12,flexShrink:0}}>📁</span>;
                     })()}
                     <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.hasta}</span>
                     {(()=>{
-                      const yesilVarMi=u.list.some(r=>epilasyonDurum?.[r.id]==="yesil");
-                      const sariVarMi=u.list.some(r=>epilasyonKartNotu?.[r.hasta_id]==="sari");
+                      const ed=epilasyonDurum?.[u.hasta?.toLowerCase().trim()];
                       const gelecekMi=u.list.some(r=>r.tarih>today());
                       if(gelecekMi)return null; // dosya ikonu zaten ismin solunda gösterildi
-                      const renkKart=yesilVarMi?"#22c55e":sariVarMi?"#eab308":"#9ca3af";
-                      const baslikKart=yesilVarMi?"Epilasyon kartı var (bu randevu için dijital seans girilmiş)":sariVarMi?"Sadece kağıt kart fotoğrafı/notu var":"Epilasyon kartı yok — arşivden dosya gerekebilir";
+                      const renkKart=ed==="yesil"?"#22c55e":ed==="sari"?"#eab308":"#9ca3af";
+                      const baslikKart=ed==="yesil"?"Epilasyon kartı var (dijital seans girilmiş)":ed==="sari"?"Sadece kağıt kart fotoğrafı/notu var":"Epilasyon kartı yok — arşivden dosya gerekebilir";
                       return <span title={baslikKart} style={{width:11,height:8,minWidth:11,borderRadius:2,background:renkKart,flexShrink:0,border:"1px solid rgba(0,0,0,0.15)"}}/>;
                     })()}
                     {u.list.length>1&&<span style={{fontSize:9,background:"rgba(255,255,255,0.28)",borderRadius:8,padding:"1px 6px",fontWeight:700,flexShrink:0}}>{u.list.length} işlem</span>}
@@ -1333,18 +1211,16 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
           <input type="date" value={seciliTarih} onChange={e=>setSeciliTarih(e.target.value)} style={{border:"1px solid #ddd",borderRadius:8,padding:"6px 10px",fontSize:13,fontFamily:"inherit"}}/>
           <button onClick={()=>{setHastaAraPanel(p=>!p);setBosPanel(false);setBlokPanel(false);}} style={{...navBtnStyle,background:hastaAraPanel?"#eef0ff":"#f0f0ed",color:hastaAraPanel?"#4338ca":"#444",border:hastaAraPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>👤 Hasta Ara</button>
           <button onClick={()=>{setBosPanel(p=>!p);setBlokPanel(false);setHastaAraPanel(false);}} style={{...navBtnStyle,background:bosPanel?"#eef0ff":"#f0f0ed",color:bosPanel?"#4338ca":"#444",border:bosPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>🔍 Boş Randevu Bul</button>
-          {(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="personel")&&<button onClick={()=>{setBlokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setDrYokPanel(false);}} style={{...navBtnStyle,background:blokPanel?"#fee2e2":"#f0f0ed",color:blokPanel?"#dc2626":"#444",border:blokPanel?"1px solid #fca5a5":"1px solid #ddd"}}>🔒 Blok Kapat</button>}
-          {(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="personel")&&<button onClick={()=>{setDrYokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);}} style={{...navBtnStyle,background:drYokPanel?"#fff7ed":"#f0f0ed",color:drYokPanel?"#c2410c":"#444",border:drYokPanel?"1px solid #fed7aa":"1px solid #ddd"}}>🩺 Dr. Yok</button>}
+          {(aktifRol==="yonetici"||aktifRol==="sekreter")&&<button onClick={()=>{setBlokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setDrYokPanel(false);}} style={{...navBtnStyle,background:blokPanel?"#fee2e2":"#f0f0ed",color:blokPanel?"#dc2626":"#444",border:blokPanel?"1px solid #fca5a5":"1px solid #ddd"}}>🔒 Blok Kapat</button>}
+          {(aktifRol==="yonetici"||aktifRol==="sekreter")&&<button onClick={()=>{setDrYokPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);}} style={{...navBtnStyle,background:drYokPanel?"#fff7ed":"#f0f0ed",color:drYokPanel?"#c2410c":"#444",border:drYokPanel?"1px solid #fed7aa":"1px solid #ddd"}}>🩺 Dr. Yok</button>}
           {(aktifRol==="yonetici"||aktifRol==="sorumlu")&&<button onClick={()=>{if(!kasaSifre){const s=window.prompt("Şifre:");if(s==="SON26"||s==="5555"){setKasaSifre(true);setKasaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}else{alert("Yanlış şifre!");}}else{setKasaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}}} style={{...navBtnStyle,background:kasaPanel?"#fef3c7":"#f0f0ed",color:kasaPanel?"#92400e":"#444",border:kasaPanel?"1px solid #fcd34d":"1px solid #ddd"}}>🔎 Kontrol</button>}
-          {aktifRol==="yonetici"&&<button onClick={()=>{setCalismaPanel(p=>!p);setBosPanel(false);setHastaAraPanel(false);setBlokPanel(false);setDrYokPanel(false);}} style={{...navBtnStyle,background:calismaPanel?"#eef2ff":"#f0f0ed",color:calismaPanel?"#4338ca":"#444",border:calismaPanel?"1px solid #a5b4fc":"1px solid #ddd"}}>⏰ Çalışma Saatleri</button>}
         </div>
       </div>
       {hastaAraPanel&&<HastaAraPanel randevular={randevular} onDuzenle={(r)=>{setHastaAraPanel(false);onRandevuDuzenle(r);}} onKapat={()=>setHastaAraPanel(false)}/>}
       {drYokPanel&&<DrYokPanel bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} seciliTarih={seciliTarih} showToast={showToast} onKapat={()=>setDrYokPanel(false)}/>}
       {kasaPanel&&<KasaKontrolPanel gunRandevular={[...alexR,...sopR]} seciliTarih={seciliTarih} onKapat={()=>setKasaPanel(false)}/>}
-      {bosPanel&&<BosRandevuPanel randevular={randevular} bloklar={bloklar} calismaSaatleri={calismaSaatleri} setSeciliTarih={setSeciliTarih} onYeniRandevu={onYeniRandevu} onKapat={()=>setBosPanel(false)}/>}
+      {bosPanel&&<BosRandevuPanel randevular={randevular} bloklar={bloklar} setSeciliTarih={setSeciliTarih} onYeniRandevu={onYeniRandevu} onKapat={()=>setBosPanel(false)}/>}
       {blokPanel&&<BlokPanel bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} seciliTarih={seciliTarih} showToast={showToast} onKapat={()=>setBlokPanel(false)}/>}
-      {calismaPanel&&<CalismaSaatleriPanel calismaSaatleri={calismaSaatleri} calismaSaatiEkle={calismaSaatiEkle} calismaSaatiSil={calismaSaatiSil} seciliTarih={seciliTarih} showToast={showToast} onKapat={()=>setCalismaPanel(false)}/>}
       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
         {Object.entries(RENK).filter(([k])=>k!=="blok"&&k!=="gelmedi").map(([k,v])=>(
           <div key={k} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#666"}}>
@@ -1355,23 +1231,9 @@ function TakvimSekme({seciliTarih,setSeciliTarih,alexR,sopR,gunB,bloklar,calisma
           <div style={{width:10,height:10,borderRadius:3,background:"repeating-linear-gradient(45deg,#888,#888 2px,#aaa 2px,#aaa 4px)",flexShrink:0}}/>Blok
         </div>
       </div>
-      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-        {(()=>{
-          const hepsi=[...alexR,...sopR];
-          const seansSay=hepsi.filter(r=>r.durum==="Seans").length;
-          const rutusSay=hepsi.filter(r=>r.durum==="Rütuş").length;
-          const isaretlenmemis=hepsi.filter(r=>r.durum!=="Seans"&&r.durum!=="Rütuş"&&r.durum!=="Gelmedi");
-          const isaretlenmemisTitle=isaretlenmemis.length?isaretlenmemis.map(r=>`${r.hasta} (${r.uygulayici||"atanmamış"}) · ${r.oda==="alex"?"Alex":"Soprano"} ${r.saat}`).join("\n"):"Tüm randevular işaretlenmiş";
-          return [
-            {l:"Alex",v:alexR.length,c:"#2d6a35"},
-            {l:"Soprano",v:sopR.length,c:"#5b3fa0"},
-            {l:"Gelmedi",v:hepsi.filter(r=>r.durum==="Gelmedi").length,c:"#b45309"},
-            {l:"Toplam",v:alexR.length+sopR.length,c:"#555"},
-            {l:"Seans",v:seansSay,c:"#16a34a"},
-            {l:"Rütuş",v:rutusSay,c:"#7c3aed"},
-            {l:"İşaretlenmedi",v:isaretlenmemis.length,c:"#dc2626",title:isaretlenmemisTitle},
-          ];
-        })().map(s=><div key={s.l} title={s.title} style={{flex:1,minWidth:80,background:"#fff",border:"1px solid #e8e6e0",borderRadius:10,padding:"8px 12px",cursor:s.title?"help":"default"}}><div style={{fontSize:11,color:"#888"}}>{s.l}</div><div style={{fontSize:20,fontWeight:600,color:s.c}}>{s.v}</div></div>)}
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        {[{l:"Alex",v:alexR.length,c:"#2d6a35"},{l:"Soprano",v:sopR.length,c:"#5b3fa0"},{l:"Gelmedi",v:[...alexR,...sopR].filter(r=>r.durum==="Gelmedi").length,c:"#b45309"},{l:"Toplam",v:alexR.length+sopR.length,c:"#555"}]
+          .map(s=><div key={s.l} style={{flex:1,background:"#fff",border:"1px solid #e8e6e0",borderRadius:10,padding:"8px 12px"}}><div style={{fontSize:11,color:"#888"}}>{s.l}</div><div style={{fontSize:20,fontWeight:600,color:s.c}}>{s.v}</div></div>)}
       </div>
       {mobil?(
         <>
@@ -1490,24 +1352,18 @@ function DrYokPanel({bloklar,blokEkle,blokSil,seciliTarih,showToast,onKapat}){
   const drYokBloklar=bloklar.filter(b=>b.baslik==="DR_YOK");
 
   async function ekle(){
+    const yeniBloklar=[];
     const s=9*60,e=20*60;
     const sure=tumGun?(e-s):timeToMin(bitSaat)-timeToMin(basSaat);
     const saat=tumGun?"09:00":basSaat;
-    if(sure<=0){showToast("Bitiş saati, başlangıçtan sonra olmalı.","error");return;}
-    const yeniBloklar=[];
     let tarih=basTarih;
-    let atlanan=0;
     while(tarih<=bitTarih){
-      ["alex","soprano"].forEach(oda=>{
-        const zatenVarMi=drYokBloklar.some(b=>b.oda===oda&&b.tarih===tarih&&b.saat===saat&&b.sure===sure);
-        if(zatenVarMi){atlanan++;return;}
-        yeniBloklar.push({oda,tarih,saat,sure,baslik:"DR_YOK"});
-      });
+      yeniBloklar.push({oda:"alex",tarih,saat,sure,baslik:"DR_YOK"});
+      yeniBloklar.push({oda:"soprano",tarih,saat,sure,baslik:"DR_YOK"});
       tarih=addDays(tarih,1);
     }
-    if(yeniBloklar.length===0){showToast("Bu saatler için zaten Dr. Yok kaydı var, tekrar eklenmedi.","error");return;}
     await blokEkle(yeniBloklar);
-    showToast(atlanan>0?`İşaretlendi (${atlanan} tanesi zaten kayıtlıydı, atlandı).`:"Doktor yok günleri işaretlendi.");
+    showToast("Doktor yok günleri işaretlendi.");
   }
 
   return(
@@ -1531,24 +1387,13 @@ function DrYokPanel({bloklar,blokEkle,blokSil,seciliTarih,showToast,onKapat}){
       <button onClick={ekle} style={{...btnPrimary,background:"#c2410c",marginBottom:14}}>İşaretle</button>
       {drYokBloklar.filter(b=>b.tarih>=today()).length>0&&(
         <div>
-          <div style={{fontSize:12,fontWeight:600,color:"#999",marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>İşaretli Günler / Saatler</div>
-          {(()=>{
-            // Alex+Soprano ikisine de aynı anda eklendiği için, gösterimde oda ayrımı yapmadan tarih+saat+süre bazında TEKİL satır göster
-            const gorulen=new Set();
-            const satirlar=[];
-            drYokBloklar.filter(b=>b.tarih>=today()).sort((a,b)=>a.tarih.localeCompare(b.tarih)||a.saat.localeCompare(b.saat)).forEach(b=>{
-              const anahtar=`${b.tarih}|${b.saat}|${b.sure}`;
-              if(gorulen.has(anahtar))return;
-              gorulen.add(anahtar);
-              satirlar.push(b);
-            });
-            return satirlar.map(b=>(
-              <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:"#fff7ed",borderRadius:8,marginBottom:4,fontSize:13}}>
-                <span>🩺 {b.tarih} · {b.saat}–{minToTime(timeToMin(b.saat)+b.sure)}</span>
-                <button onClick={()=>{drYokBloklar.filter(x=>x.tarih===b.tarih&&x.saat===b.saat&&x.sure===b.sure).forEach(x=>blokSil(x.id));}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16}}>✕</button>
-              </div>
-            ));
-          })()}
+          <div style={{fontSize:12,fontWeight:600,color:"#999",marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>İşaretli Günler</div>
+          {[...new Set(drYokBloklar.filter(b=>b.oda==="alex"&&b.tarih>=today()).map(b=>b.tarih))].sort().map(tarih=>(
+            <div key={tarih} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:"#fff7ed",borderRadius:8,marginBottom:4,fontSize:13}}>
+              <span>🩺 {tarih}</span>
+              <button onClick={()=>{drYokBloklar.filter(b=>b.tarih===tarih).forEach(b=>blokSil(b.id));}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1660,26 +1505,7 @@ function KasaKontrolPanel({gunRandevular,seciliTarih,onKapat}){
 const navBtnStyle={background:"#f0f0ed",border:"1px solid #ddd",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:14,fontFamily:"inherit"};
 
 // ── BOŞ RANDEVU BUL ──────────────────────────────────────────────────────────
-function bosSlotlariBul(oda,sure,gunSayisi,randevular,bloklar,calismaSaatleri){
-  const sonuc=[];
-  let gun=today();
-  for(let i=0;i<gunSayisi&&sonuc.length<6;i++){
-    if(new Date(gun+"T00:00:00").getDay()!==0){ // Pazar hariç
-      const S=efektifAcilis(calismaSaatleri,oda,gun),E=efektifKapanis(calismaSaatleri,oda,gun);
-      const mola=efektifMola(calismaSaatleri,oda,gun);
-      for(let t=S;t+sure<=E;t+=15){
-        const bitis=t+sure;
-        if(mola&&t<mola.bit&&bitis>mola.bas)continue;
-        const rc=randevular.some(r=>r.oda===oda&&r.tarih===gun&&(()=>{const b=timeToMin(r.saat),e=b+r.sure;return t<e&&bitis>b;})());
-        const bc=bloklar.some(bl=>bl.oda===oda&&bl.tarih===gun&&(()=>{const b=timeToMin(bl.saat),e=b+bl.sure;return t<e&&bitis>b;})());
-        if(!rc&&!bc){ sonuc.push({tarih:gun,saat:minToTime(t)}); break; } // o gün için ilk uygun saat yeterli, bir sonraki güne geç
-      }
-    }
-    gun=addDays(gun,1);
-  }
-  return sonuc;
-}
-function BosRandevuPanel({randevular,bloklar,calismaSaatleri,setSeciliTarih,onYeniRandevu,onKapat}){
+function BosRandevuPanel({randevular,bloklar,setSeciliTarih,onYeniRandevu,onKapat}){
   const [oda,setOda]=useState("alex");const [bolgeler,setBolgeler]=useState([]);const [sure,setSure]=useState(30);
   const [gunFiltre,setGunFiltre]=useState("hepsi");const [saatFiltre,setSaatFiltre]=useState("hepsi");
   const [aralikGun,setAralikGun]=useState(14);const [sonuclar,setSonuclar]=useState(null);
@@ -1694,14 +1520,12 @@ function BosRandevuPanel({randevular,bloklar,calismaSaatleri,setSeciliTarih,onYe
       if(dow===0)continue; // Pazar günleri her zaman atla
       if(gunFiltre==="haftaici"&&dow===6)continue;
       if(gunFiltre==="haftasonu"&&dow!==6)continue;
-      const S=efektifAcilis(calismaSaatleri,oda,tarih),E=efektifKapanis(calismaSaatleri,oda,tarih);
-      const mola=efektifMola(calismaSaatleri,oda,tarih);
+      const S=9*60,E=odaKapanisSaat(oda);
       for(let t=S;t+sure<=E;t+=15){
         const saat=minToTime(t);const bitis=t+sure;
         if(saatFiltre==="sabah"&&t>=13*60)continue;
         if(saatFiltre==="ogle_sonrasi"&&(t<13*60||t>=17*60))continue;
         if(saatFiltre==="17_sonrasi"&&t<17*60)continue;
-        if(mola&&t<mola.bit&&bitis>mola.bas)continue;
         const rc=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).some(r=>{const b=timeToMin(r.saat),e=b+r.sure;return t<e&&bitis>b;});
         const bc=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih).some(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return t<be&&bitis>bb;});
         if(!rc&&!bc){if(!sonuc.some(s=>s.tarih===tarih&&s.saat===saat))sonuc.push({tarih,saat});if(sonuc.filter(s=>s.tarih===tarih).length>=3)break;}
@@ -1831,91 +1655,6 @@ function BlokPanel({bloklar,blokEkle,blokSil,seciliTarih,showToast,onKapat}){
   );
 }
 
-// ── ÇALIŞMA SAATLERİ PANEL ───────────────────────────────────────────────────
-function CalismaSaatleriPanel({calismaSaatleri,calismaSaatiEkle,calismaSaatiSil,seciliTarih,showToast,onKapat}){
-  const [oda,setOda]=useState("alex");
-  const [acilis,setAcilis]=useState("09:00");
-  const [kapanis,setKapanis]=useState("19:00");
-  const [molaVar,setMolaVar]=useState(false);
-  const [molaBas,setMolaBas]=useState("14:00");
-  const [molaBit,setMolaBit]=useState("15:00");
-  const [baslangicTarih,setBaslangicTarih]=useState(seciliTarih);
-  const [sure,setSure]=useState("surekli");
-  const [ozelBitis,setOzelBitis]=useState(addDays(seciliTarih,30));
-
-  function kaydet(){
-    if(timeToMin(acilis)>=timeToMin(kapanis)){showToast("Açılış saati, kapanıştan önce olmalı.","error");return;}
-    if(molaVar&&timeToMin(molaBas)>=timeToMin(molaBit)){showToast("Mola başlangıcı, bitişinden önce olmalı.","error");return;}
-    let bitisTarih=null;
-    if(sure==="1hafta")bitisTarih=addDays(baslangicTarih,7);
-    else if(sure==="1ay")bitisTarih=addDays(baslangicTarih,30);
-    else if(sure==="3ay")bitisTarih=addDays(baslangicTarih,90);
-    else if(sure==="6ay")bitisTarih=addDays(baslangicTarih,180);
-    else if(sure==="ozel")bitisTarih=ozelBitis;
-    // sure==="surekli" ise bitisTarih null kalır
-    calismaSaatiEkle({
-      oda,
-      baslangic_tarih:baslangicTarih,
-      bitis_tarih:bitisTarih,
-      acilis:timeToMin(acilis),
-      kapanis:timeToMin(kapanis),
-      mola_bas:molaVar?timeToMin(molaBas):null,
-      mola_bit:molaVar?timeToMin(molaBit):null,
-    });
-  }
-
-  const odaKurallari=(o)=>calismaSaatleri.filter(k=>k.oda===o).sort((a,b)=>b.id-a.id);
-
-  return(
-    <div style={{background:"#fff",border:"1.5px solid #a5b4fc",borderRadius:12,padding:"1.25rem",marginBottom:14}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{fontSize:15,fontWeight:600,color:"#4338ca"}}>⏰ Çalışma Saatlerini Düzenle</div>
-        <button onClick={onKapat} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"#aaa"}}>✕</button>
-      </div>
-
-      <div style={{marginBottom:12}}><Label>Oda</Label><div style={{display:"flex",gap:6}}>{[["alex","Alex"],["soprano","Soprano"]].map(([k,l])=><button key={k} onClick={()=>setOda(k)} style={chipStyle(oda===k)}>{l}</button>)}</div></div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-        <div><Label>Açılış Saati</Label><select value={acilis} onChange={e=>setAcilis(e.target.value)} style={inputStyle}>{SAATLER.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-        <div><Label>Kapanış Saati (son işlem bitişi)</Label><select value={kapanis} onChange={e=>setKapanis(e.target.value)} style={inputStyle}>{SAATLER.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-      </div>
-
-      <div style={{display:"flex",gap:8,marginBottom:12}}>
-        <button onClick={()=>setMolaVar(false)} style={chipStyle(!molaVar)}>Öğle Molası Yok</button>
-        <button onClick={()=>setMolaVar(true)} style={chipStyle(molaVar)}>Öğle Molası Var</button>
-      </div>
-      {molaVar&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-        <div><Label>Mola Başlangıcı</Label><select value={molaBas} onChange={e=>setMolaBas(e.target.value)} style={inputStyle}>{SAATLER.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-        <div><Label>Mola Bitişi</Label><select value={molaBit} onChange={e=>setMolaBit(e.target.value)} style={inputStyle}>{SAATLER.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-      </div>}
-
-      <div style={{marginBottom:12}}><Label>Bu Değişiklik Ne Zaman Başlasın?</Label><input type="date" value={baslangicTarih} onChange={e=>setBaslangicTarih(e.target.value)} style={inputStyle}/></div>
-
-      <div style={{marginBottom:12}}>
-        <Label>Ne Kadar Süre Geçerli Olsun?</Label>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {[["1hafta","1 Hafta"],["1ay","1 Ay"],["3ay","3 Ay"],["6ay","6 Ay"],["surekli","Sürekli"],["ozel","Özel Tarih"]].map(([k,l])=><button key={k} onClick={()=>setSure(k)} style={chipStyle(sure===k)}>{l}</button>)}
-        </div>
-      </div>
-      {sure==="ozel"&&<div style={{marginBottom:12}}><Label>Bitiş Tarihi</Label><input type="date" value={ozelBitis} onChange={e=>setOzelBitis(e.target.value)} style={inputStyle}/></div>}
-
-      <button onClick={kaydet} style={{...btnPrimary,background:"#4338ca",marginBottom:14}}>Kaydet</button>
-
-      {["alex","soprano"].map(o=>odaKurallari(o).length>0&&(
-        <div key={o} style={{marginTop:14}}>
-          <div style={{fontSize:12,fontWeight:600,color:o==="alex"?"#2d6a35":"#5b3fa0",marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>{o==="alex"?"🟢 Alex":"🟣 Soprano"} — Kayıtlı Kurallar</div>
-          {odaKurallari(o).map(k=>(
-            <div key={k.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:"#f7f7f5",borderRadius:8,marginBottom:4,fontSize:13}}>
-              <span>{k.baslangic_tarih} → {k.bitis_tarih||"Sürekli"} · {minToTime(k.acilis)}-{minToTime(k.kapanis)}{k.mola_bas!=null?` · Mola ${minToTime(k.mola_bas)}-${minToTime(k.mola_bit)}`:""}</span>
-              <button onClick={()=>{if(window.confirm("Bu kuralı silmek istiyor musunuz?"))calismaSaatiSil(k.id);}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16}}>✕</button>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ── SÜRE KONTROL ─────────────────────────────────────────────────────────────
 function SureKontrol({sure,setSure}){
   const [duz,setDuz]=useState(false);const [gec,setGec]=useState(String(sure));
@@ -1935,14 +1674,13 @@ const sureBtnStyle={width:32,height:32,border:"1px solid #ddd",borderRadius:8,ba
 // ── RANDEVU FORM ─────────────────────────────────────────────────────────────
 function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duzenleme}){
   const [oda,setOda]=useState(basData.oda||"alex");
-  const [hasta,setHasta]=useState(basData.hasta||"");const [hastaId,setHastaId]=useState(basData.hastaId||basData.hasta_id||null);const [hastaTel,setHastaTel]=useState(basData.tel||"");const [hastaCinsiyet,setHastaCinsiyet]=useState(basData.cinsiyet||null);
+  const [hasta,setHasta]=useState(basData.hasta||"");const [hastaId,setHastaId]=useState(basData.hastaId||null);const [hastaTel,setHastaTel]=useState(basData.tel||"");const [hastaCinsiyet,setHastaCinsiyet]=useState(basData.cinsiyet||"Bayan");
   const [tarih,setTarih]=useState(basData.tarih||today());const [saat,setSaat]=useState(basData.saat||"09:00");
   const [seciliBolgeler,setSeciliBolgeler]=useState(basData.bolgeler||[]);
   const [sure,setSure]=useState(basData.sure||15);const [manuelSure,setManuelSure]=useState(!!basData.sure);
   const [durum,setDurum]=useState(basData.durum||"Seans");const [odeme,setOdeme]=useState(basData.odeme||null);
   const [notlar,setNotlar]=useState(basData.notlar||"");
   const [yeniHasta,setYeniHasta]=useState(false);const [yeniAd,setYeniAd]=useState("");const [yeniTel,setYeniTel]=useState("");
-  const [ilkKezEpilasyon,setIlkKezEpilasyon]=useState(false);
   const [hastaFiltre,setHastaFiltre]=useState("");const [kayitYapiliyor,setKayitYapiliyor]=useState(false);
   const [kasaKontrol,setKasaKontrol]=useState(null);
   const kasaTimerRef=useRef(null);
@@ -1953,11 +1691,10 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
   function toggleBolge(b){setManuelSure(false);setSeciliBolgeler(prev=>prev.includes(b)?prev.filter(x=>x!==b):[...prev,b]);}
   async function hastaEkle(){
     if(!yeniAd.trim())return;
-    const yeni=await hastaEkleDB(yeniAd.trim(),yeniTel.trim(),hastaCinsiyet,ilkKezEpilasyon);
+    const yeni=await hastaEkleDB(yeniAd.trim(),yeniTel.trim(),hastaCinsiyet);
     if(yeni){setHasta(yeni.ad);setHastaId(yeni.id);setHastaTel(yeni.tel||"");setHastaCinsiyet(yeni.cinsiyet||"Bayan");setYeniHasta(false);setYeniAd("");setYeniTel("");}
   }
   async function submit(){
-    // Hasta adı yazılmışsa ama listeden seçilmemişse otomatik kaydet
     let aktifHasta=hasta;
     let aktifHastaId=hastaId;
     if(!aktifHasta&&hastaFiltre.trim()){
@@ -1965,20 +1702,13 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     }
     if(!aktifHasta){alert("Hasta adı girin.");return;}
     if(!hastaTel.trim()&&!hastaId){alert("Telefon numarası zorunludur.");return;}
-    if(!hastaCinsiyet){alert("Lütfen cinsiyeti seçtikten sonra kayıt yapınız.");return;}
+    if(!hastaCinsiyet){alert("Cinsiyet seçimi zorunludur.");return;}
     if(seciliBolgeler.length===0){alert("En az bir bölge seçin.");return;}
     setKayitYapiliyor(true);
-    // Düzenleme modundaysa hasta eklemeye çalışma - sadece yeni randevularda hasta kaydet
-    if(!duzenleme&&!hastaId&&aktifHasta.trim()){
-      if(hastaTel.trim()){
-        const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel,hastaCinsiyet,ilkKezEpilasyon);
-        if(yeni) aktifHastaId=yeni.id;
-        else {
-          showToast("Hasta kaydı oluşturulamadı — randevu kaydedilmedi. Lütfen tekrar deneyin.","error");
-          setKayitYapiliyor(false);
-          return;
-        }
-      }
+    // Hasta ID'si yoksa (listeden seçilmemiş veya düzenleme modunda NULL kalmış) — her zaman bağla
+    if(!aktifHastaId&&aktifHasta.trim()){
+      const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel||"",hastaCinsiyet);
+      if(yeni) aktifHastaId=yeni.id;
     }
     await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar,tel:hastaTel,cinsiyet:hastaCinsiyet});
     setKayitYapiliyor(false);
@@ -2017,11 +1747,6 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
               <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
               <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
               {hastaTel&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}><span style={{fontSize:12,color:"#888"}}>📞</span><a href={`https://wa.me/90${hastaTel.replace(/[^0-9]/g,"").slice(-10)}`} target="_blank" style={{fontSize:14,fontWeight:600,color:"#16a34a",textDecoration:"none"}}>{hastaTel}</a></div>}
-              {!hastaId&&(
-                <button type="button" onClick={()=>setIlkKezEpilasyon(v=>!v)} style={{padding:"12px",borderRadius:10,border:ilkKezEpilasyon?"2px solid #16a34a":"2px solid #d1d5db",background:ilkKezEpilasyon?"#dcfce7":"#fff",color:ilkKezEpilasyon?"#166534":"#555",fontWeight:700,fontSize:14,cursor:"pointer",textAlign:"center"}}>
-                  {ilkKezEpilasyon?"✅ ":"🆕 "}Bu Hasta Epilasyona İlk Kez Geliyor
-                </button>
-              )}
             </div>
           )}
           {!hasta&&hastaFiltre.trim().length>=1&&filtreliHastalar.length===0&&(
@@ -2043,11 +1768,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
               <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>"{hastaFiltre}" listede yok — bilgileri girin:</div>
               <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
               <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
-              <button type="button" onClick={()=>setIlkKezEpilasyon(v=>!v)} style={{padding:"12px",borderRadius:10,border:ilkKezEpilasyon?"2px solid #16a34a":"2px solid #d1d5db",background:ilkKezEpilasyon?"#dcfce7":"#fff",color:ilkKezEpilasyon?"#166534":"#555",fontWeight:700,fontSize:14,cursor:"pointer",textAlign:"center"}}>
-                {ilkKezEpilasyon?"✅ ":"🆕 "}Bu Hasta Epilasyona İlk Kez Geliyor
-              </button>
-              {!(hastaTel.trim()&&hastaCinsiyet)&&<div style={{fontSize:12,color:"#dc2626",textAlign:"center"}}>⚠️ Devam etmeden önce telefon girin ve cinsiyet seçin</div>}
-              <button disabled={!(hastaTel.trim()&&hastaCinsiyet)} onClick={()=>{setHasta(hastaFiltre.toLocaleUpperCase("tr"));setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12,opacity:(hastaTel.trim()&&hastaCinsiyet)?1:0.4,cursor:(hastaTel.trim()&&hastaCinsiyet)?"pointer":"not-allowed"}}>✓ Bu isimle devam et</button>
+              <button onClick={()=>{setHasta(hastaFiltre.toLocaleUpperCase("tr"));setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12}}>✓ Bu isimle devam et</button>
             </div>
           )}
         </div>
@@ -2080,9 +1801,9 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
 }
 
 // ── RANDEVU DETAY ────────────────────────────────────────────────────────────
-function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc,onSonlandirKasa,showToast}){
+function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc}){
   const [durum,setDurum]=useState(r.durum);const [odeme,setOdeme]=useState(r.odeme);
-  const hastaKaydi=(hastalar||[]).find(h=>h.id===r.hasta_id)||isimleTekHastaBul(hastalar,r.hasta);
+  const hastaKaydi=(hastalar||[]).find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
   const [hastaEdit,setHastaEdit]=useState(false);
   const [yeniHastaAd,setYeniHastaAd]=useState(r.hasta);
   const [yeniHastaTel,setYeniHastaTel]=useState(r.tel||"");
@@ -2093,8 +1814,6 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
   const bolgeListesi=r.oda==="alex"?ALEX_BOLGELER:SOPRANO_BOLGELER;
   function toggleBolge(b){setSeciliBolgeler(prev=>prev.includes(b)?prev.filter(x=>x!==b):[...prev,b]);}
   const yeniSure=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||10),0);
-  const [gonderiliyor,setGonderiliyor]=useState(false);
-  const [kasaGonderModu,setKasaGonderModu]=useState(false); // bölge onay adımı "Sonlandır ve Kasaya Gönder" akışından mı açıldı
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
@@ -2119,34 +1838,20 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
       <div style={{background:"#f7f7f5",borderRadius:10,padding:12,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
           <div style={{display:"flex",flexWrap:"wrap",gap:6,flex:1}}>{(bolgeEdit?seciliBolgeler:r.bolgeler||[]).map(b=><span key={b} style={{background:"#e8e6ff",color:"#5b5bd6",fontSize:13,padding:"2px 10px",borderRadius:20}}>{b}</span>)}</div>
-          {(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="sorumlu"||aktifRol==="personel")&&!bolgeEdit&&<button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(true);}} style={{...btnSecondary,fontSize:11,padding:"3px 8px",flexShrink:0,marginLeft:8}}>✏️ Düzenle</button>}
+          {(aktifRol==="yonetici"||aktifRol==="sekreter"||aktifRol==="sorumlu")&&!bolgeEdit&&<button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(true);}} style={{...btnSecondary,fontSize:11,padding:"3px 8px",flexShrink:0,marginLeft:8}}>✏️ Düzenle</button>}
         </div>
         {bolgeEdit&&(
           <div style={{marginTop:8,marginBottom:8}}>
-            {kasaGonderModu&&<div style={{fontSize:12,color:"#16a34a",fontWeight:600,marginBottom:8}}>✅ Kasaya göndermeden önce, hastaya BUGÜN gerçekte yapılan bölgeleri onaylayın/düzeltin (eksik olanı kaldırın, fazladan yapılanı ekleyin):</div>}
             <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
               {bolgeListesi.map(b=><button key={b} onClick={()=>toggleBolge(b)} style={{...chipStyle(seciliBolgeler.includes(b)),fontSize:12,padding:"3px 10px"}}>{b}</button>)}
             </div>
             <div style={{fontSize:12,color:"#6366f1",marginBottom:8}}>Yeni süre: <strong>{yeniSure} dk</strong></div>
             <div style={{display:"flex",gap:8}}>
-              {kasaGonderModu?(
-                <button disabled={gonderiliyor} onClick={async()=>{
-                  if(seciliBolgeler.length===0){showToast("En az bir bölge seçin.","error");return;}
-                  setGonderiliyor(true);
-                  try{
-                    if(JSON.stringify(seciliBolgeler)!==JSON.stringify(r.bolgeler||[])&&onBolgeGuncelle) await onBolgeGuncelle(r.id,seciliBolgeler,yeniSure);
-                    if(durum!==r.durum||odeme!==r.odeme) await onDurumGuncelle(r.id,durum,odeme);
-                    await onSonlandirKasa({...r,durum,odeme,bolgeler:seciliBolgeler,sure:yeniSure});
-                    onKapat();
-                  } finally{ setGonderiliyor(false); }
-                }} style={{...btnPrimary,background:"#16a34a",fontSize:12,padding:"5px 14px",opacity:gonderiliyor?0.6:1}}>{gonderiliyor?"Gönderiliyor...":"✅ Onayla ve Kasaya Gönder"}</button>
-              ):(
-                <button onClick={async()=>{
-                  if(onBolgeGuncelle) await onBolgeGuncelle(r.id,seciliBolgeler,yeniSure);
-                  setBolgeEdit(false);
-                }} style={{...btnPrimary,fontSize:12,padding:"5px 14px"}}>Kaydet</button>
-              )}
-              <button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(false);setKasaGonderModu(false);}} style={{...btnSecondary,fontSize:12,padding:"5px 14px"}}>İptal</button>
+              <button onClick={async()=>{
+                if(onBolgeGuncelle) await onBolgeGuncelle(r.id,seciliBolgeler,yeniSure);
+                setBolgeEdit(false);
+              }} style={{...btnPrimary,fontSize:12,padding:"5px 14px"}}>Kaydet</button>
+              <button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(false);}} style={{...btnSecondary,fontSize:12,padding:"5px 14px"}}>İptal</button>
             </div>
           </div>
         )}
@@ -2174,9 +1879,6 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
       )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{onDurumGuncelle(r.id,durum,odeme);onKapat();}} style={btnPrimary}>Kaydet</button>
-        {durum==="Seans"&&!r.kasaya_gonderildi&&!bolgeEdit&&<button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(true);setKasaGonderModu(true);}} style={{...btnPrimary,background:"#16a34a"}}>✅ Sonlandır ve Kasaya Gönder</button>}
-        {r.kasaya_gonderildi&&<span style={{...chipStyle(true),background:"#dcfce7",color:"#16a34a",cursor:"default"}}>✅ Kasaya gönderildi</span>}
-        {r.kasaya_gonderildi&&durum==="Seans"&&!bolgeEdit&&<button onClick={()=>{setSeciliBolgeler(r.bolgeler||[]);setBolgeEdit(true);setKasaGonderModu(true);}} style={{...btnSecondary,fontSize:12}}>🔄 Düzelt ve Yeniden Gönder</button>}
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={onDuzenle} style={btnSecondary}>Düzenle</button>}
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={()=>setHastaEdit(true)} style={btnSecondary}>👤 Hasta Bilgilerini Düzenle</button>}
         {hastaKaydi&&<button onClick={()=>onEpilasyonAc(hastaKaydi,r)} style={{...btnSecondary,color:"#6366f1",borderColor:"#a5b4fc"}}>📋 Epilasyon Kartı</button>}
@@ -2208,7 +1910,7 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
           {!r.anket_durum&&(
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>{
-                const dahaOnceGonderildi=(randevular||[]).some(x=>x.id!==r.id&&(r.hasta_id?x.hasta_id===r.hasta_id:x.hasta?.toLowerCase().trim()===r.hasta?.toLowerCase().trim())&&x.anket_durum==="gonderildi");
+                const dahaOnceGonderildi=(randevular||[]).some(x=>x.id!==r.id&&x.hasta?.toLowerCase().trim()===r.hasta?.toLowerCase().trim()&&x.anket_durum==="gonderildi");
                 if(dahaOnceGonderildi){
                   if(!window.confirm("⚠️ Bu hastaya daha önce anket gönderildi. Yine de göndermek istiyor musunuz?"))return;
                 }
@@ -2484,16 +2186,7 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
 
   async function seansKaydet(satirlar,tarih,uygulayici){
     try{
-      let randevuId=randevu?.id||null;
-      if(!randevuId){
-        // Epilasyon Kartı bir randevu üzerinden değil, Hastalar sekmesinden açılmış olabilir — o güne ait randevuyu otomatik bul ve bağla
-        try{
-          const eslesen=await sbGet("randevular",`hasta_id=eq.${hasta.id}&tarih=eq.${tarih}&select=id`);
-          if(eslesen?.length===1) randevuId=eslesen[0].id;
-          // Birden fazla ya da hiç eşleşme yoksa güvenli tarafta kal, null bırak (yanlış randevuya bağlamamak için)
-        }catch(_e){ /* bağlantı bulunamazsa sessizce null kalsın, kayıt yine de alınsın */ }
-      }
-      const [ziyaret]=await sbInsert("epilasyon_ziyaretleri",{hasta_id:hasta.id,randevu_id:randevuId,tarih,uygulayan_personel:uygulayici});
+      const [ziyaret]=await sbInsert("epilasyon_ziyaretleri",{hasta_id:hasta.id,randevu_id:randevu?.id||null,tarih,uygulayan_personel:uygulayici});
       for(const s of satirlar){
         await sbInsert("epilasyon_bolge_uygulamalari",{
           ziyaret_id:ziyaret.id,bolge:s.bolge,cihaz:s.cihaz,
@@ -2644,7 +2337,7 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
 }
 
 // ── BEKLEME ──────────────────────────────────────────────────────────────────
-function BeklemeListesi({bekleme,aktifRol,showToast,onRandevuyaCevir,onSil,onEkle,onNotGuncelle,randevular,bloklar,calismaSaatleri}){
+function BeklemeListesi({bekleme,aktifRol,showToast,onRandevuyaCevir,onSil,onEkle,onNotGuncelle}){
   const [formAcik,setFormAcik]=useState(false);
   const [ad,setAd]=useState("");const [tel,setTel]=useState("");const [oda,setOda]=useState("alex");
   const [bolgeler,setBolgeler]=useState([]);const [tercihTarih,setTercihTarih]=useState("");
@@ -2686,29 +2379,20 @@ function BeklemeListesi({bekleme,aktifRol,showToast,onRandevuyaCevir,onSil,onEkl
       )}
       {bekleyenler.length===0&&!formAcik?(<div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2.5rem",textAlign:"center",color:"#aaa"}}><div style={{fontSize:32,marginBottom:8}}>⏳</div><div style={{fontSize:15,fontWeight:500}}>Bekleme listesi boş</div></div>):(
         <>
-          {bekleyenler.length>0&&<div style={{marginBottom:16}}><div style={{fontSize:13,fontWeight:600,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:10}}>⏳ {bekleyenler.length} kişi bekliyor</div>{bekleyenler.map((b,i)=><BeklemeKarti key={b.id} b={b} onRandevuyaCevir={onRandevuyaCevir} onSil={onSil} onNotGuncelle={onNotGuncelle} aktifRol={aktifRol} siraNo={i+1} randevular={randevular} bloklar={bloklar} calismaSaatleri={calismaSaatleri}/>)}</div>}
-          {alinanlar.length>0&&<div><div style={{fontSize:12,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Randevu Alınanlar</div>{alinanlar.map(b=><BeklemeKarti key={b.id} b={b} onRandevuyaCevir={onRandevuyaCevir} onSil={onSil} onNotGuncelle={onNotGuncelle} aktifRol={aktifRol} randevular={randevular} bloklar={bloklar} calismaSaatleri={calismaSaatleri}/>)}</div>}
+          {bekleyenler.length>0&&<div style={{marginBottom:16}}><div style={{fontSize:13,fontWeight:600,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:10}}>⏳ {bekleyenler.length} kişi bekliyor</div>{bekleyenler.map((b,i)=><BeklemeKarti key={b.id} b={b} onRandevuyaCevir={onRandevuyaCevir} onSil={onSil} onNotGuncelle={onNotGuncelle} aktifRol={aktifRol} siraNo={i+1}/>)}</div>}
+          {alinanlar.length>0&&<div><div style={{fontSize:12,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Randevu Alınanlar</div>{alinanlar.map(b=><BeklemeKarti key={b.id} b={b} onRandevuyaCevir={onRandevuyaCevir} onSil={onSil} onNotGuncelle={onNotGuncelle} aktifRol={aktifRol}/>)}</div>}
         </>
       )}
     </div>
   );
 }
-function BeklemeKarti({b,onRandevuyaCevir,onSil,onNotGuncelle,aktifRol,siraNo,randevular,bloklar,calismaSaatleri}){
+function BeklemeKarti({b,onRandevuyaCevir,onSil,onNotGuncelle,aktifRol,siraNo}){
   const [notDuzenle,setNotDuzenle]=useState(false);
   const [notTaslak,setNotTaslak]=useState(b.notlar||"");
-  const [onerPanelAcik,setOnerPanelAcik]=useState(false);
-  const [oneriler,setOneriler]=useState(null); // null: henüz hesaplanmadı
   const alindi=b.durum==="randevuAlindi";
   const tel=b.tel;const tercihTarih=b.tercihTarih||b.tercih_tarih;const tercihSaat=b.tercihSaat||b.tercih_saat;
   const kayitTarih=b.kayitTarih||b.kayit_tarih||"";
   const kayitTarihFormatli=kayitTarih?new Date(kayitTarih+"T00:00:00").toLocaleDateString("tr-TR",{day:"numeric",month:"long",year:"numeric"}):"";
-  const sure=(b.bolgeler||[]).reduce((s,bl)=>s+(BOLGE_SURELER[bl]||10),0);
-  function onerileriHesapla(){
-    setOnerPanelAcik(true);
-    if(oneriler===null){
-      setOneriler(bosSlotlariBul(b.oda||"alex",sure||15,45,randevular||[],bloklar||[],calismaSaatleri||[]));
-    }
-  }
   return(
     <div style={{background:"#fff",border:`1px solid ${alindi?"#bbf7d0":"#e8e6e0"}`,borderRadius:12,padding:"14px 16px",marginBottom:8,opacity:alindi?0.75:1}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
@@ -2719,10 +2403,7 @@ function BeklemeKarti({b,onRandevuyaCevir,onSil,onNotGuncelle,aktifRol,siraNo,ra
             <span style={{background:alindi?"#dcfce7":"#fef3c7",color:alindi?"#166534":"#92400e",fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500}}>{alindi?"✓ Randevu Alındı":`📅 ${kayitTarihFormatli} tarihinde bekleme listesine eklendi`}</span>
           </div>
           <div style={{fontSize:13,color:"#555",marginBottom:6}}>📞 <a href={`tel:${tel}`} style={{color:"#6366f1",textDecoration:"none",fontWeight:500}}>{tel}</a><span style={{color:"#ccc",margin:"0 8px"}}>|</span>{b.oda==="alex"?"Alex Lazer":"Soprano/Cilt/Forma"}</div>
-          {b.bolgeler?.length>0&&<div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:6,marginBottom:6}}>
-            {b.bolgeler.map(bl=><span key={bl} style={{background:"#eef0ff",color:"#4338ca",fontSize:12,padding:"2px 8px",borderRadius:20}}>{bl}</span>)}
-            <span style={{background:"#4338ca",color:"#fff",fontSize:15,fontWeight:800,padding:"3px 12px",borderRadius:20,marginLeft:4}}>⏱ {sure} dk</span>
-          </div>}
+          {b.bolgeler?.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>{b.bolgeler.map(bl=><span key={bl} style={{background:"#eef0ff",color:"#4338ca",fontSize:12,padding:"2px 8px",borderRadius:20}}>{bl}</span>)}</div>}
           <div style={{fontSize:12,display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
             {tercihTarih&&<span style={{color:"#dc2626",fontWeight:700}}>📅 {tercihTarih}{tercihSaat?` ${tercihSaat}`:""}</span>}
             {!notDuzenle&&b.notlar&&<span style={{color:"#dc2626",fontWeight:700}}>💬 {b.notlar}</span>}
@@ -2736,30 +2417,11 @@ function BeklemeKarti({b,onRandevuyaCevir,onSil,onNotGuncelle,aktifRol,siraNo,ra
               </div>
             </div>
           )}
-          {onerPanelAcik&&(
-            <div style={{marginTop:10,background:"#f5f5ff",border:"1px solid #c7d2fe",borderRadius:10,padding:"10px 12px"}}>
-              <div style={{fontSize:12,fontWeight:600,color:"#4338ca",marginBottom:8}}>⏱ {sure} dk için uygun ilk saatler ({b.oda==="alex"?"Alex":"Soprano/Cilt/Forma"}):</div>
-              {oneriler===null?(
-                <div style={{fontSize:12,color:"#888"}}>Aranıyor...</div>
-              ):oneriler.length===0?(
-                <div style={{fontSize:12,color:"#888"}}>Önümüzdeki günlerde uygun bir saat bulunamadı.</div>
-              ):(
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {oneriler.map(o=>(
-                    <button key={o.tarih+o.saat} onClick={()=>{setOnerPanelAcik(false);onRandevuyaCevir(b,o);}} style={{...chipStyle(false),fontSize:12,padding:"6px 10px"}}>
-                      {new Date(o.tarih+"T00:00:00").toLocaleDateString("tr-TR",{day:"numeric",month:"short",weekday:"short"})} · {o.saat}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <button onClick={()=>setOnerPanelAcik(false)} style={{...btnSecondary,fontSize:11,padding:"4px 10px",marginTop:8}}>Kapat</button>
-            </div>
-          )}
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-          {!alindi&&!onerPanelAcik&&<button onClick={onerileriHesapla} style={{...btnPrimary,fontSize:12,padding:"7px 12px",whiteSpace:"nowrap"}}>📅 Randevuya Çevir</button>}
+          {!alindi&&aktifRol!=="personel"&&<button onClick={()=>onRandevuyaCevir(b)} style={{...btnPrimary,fontSize:12,padding:"7px 12px",whiteSpace:"nowrap"}}>📅 Randevuya Çevir</button>}
           <button onClick={()=>setNotDuzenle(v=>!v)} style={{...btnSecondary,fontSize:12,padding:"6px 12px",whiteSpace:"nowrap"}}>✏️ Düzenle</button>
-          <button onClick={()=>onSil(b.id)} style={{...btnSecondary,fontSize:12,padding:"6px 12px",color:"#dc2626",borderColor:"#fca5a5"}}>Sil</button>
+          {aktifRol!=="personel"&&<button onClick={()=>onSil(b.id)} style={{...btnSecondary,fontSize:12,padding:"6px 12px",color:"#dc2626",borderColor:"#fca5a5"}}>Sil</button>}
         </div>
       </div>
     </div>
@@ -2783,21 +2445,20 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
     async function yukle(){
       setYukleniyor(true);
       const adaylar=randevular.filter(r=>r.tarih<=bugun&&r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&r.durum!=="Gelmedi");
-      const idler=[...new Set(adaylar.map(r=>r.hasta_id).filter(Boolean))];
+      const adlar=[...new Set(adaylar.map(r=>r.hasta?.toLowerCase().trim()).filter(Boolean))];
+      const idMap={};
+      hastalar.forEach(h=>{const k=h.ad?.toLowerCase().trim();if(k&&adlar.includes(k))idMap[k]=h.id;});
+      const idler=[...new Set(Object.values(idMap))];
       if(idler.length===0){if(!iptal){setEpilasyonEksik([]);setYukleniyor(false);}return;}
       try{
-        const ziyaretler=await sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id,randevu_id,tarih`);
+        const ziyaretler=await sbGet("epilasyon_ziyaretleri",`hasta_id=in.(${idler.join(",")})&select=hasta_id`);
         if(iptal)return;
-        const doluRandevuSet=new Set(ziyaretler.filter(z=>z.randevu_id).map(z=>z.randevu_id));
-        const tarihFallback=new Set(ziyaretler.filter(z=>!z.randevu_id&&z.tarih).map(z=>`${z.hasta_id}|${z.tarih}`));
-        const eksikRandevular=adaylar.filter(r=>{
-          if(doluRandevuSet.has(r.id))return false; // bu SPESİFİK randevu için kayıt zaten var
-          if(r.hasta_id&&tarihFallback.has(`${r.hasta_id}|${r.tarih}`))return false; // eski/manuel kayıt, tarih eşleşmesiyle bulundu
-          return true;
-        });
+        const doluSet=new Set(ziyaretler.map(z=>z.hasta_id));
+        const eksikAdSeti=new Set(Object.entries(idMap).filter(([ad,id])=>!doluSet.has(id)).map(([ad])=>ad));
+        const eksikRandevular=adaylar.filter(r=>eksikAdSeti.has(r.hasta?.toLowerCase().trim()));
         const map=new Map();
         eksikRandevular.forEach(r=>{
-          const k=r.hasta_id||r.hasta?.toLowerCase().trim(); // hasta_id varsa onu kullan (aynı isimde farklı hastaları ayırt etmek için), yoksa isme düş
+          const k=r.hasta?.toLowerCase().trim();
           if(!map.has(k)||r.tarih>map.get(k).tarih)map.set(k,r);
         });
         setEpilasyonEksik([...map.values()].filter(r=>bildirimGorunurMu(r,aktifRol)).sort((a,b)=>a.tarih.localeCompare(b.tarih)));
@@ -2806,7 +2467,7 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
     }
     yukle();
     return()=>{iptal=true;};
-  },[randevular]);
+  },[randevular,hastalar]);
 
   return(
     <div>
@@ -2845,7 +2506,7 @@ function BildirimlerSekme({randevular,hastalar,aktifRol,onRandevuTikla,onEpilasy
         ):(
           <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
             {epilasyonEksik.map((r,i)=>{
-              const hastaKaydi=hastalar.find(h=>h.id===r.hasta_id)||isimleTekHastaBul(hastalar,r.hasta);
+              const hastaKaydi=hastalar.find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
               return(
                 <div key={r.id} onClick={()=>hastaKaydi&&onEpilasyonAc(hastaKaydi,r)} style={{padding:"10px 16px",borderBottom:i<epilasyonEksik.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",gap:10}}>
                   <div>
@@ -2871,16 +2532,11 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
   const [duzenTel,setDuzenTel]=useState("");
   const [duzenCinsiyet,setDuzenCinsiyet]=useState("Bayan");
   const [gelmedPopup,setGelmedPopup]=useState(false);
-  const [ad,setAd]=useState("");const [tel,setTel]=useState("");const [cinsiyet,setCinsiyet]=useState(null);
-  const [ilkKezEpilasyon,setIlkKezEpilasyon]=useState(false);
+  const [ad,setAd]=useState("");const [tel,setTel]=useState("");const [cinsiyet,setCinsiyet]=useState("Bayan");
   const filtreliHastalar=filtre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(filtre.toLowerCase())||h.tel?.includes(filtre)||h.hasta_id?.includes(filtre)):[];
-  async function kaydet(){
-    if(!ad.trim())return;
-    if(!cinsiyet){showToast("Lütfen cinsiyeti seçtikten sonra kayıt yapınız.","error");return;}
-    await hastaEkleDB(ad.trim(),tel.trim(),cinsiyet,ilkKezEpilasyon);showToast("Hasta eklendi.");setForm(null);setAd("");setTel("");setCinsiyet(null);setIlkKezEpilasyon(false);
-  }
+  async function kaydet(){if(!ad.trim())return;await hastaEkleDB(ad.trim(),tel.trim(),cinsiyet);showToast("Hasta eklendi.");setForm(null);setAd("");setTel("");setCinsiyet("Bayan");}
 
-  const hastaRandevular=seciliHasta?randevular.filter(r=>r.hasta_id?r.hasta_id===seciliHasta.id:r.hasta?.toLowerCase().trim()===seciliHasta.ad?.toLowerCase().trim()).sort((a,b)=>a.tarih>b.tarih?1:-1):[];
+  const hastaRandevular=seciliHasta?randevular.filter(r=>r.hasta?.toLowerCase().trim()===seciliHasta.ad?.toLowerCase().trim()).sort((a,b)=>a.tarih>b.tarih?1:-1):[];
   const gelmedListesi=hastaRandevular.filter(r=>r.durum==="Gelmedi"&&r.tarih>=GELMEDI_TAKIP_BASLANGIC);
   // "Haber verdi": SADECE randevu günü aynı gün silinen ya da aynı gün başka tarihe alınan durumlar
   const ayniGunSilinen=seciliHasta?silLog.filter(s=>{
@@ -2898,7 +2554,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h2 style={{fontSize:18,fontWeight:600}}>Hasta Listesi ({hastalar.length})</h2>
-        {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel")&&<button onClick={()=>{setForm("yeni");setAd("");setTel("");setCinsiyet("Bayan");setSeciliHasta(null);}} style={btnPrimary}>+ Yeni Hasta</button>}
+        {(aktifRol==="sekreter"||aktifRol==="yonetici")&&<button onClick={()=>{setForm("yeni");setAd("");setTel("");setCinsiyet("Bayan");setSeciliHasta(null);}} style={btnPrimary}>+ Yeni Hasta</button>}
       </div>
       <input value={filtre} onChange={e=>setFiltre(e.target.value)} placeholder="İsim, ID veya telefon ile ara..." style={{...inputStyle,marginBottom:12}}/>
       {form==="yeni"&&(
@@ -2908,9 +2564,6 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
           <div style={{display:"flex",gap:6,marginBottom:10}}>
             {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setCinsiyet(c)} style={{...chipStyle(cinsiyet===c),flex:1}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
           </div>
-          <button type="button" onClick={()=>setIlkKezEpilasyon(v=>!v)} style={{width:"100%",padding:"12px",borderRadius:10,border:ilkKezEpilasyon?"2px solid #16a34a":"2px solid #d1d5db",background:ilkKezEpilasyon?"#dcfce7":"#fff",color:ilkKezEpilasyon?"#166534":"#555",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:10}}>
-            {ilkKezEpilasyon?"✅ ":"🆕 "}Bu Hasta Epilasyona İlk Kez Geliyor
-          </button>
           <div style={{display:"flex",gap:8}}><button onClick={kaydet} style={btnPrimary}>Kaydet</button><button onClick={()=>setForm(null)} style={btnSecondary}>İptal</button></div>
         </div>
       )}
@@ -3049,7 +2702,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
 // ── RAPOR ────────────────────────────────────────────────────────────────────
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function DashboardSekme({randevular,bloklar,calismaSaatleri,bekleme,setSeciliTarih,setAktifSekme,onYeniRandevu}){
+function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme,onYeniRandevu}){
   const bugun=today();
   const [offset,setOffset]=useState(0);
   const seciliGun=addDays(bugun,offset);
@@ -3059,12 +2712,11 @@ function DashboardSekme({randevular,bloklar,calismaSaatleri,bekleme,setSeciliTar
     ["alex","soprano"].forEach(oda=>{
       const gunR=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat));
       const gunB=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih);
-      const mola=efektifMola(calismaSaatleri,oda,tarih);
-      const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure})),...(mola?[{b:mola.bas,e:mola.bit}]:[])].sort((a,b)=>a.b-b.b);
+      const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
       // Pazar günü ise boşluk gösterme
       if(new Date(tarih+"T00:00:00").getDay()===0) return;
-      let imlec=efektifAcilis(calismaSaatleri,oda,tarih);
-      const kapanis=efektifKapanis(calismaSaatleri,oda,tarih);
+      let imlec=9*60;
+      const kapanis=odaKapanisSaat(oda);
       mesgul.forEach(m=>{
         if(m.b>imlec+5){sonuc[oda].push({saat:minToTime(imlec),dk:m.b-imlec});}
         imlec=Math.max(imlec,m.e);
@@ -3217,7 +2869,7 @@ function AnketSonucSekme({aktifRol}){
   const [istatistikYukleniyor,setIstatistikYukleniyor]=useState(true);
   const [yukleniyor,setYukleniyor]=useState(true);
   const [filtre,setFiltre]=useState("hepsi"); // "hepsi" | "yuksek" | "dusuk"
-  const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEA0/review";
+  const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEAE/review";
   const LAZER_SORULAR_METIN={s1:"Randevu ve karşılama sürecinden memnun kaldınız mı?",s2:"Personelimizin ilgi ve iletişimini nasıl değerlendirirsiniz?",s3:"İşlem sırasında kendinizi rahat ve güvende hissettiniz mi?",s4:"Mahremiyetinize yeterince özen gösterildiğini düşünüyor musunuz?",s5:"Klinik hijyenini nasıl değerlendirirsiniz?",s6:"İşlem öncesinde yeterince bilgilendirildiniz mi?",s7:"Genel memnuniyet puanı (1-10)",s8:"Tekrar aynı personelden hizmet almak ister misiniz?",s9:"Kliniğimizi yakınlarınıza tavsiye eder misiniz?",s10:"Görüş veya önerileriniz"};
   const CILT_SORULAR_METIN={s1:"İşlem öncesinde size yeterli bilgilendirme yapıldı mı?",s2:"Personelimizin ilgisini ve iletişimini nasıl değerlendirirsiniz?",s3:"İşlem sırasında kendinizi rahat hissettiniz mi?",s4:"Klinik hijyenini nasıl değerlendirirsiniz?",s5:"İşlem sonrasında öneriler ve bakım tavsiyeleri yeterince anlatıldı mı?",s6:"Genel memnuniyet puanı (1-10)",s7:"Aynı personelden tekrar hizmet almak ister misiniz?",s8:"Kliniğimizi yakınlarınıza tavsiye eder misiniz?",s9:"Görüş, öneri veya paylaşmak istediğiniz başka bir konu"};
   function soruMetni(anketTipi,key){const m=anketTipi==="lazer"?LAZER_SORULAR_METIN:CILT_SORULAR_METIN;return m[key]||key;}
@@ -3429,7 +3081,7 @@ function AnketSonucSekme({aktifRol}){
   const ortalama=anketler.length>0?(anketler.reduce((s,a)=>s+(a.puan||0),0)/anketler.length).toFixed(1):"-";
 
   function googleGonder(a){
-    const msg="Merhaba 🌸\nKliniğimizde aldığınız hizmetten memnun kaldıysanız, deneyiminizi Google'da paylaşmanız bizi çok mutlu eder.\nYorumlarınız hem bize hem de kliniğimizi araştıran kişilere yardımcı oluyor.\nGoogle yorum linkimiz:\n"+GOOGLE_LINK+"\nDr. Duygu Coşkun Özbakır\nDermatoloji ve Kozmetoloji Kliniği";
+    const msg="Merhaba "+(a.hasta||"değerli hastamız")+", kliniğimize verdiğiniz destek için teşekkür ederiz! Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilirsiniz 🌸\n\n👉 "+GOOGLE_LINK;
     window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
   }
 
@@ -3770,10 +3422,6 @@ function AnketSonucSekme({aktifRol}){
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <span style={{background:"#f0fdf4",color:"#16a34a",fontWeight:700,fontSize:15,padding:"4px 12px",borderRadius:20}}>⭐ {a.puan}/10</span>
-                  {aktifRol==="yonetici"&&a.puan===10&&(a.google_tiklandi_zaman?
-                    <span title={`Tıkladı: ${new Date(a.google_tiklandi_zaman).toLocaleString("tr-TR")}`} style={{fontSize:11,color:"#16a34a",fontWeight:600,background:"#f0fdf4",padding:"3px 8px",borderRadius:10}}>✅ Tıkladı</span>
-                    :<span style={{fontSize:11,color:"#dc2626",fontWeight:600,background:"#fee2e2",padding:"3px 8px",borderRadius:10}}>— Tıklamadı</span>
-                  )}
                   <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#4285f4",whiteSpace:"nowrap"}}>Google'a Yönlendir</button>
                 </div>
               </div>
@@ -4298,17 +3946,6 @@ function EpilasyonLogSekme(){
 
 function LogSekme({randevular,silLog,gunIciLog}){
   const [aktifTab,setAktifTab]=useState("gunici");
-  const [kasaKayitlar,setKasaKayitlar]=useState(null); // null: henüz yüklenmedi
-  useEffect(()=>{
-    if(aktifTab!=="kasatakip"||kasaKayitlar!==null)return;
-    (async()=>{
-      try{
-        const resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan?select=randevu_id,durum`,{headers:{"apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY}});
-        const data=await resp.json();
-        setKasaKayitlar(Array.isArray(data)?data:[]);
-      }catch(e){ setKasaKayitlar([]); }
-    })();
-  },[aktifTab]);
   const tumLog=randevular.flatMap(r=>(r.log||[]).map(l=>({...l,hasta:r.hasta,tarih:r.tarih}))).sort((a,b)=>b.saat?.localeCompare(a.saat||"")||0);
   const bugunGunIci=gunIciLog.filter(g=>(g.degTarih||g.deg_tarih)===today());
   // Gün içi silmeler: randevu tarihi = silindiği tarih
@@ -4316,63 +3953,16 @@ function LogSekme({randevular,silLog,gunIciLog}){
   const bugunSilinen=silLog.filter(s=>s.randevu_tarih===bugun&&s.sil_tarih===bugun);
   const ayBaslangic=bugun.slice(0,7);
   const buAySilinen=silLog.filter(s=>s.randevu_tarih&&s.sil_tarih&&s.randevu_tarih===s.sil_tarih&&s.sil_tarih.startsWith(ayBaslangic));
-  // ── Kasa Takip: kasaya gönderilip orada tamamlanmayanlar + hiç gönderilmeyenler ──
-  const KASA_TAKIP_BASLANGIC=addDays(bugun,-30); // son 30 gün — çok eski geçmişi listeleyip gürültü yapmasın
-  const kasaGonderilenIdSeti=new Set((kasaKayitlar||[]).filter(k=>k.durum==="bekliyor").map(k=>k.randevu_id));
-  const tamamlanmayanlar=randevular.filter(r=>r.kasaya_gonderildi&&r.tarih>=KASA_TAKIP_BASLANGIC&&kasaGonderilenIdSeti.has(r.id)).sort((a,b)=>b.tarih.localeCompare(a.tarih));
-  const gonderilmeyenler=randevular.filter(r=>r.tarih>=KASA_TAKIP_BASLANGIC&&r.tarih<=bugun&&r.durum!=="Gelmedi"&&r.durum!=="Rütuş"&&!r.kasaya_gonderildi&&(r.tarih<bugun||r.durum==="Seans")).sort((a,b)=>b.tarih.localeCompare(a.tarih));
-  function gunGrupla(liste){
-    const gruplar={};
-    liste.forEach(r=>{ (gruplar[r.tarih]=gruplar[r.tarih]||[]).push(r); });
-    return Object.entries(gruplar).sort((a,b)=>b[0].localeCompare(a[0]));
-  }
   return(
     <div>
       <h2 style={{fontSize:18,fontWeight:600,marginBottom:14}}>Yönetici Logu</h2>
-      <div style={{display:"flex",gap:4,background:"#f0f0ed",padding:4,borderRadius:10,marginBottom:16,width:"fit-content",flexWrap:"wrap"}}>
-        {[["gunici","⚠️ Gün İçi",bugunGunIci.length],["gunicisilme","🚨 Gün İçi Silme",bugunSilinen.length],["islem","📋 İşlem Logu",0],["silme","🗑️ Silme Logu",silLog.length],["kasatakip","💰 Kasa Takip",tamamlanmayanlar.length+gonderilmeyenler.length]].map(([k,l,badge])=>(
+      <div style={{display:"flex",gap:4,background:"#f0f0ed",padding:4,borderRadius:10,marginBottom:16,width:"fit-content"}}>
+        {[["gunici","⚠️ Gün İçi",bugunGunIci.length],["gunicisilme","🚨 Gün İçi Silme",bugunSilinen.length],["islem","📋 İşlem Logu",0],["silme","🗑️ Silme Logu",silLog.length]].map(([k,l,badge])=>(
           <button key={k} onClick={()=>setAktifTab(k)} style={{padding:"7px 14px",border:"none",borderRadius:8,background:aktifTab===k?"#fff":"transparent",color:aktifTab===k?"#333":"#888",fontWeight:aktifTab===k?600:400,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:aktifTab===k?"0 1px 3px rgba(0,0,0,0.1)":"none",whiteSpace:"nowrap"}}>
             {l}{badge>0&&<span style={{background:k==="gunici"?"#f59e0b":"#ef4444",color:"#fff",fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:20,marginLeft:5}}>{badge}</span>}
           </button>
         ))}
       </div>
-      {aktifTab==="kasatakip"&&(
-        <div>
-          {kasaKayitlar===null?<div style={{padding:"2rem",textAlign:"center",color:"#aaa"}}>Yükleniyor...</div>:(
-          <>
-          <div style={{fontSize:14,fontWeight:600,color:"#555",marginBottom:10}}>⏳ Kasaya Gönderildi ama Kasada Tamamlanmadı ({tamamlanmayanlar.length})</div>
-          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden",marginBottom:20}}>
-            {tamamlanmayanlar.length===0?<div style={{padding:"1.5rem",textAlign:"center",color:"#aaa",fontSize:13}}>✅ Hepsi kasada tamamlanmış.</div>:
-            gunGrupla(tamamlanmayanlar).map(([gun,liste])=>(
-              <div key={gun} style={{borderBottom:"1px solid #f5f5f2"}}>
-                <div style={{background:"#fef3c7",padding:"6px 16px",fontSize:12,fontWeight:700,color:"#92400e"}}>{gun}</div>
-                {liste.map(r=>(
-                  <div key={r.id} style={{padding:"10px 16px",borderBottom:"1px solid #f5f5f2"}}>
-                    <div style={{fontWeight:600,fontSize:14}}>{r.hasta}</div>
-                    <div style={{fontSize:12,color:"#888",marginTop:2}}>{r.saat} · {r.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · Kasaya gönderildi: {new Date(r.kasaya_gonderildi).toLocaleString("tr-TR")}</div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-          <div style={{fontSize:14,fontWeight:600,color:"#555",marginBottom:10}}>❌ Seans Yapıldı ama Kasaya Hiç Gönderilmedi ({gonderilmeyenler.length})</div>
-          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
-            {gonderilmeyenler.length===0?<div style={{padding:"1.5rem",textAlign:"center",color:"#aaa",fontSize:13}}>✅ Eksik gönderim yok.</div>:
-            gunGrupla(gonderilmeyenler).map(([gun,liste])=>(
-              <div key={gun} style={{borderBottom:"1px solid #f5f5f2"}}>
-                <div style={{background:"#fee2e2",padding:"6px 16px",fontSize:12,fontWeight:700,color:"#dc2626"}}>{gun}</div>
-                {liste.map(r=>(
-                  <div key={r.id} style={{padding:"10px 16px",borderBottom:"1px solid #f5f5f2"}}>
-                    <div style={{fontWeight:600,fontSize:14}}>{r.hasta}</div>
-                    <div style={{fontSize:12,color:"#888",marginTop:2}}>{r.saat} · {r.oda==="alex"?"🟢 Alex":"🟣 Soprano"} · Durum: {r.durum||"(belirtilmemiş)"}</div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-          </>)}
-        </div>
-      )}
       {aktifTab==="gunicisilme"&&(
         <div>
           {bugunSilinen.length>0&&(
@@ -4465,7 +4055,7 @@ function ModalWrapper({children,onClose}){
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 const Label=({children})=><div style={{fontSize:12,fontWeight:600,color:"#888",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>{children}</div>;
 const inputStyle={width:"100%",padding:"9px 12px",border:"1px solid #ddd",borderRadius:8,fontSize:14,fontFamily:"inherit",color:"#333",background:"#fff",outline:"none"};
-const chipStyle=a=>({padding:"6px 14px",border:a?"1.5px solid #6366f1":"1px solid #ddd",borderRadius:20,background:a?"#eef0ff":"#fafaf8",color:a?"#4338ca":"#555",fontSize:13,cursor:"pointer",fontWeight:a?500:400,fontFamily:"inherit",outline:"none"});
+const chipStyle=a=>({padding:"6px 14px",border:a?"1.5px solid #6366f1":"1px solid #ddd",borderRadius:20,background:a?"#eef0ff":"#fafaf8",color:a?"#4338ca":"#555",fontSize:13,cursor:"pointer",fontWeight:a?500:400,fontFamily:"inherit"});
 const btnPrimary={padding:"9px 18px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:500,cursor:"pointer",fontFamily:"inherit"};
 const btnSecondary={padding:"9px 18px",background:"transparent",color:"#555",border:"1px solid #ddd",borderRadius:8,fontSize:14,cursor:"pointer",fontFamily:"inherit"};
 const modalTitleStyle={fontSize:19,fontWeight:600,marginBottom:18};
