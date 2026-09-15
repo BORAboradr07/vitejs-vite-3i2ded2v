@@ -562,6 +562,56 @@ export default function App() {
     } catch(e){showToast("Hata: "+e.message,"error");}
   }
 
+  async function sonlandirVeKasayaGonder(r){
+    try{
+      // Aynı randevu daha önce kasaya gönderilmişse yeni satır açma; bekleyen kaydı güncelle.
+      const kasaResp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan?randevu_id=eq.${r.id}&select=id,durum`,{
+        headers:{"apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY},
+      });
+      if(!kasaResp.ok) throw new Error(await kasaResp.text());
+      const mevcut=(await kasaResp.json())?.[0];
+      if(mevcut?.durum==="tamamlandi"){
+        showToast("Bu hasta kasada zaten işlenmiş (ödeme alınmış) — düzeltme kasa sisteminden yapılmalı.","error");
+        return false;
+      }
+      const ciltTipleri=["Cilt Bakımı","Karbon","Tüy Sarartma","Forma"];
+      const ciltIslemi=(r.bolgeler||[]).find(b=>ciltTipleri.includes(b));
+      const islemTipi=ciltIslemi||(r.oda==="alex"?"Alex Lazer":"Soprano Lazer");
+      const govdeVeri={
+        hasta_ad:r.hasta,hasta_tel:r.tel||null,cinsiyet:r.cinsiyet||null,
+        tarih:r.tarih,oda:r.oda,islem_tipi:islemTipi,bolgeler:r.bolgeler||[],
+        durum:"bekliyor",gonderen:kullaniciEtiket(),
+      };
+      let resp;
+      if(mevcut){
+        resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan?id=eq.${mevcut.id}`,{
+          method:"PATCH",
+          headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY,"Prefer":"return=representation"},
+          body:JSON.stringify(govdeVeri),
+        });
+      }else{
+        resp=await fetch(`${KASA_URL}/rest/v1/epilasyon_tamamlanan`,{
+          method:"POST",
+          headers:{"Content-Type":"application/json","apikey":KASA_KEY,"Authorization":"Bearer "+KASA_KEY,"Prefer":"return=representation"},
+          body:JSON.stringify({randevu_id:r.id,...govdeVeri}),
+        });
+      }
+      if(!resp.ok){
+        const t=await resp.text();
+        if(t.includes("duplicate key")||t.includes("23505")){
+          showToast("Bu randevu az önce başka bir cihazdan kasaya gönderilmiş.","error");
+          return false;
+        }
+        throw new Error(t);
+      }
+      const zaman=new Date().toISOString();
+      await sbUpdate("randevular",r.id,{kasaya_gonderildi:zaman});
+      setRandevular(prev=>prev.map(x=>x.id===r.id?{...x,kasaya_gonderildi:zaman}:x));
+      showToast(mevcut?"Kasadaki kayıt güncellendi.":"Hasta kasaya gönderildi.");
+      return true;
+    }catch(e){showToast("Kasaya gönderilemedi: "+e.message,"error");return false;}
+  }
+
   async function randevuHastaBilgisiDuzenle(r,yeniAd,yeniTel){
     const ad=yeniAd.trim(),tel=yeniTel.trim();
     if(!ad){showToast("Ad soyad boş olamaz.","error");return false;}
@@ -922,7 +972,7 @@ export default function App() {
       )}
       {epilasyonModal&&(
         <ModalWrapper onClose={()=>setEpilasyonModal(null)}>
-          <EpilasyonKart hasta={epilasyonModal.hasta} randevu={epilasyonModal.randevu} aktifKullanici={aktifKullanici} aktifRol={aktifRol} onKapat={()=>setEpilasyonModal(null)} showToast={showToast}/>
+          <EpilasyonKart hasta={epilasyonModal.hasta} randevu={epilasyonModal.randevu} aktifKullanici={aktifKullanici} aktifRol={aktifRol} onKapat={()=>setEpilasyonModal(null)} onKasayaGonder={sonlandirVeKasayaGonder} showToast={showToast}/>
         </ModalWrapper>
       )}
       {anketYollaAcik&&(
@@ -1970,7 +2020,7 @@ function BolgeSatiri({satir,onDegis,onSil,kilitli}){
   );
 }
 
-function YeniSeansForm({randevu,aktifKullanici,aktifRol,onKaydet,onIptal,showToast}){
+function YeniSeansForm({randevu,aktifKullanici,aktifRol,onKaydet,onKasayaGonder,onIptal,showToast}){
   const [tarih,setTarih]=useState(randevu?.tarih||today());
   const varsayilanCihaz=randevu?.oda==="alex"?"Alex":"Soprano";
   const [satirlar,setSatirlar]=useState(()=>{
@@ -1983,6 +2033,7 @@ function YeniSeansForm({randevu,aktifKullanici,aktifRol,onKaydet,onIptal,showToa
   const bolgeListesi=randevu?.oda==="alex"?ALEX_BOLGELER:SOPRANO_BOLGELER;
   const [uygulayici,setUygulayici]=useState(aktifRol==="personel"?(aktifKullanici?.login_name||""):"");
   const [personelListesi,setPersonelListesi]=useState([]);
+  const [kasaGonderiliyor,setKasaGonderiliyor]=useState(false);
   useEffect(()=>{
     async function yukle(){
       try{
@@ -2021,18 +2072,24 @@ function YeniSeansForm({randevu,aktifKullanici,aktifRol,onKaydet,onIptal,showToa
           ))}
         </div>
       )}
-      <div style={{display:"flex",gap:8}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{
           if(!uygulayici){showToast("Uygulayıcı seçimi zorunlu.","error");return;}
           if(satirlar.length)onKaydet(satirlar,tarih,uygulayici);
-        }} disabled={!satirlar.length} style={{...btnPrimary,flex:1,opacity:satirlar.length?1:0.5}}>Seansı kaydet</button>
-        <button onClick={onIptal} style={btnSecondary}>İptal</button>
+        }} disabled={!satirlar.length||kasaGonderiliyor} style={{...btnPrimary,flex:1,opacity:satirlar.length&&!kasaGonderiliyor?1:0.5}}>Seansı kaydet</button>
+        {randevu?.id&&onKasayaGonder&&<button onClick={async()=>{
+          if(!uygulayici){showToast("Uygulayıcı seçimi zorunlu.","error");return;}
+          if(!satirlar.length)return;
+          setKasaGonderiliyor(true);
+          try{await onKasayaGonder(satirlar,tarih,uygulayici);}finally{setKasaGonderiliyor(false);}
+        }} disabled={!satirlar.length||kasaGonderiliyor} style={{...btnPrimary,flex:1,background:"#16a34a",opacity:satirlar.length&&!kasaGonderiliyor?1:0.5}}>{kasaGonderiliyor?"Gönderiliyor...":"✅ Kasaya Gönder"}</button>}
+        <button onClick={onIptal} disabled={kasaGonderiliyor} style={btnSecondary}>İptal</button>
       </div>
     </div>
   );
 }
 
-function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}){
+function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,onKasayaGonder,showToast}){
   const [yukleniyor,setYukleniyor]=useState(true);
   const [gecmis,setGecmis]=useState(null);
   const [ziyaretler,setZiyaretler]=useState([]);
@@ -2190,7 +2247,7 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
     }catch(e){showToast("Hata: "+e.message,"error");}
   }
 
-  async function seansKaydet(satirlar,tarih,uygulayici){
+  async function seansKaydet(satirlar,tarih,uygulayici,formuKapat=true){
     try{
       const [ziyaret]=await sbInsert("epilasyon_ziyaretleri",{hasta_id:hasta.id,randevu_id:randevu?.id||null,tarih,uygulayan_personel:uygulayici});
       for(const s of satirlar){
@@ -2204,10 +2261,30 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
         });
       }
       showToast("Seans kaydedildi.");
-      setSeansForm(false);
+      if(formuKapat)setSeansForm(false);
       const z=await sbGet("epilasyon_ziyaretleri",`hasta_id=eq.${hasta.id}&select=*,epilasyon_bolge_uygulamalari(*)&order=tarih.desc`);
       setZiyaretler(z);
-    }catch(e){showToast("Hata: "+e.message,"error");}
+      return true;
+    }catch(e){showToast("Hata: "+e.message,"error");return false;}
+  }
+
+  async function seansKaydetVeKasayaGonder(satirlar,tarih,uygulayici){
+    const kaydedildi=await seansKaydet(satirlar,tarih,uygulayici,false);
+    if(!kaydedildi)return false;
+    if(!randevu?.id||!onKasayaGonder){
+      showToast("Kasaya göndermek için bu kartın bir randevu üzerinden açılması gerekiyor.","error");
+      return false;
+    }
+    const gonderildi=await onKasayaGonder({
+      ...randevu,
+      hasta:hasta.ad,
+      tel:hasta.tel||randevu.tel||"",
+      cinsiyet:hasta.cinsiyet||randevu.cinsiyet||null,
+      tarih,
+      bolgeler:satirlar.map(s=>s.bolge),
+    });
+    if(gonderildi)setSeansForm(false);
+    return gonderildi;
   }
 
   const toplamSeans=ziyaretler.length;
@@ -2280,7 +2357,7 @@ function EpilasyonKart({hasta,randevu,aktifKullanici,aktifRol,onKapat,showToast}
           {!seansForm?(
             <button onClick={()=>setSeansForm(true)} style={{...btnPrimary,width:"100%",marginBottom:14,padding:"12px"}}>+ Yeni seans ekle</button>
           ):(
-            <YeniSeansForm randevu={randevu} aktifKullanici={aktifKullanici} aktifRol={aktifRol} onKaydet={seansKaydet} onIptal={()=>setSeansForm(false)} showToast={showToast}/>
+            <YeniSeansForm randevu={randevu} aktifKullanici={aktifKullanici} aktifRol={aktifRol} onKaydet={seansKaydet} onKasayaGonder={seansKaydetVeKasayaGonder} onIptal={()=>setSeansForm(false)} showToast={showToast}/>
           )}
 
           <div style={{fontSize:13,fontWeight:600,color:"#555",marginBottom:8}}>Ziyaret Geçmişi</div>
