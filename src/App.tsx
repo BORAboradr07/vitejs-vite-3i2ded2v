@@ -1705,10 +1705,16 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     if(!hastaCinsiyet){alert("Cinsiyet seçimi zorunludur.");return;}
     if(seciliBolgeler.length===0){alert("En az bir bölge seçin.");return;}
     setKayitYapiliyor(true);
-    // Hasta ID'si yoksa (listeden seçilmemiş veya düzenleme modunda NULL kalmış) — her zaman bağla
+    // Hasta kartına bağlama — HER DURUMDA hasta kaydı olmalı, yoksa oluştur/bul
     if(!aktifHastaId&&aktifHasta.trim()){
       const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel||"",hastaCinsiyet);
       if(yeni) aktifHastaId=yeni.id;
+    }
+    // Hasta kartına bağlanamadıysa kaydetmeyi engelle — bu olmadan epilasyon kartı, istatistikler çalışmaz
+    if(!aktifHastaId){
+      alert("⚠️ Hasta kaydı oluşturulamadı. Lütfen hastayı listeden seçin veya tekrar deneyin.");
+      setKayitYapiliyor(false);
+      return;
     }
     await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar,tel:hastaTel,cinsiyet:hastaCinsiyet});
     setKayitYapiliyor(false);
