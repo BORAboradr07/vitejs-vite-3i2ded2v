@@ -966,7 +966,7 @@ export default function App() {
       {modal&&(
         <ModalWrapper onClose={()=>setModal(null)}>
           {modal.tip==="yeni"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={async(data)=>{const ok=await randevuKaydet(data);if(ok&&modal.beklemdeId)await beklemeRandevuAlindi(modal.beklemdeId);}} onIptal={()=>setModal(null)}/>}
-          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} hastalar={hastalar} randevular={randevular} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={randevuHastaBilgisiDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})}/>}
+          {modal.tip==="detay"&&<RandevuDetay randevu={modal.data} hastalar={hastalar} randevular={randevular} aktifRol={aktifRol} onDuzenle={()=>setModal({tip:"duzenle",data:modal.data})} onDurumGuncelle={durumGuncelle} onKapat={()=>setModal(null)} onSil={randevuSil} onHastaDuzenle={randevuHastaBilgisiDuzenle} onAnketDurum={anketDurumGuncelle} onAnketGonder={anketGonder} onBolgeGuncelle={bolgeGuncelle} onEpilasyonAc={(hasta,randevu)=>setEpilasyonModal({hasta,randevu})} onSonlandirKasa={sonlandirVeKasayaGonder} showToast={showToast}/>}
           {modal.tip==="duzenle"&&<RandevuForm basData={modal.data} hastalar={hastalar} hastaEkleDB={hastaEkleDB} aktifRol={aktifRol} onKaydet={randevuKaydet} onIptal={()=>setModal(null)} duzenleme/>}
         </ModalWrapper>
       )}
@@ -1857,8 +1857,9 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
 }
 
 // ── RANDEVU DETAY ────────────────────────────────────────────────────────────
-function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc}){
+function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumGuncelle,onKapat,onSil,onHastaDuzenle,onAnketDurum,onAnketGonder,onBolgeGuncelle,onEpilasyonAc,onSonlandirKasa,showToast}){
   const [durum,setDurum]=useState(r.durum);const [odeme,setOdeme]=useState(r.odeme);
+  const [gonderiliyor,setGonderiliyor]=useState(false);
   const hastaKaydi=(hastalar||[]).find(h=>h.ad?.toLowerCase().trim()===r.hasta?.toLowerCase().trim());
   const [hastaEdit,setHastaEdit]=useState(false);
   const [yeniHastaAd,setYeniHastaAd]=useState(r.hasta);
@@ -1935,6 +1936,22 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
       )}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{onDurumGuncelle(r.id,durum,odeme);onKapat();}} style={btnPrimary}>Kaydet</button>
+        {durum==="Seans"&&onSonlandirKasa&&<button disabled={gonderiliyor} onClick={async()=>{
+          setGonderiliyor(true);
+          try{
+            let gonderilecekBolgeler=r.bolgeler||[];
+            let gonderilecekSure=r.sure;
+            if(bolgeEdit){
+              if(seciliBolgeler.length===0){showToast("En az bir bölge seçin.","error");return;}
+              if(onBolgeGuncelle) await onBolgeGuncelle(r.id,seciliBolgeler,yeniSure);
+              gonderilecekBolgeler=seciliBolgeler;
+              gonderilecekSure=yeniSure;
+            }
+            if(durum!==r.durum||odeme!==r.odeme) await onDurumGuncelle(r.id,durum,odeme);
+            const ok=await onSonlandirKasa({...r,durum,odeme,bolgeler:gonderilecekBolgeler,sure:gonderilecekSure});
+            if(ok)onKapat();
+          } finally{setGonderiliyor(false);}
+        }} style={{...btnPrimary,background:"#16a34a",opacity:gonderiliyor?0.6:1}}>{gonderiliyor?"Gönderiliyor...":r.kasaya_gonderildi?"🔄 Düzelt ve Yeniden Gönder":"✅ Kasaya Gönder"}</button>}
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={onDuzenle} style={btnSecondary}>Düzenle</button>}
         {(aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="personel"||aktifRol==="sorumlu")&&<button onClick={()=>setHastaEdit(true)} style={btnSecondary}>👤 Hasta Bilgilerini Düzenle</button>}
         {hastaKaydi&&<button onClick={()=>onEpilasyonAc(hastaKaydi,r)} style={{...btnSecondary,color:"#6366f1",borderColor:"#a5b4fc"}}>📋 Epilasyon Kartı</button>}
