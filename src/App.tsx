@@ -4569,7 +4569,9 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     const gecen=bitis===null?null:Math.max(0,bitis-timeToMin(s.uyusmaSaati));
     return {saat:s.uyusmaSaati,hedef:s.uyusmaHedef||0,gecen,durdu:!!s.alinmaSaati,hazir:!!s.uyusmaHedef&&gecen!==null&&gecen>=s.uyusmaHedef};
   }
-  const kremTusuGorunur=s=>aktifOda==="dr"&&drDuzenleyebilir&&s.geldi&&!s.uyusmaSaati&&!s.iptalSaati&&s.gelisId>0;
+  // Krem tuşu sadece krem listesindeki işlemlerde (uyusmaHedef>0) ve gelmiş hastada çıkar
+  const kremUygun=s=>aktifOda==="dr"&&(!!s.uyusmaSaati||s.uyusmaHedef>0);
+  const kremTusuGorunur=s=>kremUygun(s)&&drDuzenleyebilir&&s.geldi&&!s.uyusmaSaati&&!s.iptalSaati&&s.gelisId>0;
   const sayacMetni=k=>k.durdu?`⏹ ${k.gecen} dk`:k.gecen===null?"⏳":`⏳ ${k.gecen}${k.hedef?"/"+k.hedef:""} dk`;
   async function kremIsaretle(s,sur){
     if(!drDuzenleyebilir||!s.gelisId||s.gelisId<0||islemde)return;
@@ -4842,7 +4844,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         <div style={{fontSize:buyuk?20:17,fontWeight:700,color:c,fontVariantNumeric:"tabular-nums"}}>{v}</div>
       </div>);
     const Kart=({s,buyuk})=>{
-      const d=satirDurumu(s),acik=acikKart===s.key,drKart=aktifOda==="dr",kd=drKart?kremDurum(s):null;
+      const d=satirDurumu(s),acik=acikKart===s.key,drKart=aktifOda==="dr"&&kremUygun(s),kd=drKart?kremDurum(s):null;
       const iptal=!!s.iptalSaati,soluk=iptal||s.randevuDurum==="Gelmedi";
       const serit=kd&&!kd.durdu?"#0d9488":SERIT[d.etiket];
       const bg=iptal?"#fef2f2":s.alinmaSaati?"#f3f4f6":s.geldi?"#f0fdf4":"#fff";
