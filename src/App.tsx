@@ -4408,6 +4408,25 @@ async function bhDoktorTakvimiPdfOku(file){
   if(!sinirlar)throw new Error("Başlık satırı (Saat / Hasta / Telefon / Hizmet) bulunamadı. DoktorTakvimi 'Randevu listesi' çıktısı mı?");
   return kayitlar.map(k=>({...k,tarih:k.tarih||tarih}));
 }
+const BH_KREM_VARSAYILAN=30;
+// Uyuşma kuralları (klinik listesi). erken:true → hasta krem için randevudan bu kadar önce gelir.
+// Sıra önemli: ilk eşleşen kural geçerli. null = krem yok.
+// Uyuşma hedef süreleri (klinik listesi). Kremi sürme kararı doktorda; bu tablo sadece sayacın hedefini verir.
+// Sıra önemli: ilk eşleşen geçerli. null = hedef yok (tuş yine basılabilir, sayaç hedefsiz sayar).
+const BH_KREM_KURALLARI=[
+  [/kontrol/,null],
+  [/botoks/,s=>/koltuk|\bel\b|\beller\b/.test(s)?{sure:20}:null],
+  [/altin ?igne|morpheus/,{sure:45}],
+  [/fraxis|fraksiyonel/,{sure:45}],
+  [/mezo|matrix|lifting|somon|dna|pdrn|\basi(si)?\b/,s=>/goz/.test(s)?{sure:15}:{sure:45}],
+  [/dudak.*dolgu|dolgu.*dudak/,{sure:15}],
+];
+function bhKremKurali(islem){
+  const n=bhNormalize(islem);
+  for(const [re,sonuc] of BH_KREM_KURALLARI){if(re.test(n))return typeof sonuc==="function"?sonuc(n):sonuc;}
+  return null;
+}
+const BH_KREM_SURELER=[15,20,30,40,45,60];
 const BH_SURELER=[10,15,20,30,45,60,90];
 
 const BH_ODALAR=[["alex","🟢 Alex"],["soprano","🟣 Soprano"],["dr","🩺 Dr İşlem"]];
@@ -4426,6 +4445,15 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const saatInputRef=useRef(null);
   const [personelOda,setPersonelOda]=useState(()=>{try{return window.localStorage.getItem("kl_bh_oda")||null;}catch{return null;}});
   const kapRef=useRef(null);
+  // Telefon/küçük ekran: ≤768px → kart görünümü (masaüstü tablo aynen kalır)
+  const [mobil,setMobil]=useState(()=>{try{return window.matchMedia("(max-width: 768px)").matches;}catch{return false;}});
+  const [acikKart,setAcikKart]=useState(null);
+  useEffect(()=>{
+    let mq;try{mq=window.matchMedia("(max-width: 768px)");}catch{return;}
+    const fn=e=>setMobil(e.matches);
+    mq.addEventListener?mq.addEventListener("change",fn):mq.addListener(fn);
+    return()=>{mq.removeEventListener?mq.removeEventListener("change",fn):mq.removeListener(fn);};
+  },[]);
 
   const login=aktifKullanici?.login_name||"";
   const gelisIsaretleyebilir=aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="sorumlu";
@@ -4437,14 +4465,13 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     let iptal=false;
     sbGet("kullanicilar",`login_name=eq.${encodeURIComponent(login)}&select=id,oda`).then(d=>{
       const oda=d?.[0]?.oda;
-      if(!iptal&&(oda==="alex"||oda==="soprano")){setPersonelOda(oda);try{window.localStorage.setItem("kl_bh_oda",oda);}catch{}}
+      if(!iptal&&(oda==="alex"||oda==="soprano"||oda==="dr")){setPersonelOda(oda);try{window.localStorage.setItem("kl_bh_oda",oda);}catch{}}
     }).catch(()=>{});
     return()=>{iptal=true;};
   },[aktifRol,login]);
 
-  const gorunenOdalar=aktifRol==="personel"
-    ?BH_ODALAR.filter(([k])=>k===personelOda||k==="dr")
-    :BH_ODALAR;
+  // Herkes tüm odaları görür (ekip birbirine yardım ediyor); uygulayıcının odası sadece açılış sekmesini belirler
+  const gorunenOdalar=BH_ODALAR;
   const [aktifOda,setAktifOda]=useState(()=>aktifRol==="yonetici"?"dr":"alex");
   useEffect(()=>{if(aktifRol==="personel"&&personelOda)setAktifOda(personelOda);},[aktifRol,personelOda]);
 
@@ -4508,26 +4535,82 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
 
   // ── Listeler ──
   const gelisByRandevu={};gelisler.forEach(g=>{if(g.randevu_id)gelisByRandevu[g.randevu_id]=g;});
+  // Randevu dışı satırlar (Dr İşlem kayıtları + randevusuz gelen hastalar) hasta_gelis tablosundan gelir
+  // Randevu dışı satırlar (Dr İşlem kayıtları + randevusuz gelen hastalar) hasta_gelis tablosundan gelir
+  const gelisSatiri=g=>({key:"d"+g.id,randevuId:null,gelisId:g.id,saat:g.saat,sure:g.sure||0,hasta:g.hasta,tel:g.tel||"",islem:[g.islem,g.sure?g.sure+" dk":""].filter(Boolean).join(" · "),notlar:g.notlar||"",randevuDurum:null,
+    geldi:!!g.geldi,gelisSaati:g.gelis_saati||"",alinmaSaati:g.alinma_saati||"",iptalSaati:g.iptal_saati||"",kaydeden:g.kaydeden||"",
+    uyusmaSaati:g.uyusma_saati||"",uyusmaHedef:g.uyusma_saati?(g.uyusma_hedef||0):(g.oda==="dr"?(bhKremKurali(g.islem)?.sure||0):0),
+    randevusuz:g.kaynak==="randevusuz"});
   function randevuSatirlari(oda){
     return randevular.filter(r=>r.oda===oda&&r.tarih===tarih)
-      .sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat))
-      .map(r=>{const g=gelisByRandevu[r.id];return {key:"r"+r.id,randevuId:r.id,gelisId:g?.id,saat:r.saat,hasta:r.hasta,islem:(r.bolgeler||[]).join(", "),notlar:r.notlar||"",randevuDurum:r.durum,geldi:!!g?.geldi,gelisSaati:g?.gelis_saati||"",kaydeden:g?.kaydeden||""};});
+      .map(r=>{const g=gelisByRandevu[r.id];return {key:"r"+r.id,randevuId:r.id,gelisId:g?.id,saat:r.saat,sure:r.sure||0,tel:r.tel||"",hasta:r.hasta,islem:(r.bolgeler||[]).join(", "),notlar:r.notlar||"",randevuDurum:r.durum,geldi:!!g?.geldi,gelisSaati:g?.gelis_saati||"",alinmaSaati:"",iptalSaati:g?.iptal_saati||"",kaydeden:g?.kaydeden||""};})
+      .concat(gelisler.filter(g=>g.oda===oda&&!g.randevu_id&&g.id>0).map(gelisSatiri));
   }
-  function drSatirlari(){
-    return gelisler.filter(g=>g.oda==="dr").sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat))
-      .map(g=>({key:"d"+g.id,randevuId:null,gelisId:g.id,saat:g.saat,hasta:g.hasta,tel:g.tel||"",islem:[g.islem,g.sure?g.sure+" dk":""].filter(Boolean).join(" · "),notlar:g.notlar||"",randevuDurum:null,geldi:!!g.geldi,gelisSaati:g.gelis_saati||"",kaydeden:g.kaydeden||""}));
-  }
-  const listeler={alex:randevuSatirlari("alex"),soprano:randevuSatirlari("soprano"),dr:drSatirlari()};
+  const [siralama,setSiralama]=useState(()=>{try{return window.localStorage.getItem("kl_bh_sira")||"randevu";}catch{return "randevu";}});
+  function siralaDegistir(v){setSiralama(v);try{window.localStorage.setItem("kl_bh_sira",v);}catch{}}
+  // Geliş sırası: kağıt listedeki gibi — gelenler geliş saatine göre üstte, gelmeyenler randevu saatine göre altta
+  const sirala=L=>[...L].sort((a,b)=>{
+    if(siralama==="gelis"){
+      if(a.geldi!==b.geldi)return a.geldi?-1:1;
+      if(a.geldi&&b.geldi)return timeToMin(a.gelisSaati||a.saat)-timeToMin(b.gelisSaati||b.saat);
+    }
+    return timeToMin(a.saat)-timeToMin(b.saat);
+  });
+  const listeler={alex:sirala(randevuSatirlari("alex")),soprano:sirala(randevuSatirlari("soprano")),dr:sirala(gelisler.filter(g=>g.oda==="dr").map(gelisSatiri))};
   const satirlar=listeler[aktifOda]||[];
   const bugunMu=tarih===today();
   const simdiDk=timeToMin(saatSimdi);
 
+  // ── Krem / uyuşma (sadece Dr İşlem) ──
+  // Kremi süren "Krem sürüldü"ye basar → krem saati + ⏳ sayaç. Sayaç "Alındı"ya basılana kadar sayar.
+  function kremDurum(s){
+    if(!s.uyusmaSaati)return null;
+    const bitis=s.alinmaSaati?timeToMin(s.alinmaSaati):(bugunMu?simdiDk:null);
+    const gecen=bitis===null?null:Math.max(0,bitis-timeToMin(s.uyusmaSaati));
+    return {saat:s.uyusmaSaati,hedef:s.uyusmaHedef||0,gecen,durdu:!!s.alinmaSaati,hazir:!!s.uyusmaHedef&&gecen!==null&&gecen>=s.uyusmaHedef};
+  }
+  const kremTusuGorunur=s=>aktifOda==="dr"&&drDuzenleyebilir&&s.geldi&&!s.uyusmaSaati&&!s.iptalSaati&&s.gelisId>0;
+  const sayacMetni=k=>k.durdu?`⏹ ${k.gecen} dk`:k.gecen===null?"⏳":`⏳ ${k.gecen}${k.hedef?"/"+k.hedef:""} dk`;
+  async function kremIsaretle(s,sur){
+    if(!drDuzenleyebilir||!s.gelisId||s.gelisId<0||islemde)return;
+    if(!sur&&!window.confirm(`${s.hasta} için krem kaydı silinsin mi?`))return;
+    setIslemde(s.key);
+    const saat=suanSaatTR();
+    const deg=sur?{uyusma_saati:saat,uyusma_hedef:s.uyusmaHedef||null}:{uyusma_saati:null,uyusma_hedef:null,alinma_saati:null};
+    if(await gelisYaz(s,deg)&&sur)showToast(`💧 ${s.hasta} — krem ${saat}`);
+    setIslemde(null);
+  }
+  function KremGosterge({s}){
+    const k=kremDurum(s);
+    if(!k){
+      if(kremTusuGorunur(s))return <button onClick={e=>{e.stopPropagation();kremIsaretle(s,true);}} disabled={islemde===s.key}
+        style={{...btnPrimary,background:"#0d9488",padding:"6px 12px",fontSize:13*fs,fontWeight:700,whiteSpace:"nowrap"}}>💧 Krem sürüldü</button>;
+      return <span style={{color:"#bbb"}}>—</span>;
+    }
+    const yuzde=k.hedef&&k.gecen!==null?Math.min(100,Math.round(k.gecen/k.hedef*100)):0;
+    if(k.durdu)return <span style={{fontWeight:700,color:"#4b5563",whiteSpace:"nowrap"}}>{k.saat} · {sayacMetni(k)}</span>;
+    return(
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <div>
+          {k.hazir
+            ?<span style={{fontSize:13*fs,fontWeight:800,color:"#fff",background:"#0d9488",padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{k.saat} · {sayacMetni(k)}</span>
+            :<span style={{fontSize:14*fs,fontWeight:800,color:"#0f766e",whiteSpace:"nowrap"}}>{k.saat} · {sayacMetni(k)}</span>}
+          {!k.hazir&&k.hedef>0&&<div style={{height:4,width:120,background:"#ccfbf1",borderRadius:4,overflow:"hidden",marginTop:3}}><div style={{width:yuzde+"%",height:"100%",background:"#14b8a6"}}/></div>}
+        </div>
+        {!tamEkran&&drDuzenleyebilir&&<button onClick={()=>kremIsaretle(s,false)} title="Krem kaydını sil" style={{background:"none",border:"none",color:"#bbb",cursor:"pointer",fontSize:12,padding:0}}>✕</button>}
+      </div>
+    );
+  }
+
+  // Durumlar: (boş) → Geldi / Gecikti / Gelmedi / İptal  (+ kremli Dr hastasında Alındı)
   function satirDurumu(s){
-    if(s.randevuDurum==="Gelmedi")return {etiket:"Gelmedi",renk:"#991b1b",bg:"#fee2e2",satirBg:"#fafafa"};
-    if(s.geldi)return {etiket:"Geldi",renk:"#166534",bg:"#bbf7d0",satirBg:"#dcfce7"};
-    if(bugunMu&&simdiDk>timeToMin(s.saat)+10)return {etiket:"Gecikti",renk:"#9a3412",bg:"#fed7aa",satirBg:"#fff7ed"};
-    if(bugunMu&&simdiDk>=timeToMin(s.saat)-15)return {etiket:"Bekleniyor",renk:"#1e40af",bg:"#dbeafe",satirBg:"#fff"};
-    return {etiket:"Bekliyor",renk:"#555",bg:"#f0f0ed",satirBg:"#fff"};
+    if(s.iptalSaati)return {etiket:"İptal",metin:`İptal · ${s.iptalSaati}`,renk:"#991b1b",bg:"#fee2e2",satirBg:"#fef2f2"};
+    if(s.randevuDurum==="Gelmedi")return {etiket:"Gelmedi",metin:"Gelmedi",renk:"#991b1b",bg:"#fee2e2",satirBg:"#fafafa"};
+    if(s.alinmaSaati)return {etiket:"Alındı",metin:`Alındı ${s.alinmaSaati}`,renk:"#4b5563",bg:"#e5e7eb",satirBg:"#f3f4f6"};
+    if(s.geldi)return {etiket:"Geldi",metin:"Geldi",renk:"#166534",bg:"#bbf7d0",satirBg:kremDurum(s)?.hazir?"#ccfbf1":"#dcfce7"};
+    const g=simdiDk-timeToMin(s.saat);
+    if(bugunMu&&g>10)return {etiket:"Gecikti",metin:`Gecikti ${g>=60?Math.floor(g/60)+" sa "+(g%60?g%60+" dk":""):g+" dk"}`.trim(),renk:"#9a3412",bg:"#fed7aa",satirBg:"#fff7ed"};
+    return {etiket:"",metin:"",renk:"#555",bg:"transparent",satirBg:"#fff"};
   }
 
   // ── İşlemler ──
@@ -4559,9 +4642,79 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     }finally{setIslemde(null);}
   }
 
+  // hasta_gelis'e yaz: satır varsa güncelle, randevu satırı ise yoksa oluştur (iyimser)
+  async function gelisYaz(s,deg){
+    const onceki=gelisler;
+    try{
+      if(s.gelisId>0){
+        setGelisler(g=>g.map(x=>x.id===s.gelisId?{...x,...deg}:x));
+        await sbUpdate("hasta_gelis",s.gelisId,{...deg,guncelleme:new Date().toISOString()});
+      }else if(s.randevuId){
+        const govde={tarih,oda:aktifOda,randevu_id:s.randevuId,saat:s.saat,hasta:s.hasta,islem:s.islem,kaynak:"randevu",...deg};
+        const gecici={id:-Date.now(),...govde};
+        setGelisler(g=>[...g,gecici]);
+        const r=await fetch(`${SB_URL}/rest/v1/hasta_gelis?on_conflict=randevu_id`,{method:"POST",headers:{...HDR(),"Prefer":"return=representation,resolution=merge-duplicates"},body:JSON.stringify({...govde,guncelleme:new Date().toISOString()})});
+        if(!r.ok)throw new Error(await r.text());
+        const [kayit]=await r.json();
+        setGelisler(g=>[...g.filter(x=>x.id!==gecici.id&&x.id!==kayit.id),kayit]);
+      }
+      return true;
+    }catch(e){setGelisler(onceki);showToast("Kaydedilemedi: "+String(e.message).slice(0,140),"error");return false;}
+  }
+  // "Alındı" — kremlenen Dr hastası işleme alındı; kum saati durur.
+  async function alindiIsaretle(s,alindi){
+    if(!drDuzenleyebilir||islemde)return;
+    if(!alindi&&!window.confirm(`${s.hasta} için "Alındı" kaydı geri alınsın mı?`))return;
+    setIslemde(s.key);
+    const saat=suanSaatTR();
+    const deg={alinma_saati:alindi?saat:null};
+    if(await gelisYaz(s,deg)&&alindi)showToast(`▶ ${s.hasta} alındı — ${saat}`);
+    setIslemde(null);
+  }
+  // Gün içi iptal — hasta aradı, gelmeyecek. Sadece bu ekranı etkiler, takvimdeki randevuya dokunmaz.
+  async function iptalIsaretle(s,iptal){
+    if(!gelisIsaretleyebilir||islemde)return;
+    if(!window.confirm(iptal?`${s.hasta} randevusunu iptal etti olarak işaretlensin mi?`:`${s.hasta} için iptal kaydı geri alınsın mı?`))return;
+    setIslemde(s.key);
+    const saat=suanSaatTR();
+    if(await gelisYaz(s,{iptal_saati:iptal?saat:null})&&iptal)showToast(`✕ ${s.hasta} — iptal (${saat})`);
+    setIslemde(null);
+  }
+  const [randevusuz,setRandevusuz]=useState({acik:false,hasta:"",islem:""});
+  async function randevusuzEkle(e){
+    e.preventDefault();
+    const hasta=randevusuz.hasta.trim().replace(/\s+/g," ");
+    if(!hasta){showToast("Hasta adı gerekli","error");return;}
+    setEkleniyor(true);
+    try{
+      const saat=suanSaatTR();
+      const [k]=await sbInsert("hasta_gelis",[{tarih,oda:aktifOda,saat,hasta:aktifOda==="dr"?hasta:hasta.toLocaleUpperCase("tr"),islem:randevusuz.islem.trim(),geldi:true,gelis_saati:saat,kaydeden:login||ROLLER[aktifRol],kaynak:"randevusuz"}]);
+      setGelisler(g=>g.some(x=>x.id===k.id)?g:[...g,k]);
+      showToast(`${hasta} eklendi (randevusuz, geldi ${saat})`);
+      setRandevusuz({acik:false,hasta:"",islem:""});
+    }catch(err){showToast("Eklenemedi: "+String(err.message).slice(0,140),"error");}
+    finally{setEkleniyor(false);}
+  }
+
+  // Seçili günün tüm Dr İşlem listesini sil (yanlış/eski PDF yüklendiğinde baştan yüklemek için)
+  async function drListeSil(){
+    if(!gelisIsaretleyebilir&&aktifRol!=="personel")return;
+    const L=gelisler.filter(g=>g.oda==="dr"&&g.tarih===tarih&&g.id>0);
+    if(!L.length){showToast("Silinecek Dr İşlem kaydı yok","error");return;}
+    const islenmis=L.filter(g=>g.geldi||g.uyusma_saati||g.iptal_saati).length;
+    if(!window.confirm(`${formatDate(tarih)} — Dr İşlem listesindeki ${L.length} hastanın TAMAMI silinsin mi?`))return;
+    if(islenmis&&!window.confirm(`Dikkat: ${islenmis} hastada Geldi / krem / iptal kaydı var, bunlar da silinecek. Emin misiniz?`))return;
+    try{
+      const r=await fetch(`${SB_URL}/rest/v1/hasta_gelis?oda=eq.dr&tarih=eq.${tarih}`,{method:"DELETE",headers:{...HDR(),"Prefer":"return=minimal"}});
+      if(!r.ok)throw new Error(await r.text());
+      setGelisler(g=>g.filter(x=>!(x.oda==="dr"&&x.tarih===tarih)));
+      showToast(`Dr İşlem listesi temizlendi (${L.length} kayıt)`);
+    }catch(e){showToast("Silinemedi: "+String(e.message).slice(0,140),"error");}
+  }
+
   async function drSil(s){
     if(!drDuzenleyebilir||!s.gelisId)return;
-    if(!window.confirm(`${s.saat} ${s.hasta} Dr İşlem listesinden silinsin mi?`))return;
+    if(!window.confirm(`${s.saat} ${s.hasta} listeden silinsin mi?`))return;
     try{await sbDelete("hasta_gelis",s.gelisId);setGelisler(g=>g.filter(x=>x.id!==s.gelisId));}
     catch(e){showToast("Silinemedi: "+String(e.message).slice(0,120),"error");}
   }
@@ -4630,6 +4783,31 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     finally{setEkleniyor(false);}
   }
 
+  // ── Yazdırılabilir liste (ilk günler kağıtla çift kontrol için) ──
+  function listeYazdir(tip){
+    const esc=v=>String(v??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const bolumler=tip==="dr"?[["Dr İşlem",listeler.dr,"İşlem"]]:[["Alex Lazer",listeler.alex,"Bölge"],["Soprano / Cilt / Forma",listeler.soprano,"Bölge / İşlem"]];
+    const tablo=([baslik,L,kolon])=>`<h2>${esc(baslik)} <span>(${L.length} hasta)</span></h2>`+(L.length===0?`<p class="bos">Randevu yok</p>`:
+      `<table><thead><tr><th class="c">Geldi</th><th>Saat</th><th>Hasta</th>${tip==="dr"?"<th>Telefon</th>":""}<th>${kolon}</th><th>Geliş saati</th>${tip==="dr"?"<th>Krem saati</th>":""}<th>Not</th></tr></thead><tbody>`+
+      L.map(r=>{const gm=r.randevuDurum==="Gelmedi"||!!r.iptalSaati;return `<tr class="${gm?"gm":""}"><td class="c"><span class="kutu">${r.geldi?"✓":""}</span></td><td class="saat">${esc(r.saat)}</td><td class="ad">${esc(r.hasta)}${r.randevusuz?' <i>(Randevusuz)</i>':""}${r.randevuDurum==="Rütuş"?' <i>(Rütuş)</i>':""}${r.iptalSaati?' <i>(İptal)</i>':r.randevuDurum==="Gelmedi"?' <i>(Gelmedi)</i>':""}</td>${tip==="dr"?`<td class="tel">${esc(r.tel)}</td>`:""}<td>${esc(r.islem)}</td><td class="yaz">${esc(r.gelisSaati)}</td>${tip==="dr"?`<td class="yaz">${esc(r.uyusmaSaati)}</td>`:""}<td class="yaz not">${esc(r.notlar)}</td></tr>`;}).join("")+
+      `</tbody></table>`);
+    const html=`<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${tip==="dr"?"Dr İşlem":"Alex-Soprano"} ${esc(tarih)}</title><style>
+      @page{size:A4;margin:12mm}body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0}
+      h1{font-size:17px;margin:0 0 2px}.alt{font-size:11px;color:#555;margin-bottom:10px}
+      h2{font-size:15px;margin:16px 0 6px;border-bottom:2px solid #000;padding-bottom:3px}h2 span{font-weight:normal;font-size:12px}
+      table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #444;padding:6px 5px;text-align:left;vertical-align:middle}
+      th{background:#eee;font-size:11px}tr{page-break-inside:avoid}td.c,th.c{width:38px;text-align:center}
+      .kutu{display:inline-block;width:16px;height:16px;border:1.5px solid #000;line-height:16px;font-weight:bold}
+      .saat{width:42px;font-weight:bold}.ad{font-weight:bold}.tel{width:90px;font-size:11px}.yaz{width:62px}.not{width:22%}
+      tr.gm td{color:#888}.bos{color:#777;font-style:italic}
+    </style></head><body><h1>${tip==="dr"?"Dr İşlem Hasta Listesi":"Alex / Soprano Hasta Listesi"}</h1>
+      <div class="alt">${esc(formatDate(tarih))} · Yazdırma: ${esc(suanSaatTR())}</div>${bolumler.map(tablo).join("")}
+      <script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script></body></html>`;
+    const w=window.open("","_blank");
+    if(!w){showToast("Yazdırma penceresi açılamadı. Tarayıcının açılır pencere engelini kaldırın.","error");return;}
+    w.document.open();w.document.write(html);w.document.close();
+  }
+
   // ── Tam ekran ──
   async function tamEkranAc(){
     setTamEkran(true);
@@ -4646,22 +4824,125 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   },[]);
 
   // ── Görünüm ──
-  if(aktifRol==="personel"&&!personelOda){
-    return(
-      <div style={{background:"#fff",borderRadius:14,border:"1px solid #e8e6e0",padding:"2rem",textAlign:"center"}}>
-        <div style={{fontSize:15,fontWeight:600,marginBottom:14}}>Hangi odada çalışıyorsunuz?</div>
-        <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-          {[["alex","🟢 Alex"],["soprano","🟣 Soprano"]].map(([k,l])=>(
-            <button key={k} onClick={()=>{setPersonelOda(k);try{window.localStorage.setItem("kl_bh_oda",k);}catch{}}} style={{...btnPrimary,padding:"12px 28px",fontSize:15}}>{l}</button>
-          ))}
+
+
+  // ── MOBİL KART GÖRÜNÜMÜ ──
+  if(mobil&&!tamEkran){
+    const MOBIL_ODALAR=[["dr","🩺 DR"],["alex","🟢 ALEX"],["soprano","🟣 SOPRANO"]];
+    const SERIT={"Geldi":"#16a34a","Gecikti":"#ea580c","Gelmedi":"#dc2626","İptal":"#991b1b","Alındı":"#9ca3af","":"#d4d4d0"};
+    // Sıradaki: süresi dolmuş kremli hasta (Dr) → gelip bekleyen → saati gelmemiş ilk randevu
+    const bekleyenler=satirlar.filter(s=>!s.iptalSaati&&s.randevuDurum!=="Gelmedi"&&!s.alinmaSaati);
+    const siradaki=!bugunMu?null:(
+      bekleyenler.filter(s=>kremDurum(s)?.hazir).sort((a,b)=>timeToMin(a.uyusmaSaati)-timeToMin(b.uyusmaSaati))[0]
+      ||[...bekleyenler].filter(s=>s.geldi).sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat))[0]
+      ||bekleyenler.find(s=>!s.geldi&&timeToMin(s.saat)+10>=simdiDk));
+    const Kutu=({l,v,c="#1a1a2e",buyuk})=>(
+      <div style={{background:"rgba(0,0,0,0.035)",borderRadius:8,padding:"5px 6px",textAlign:"center"}}>
+        <div style={{fontSize:10,fontWeight:700,color:"#888",letterSpacing:0.5}}>{l}</div>
+        <div style={{fontSize:buyuk?20:17,fontWeight:700,color:c,fontVariantNumeric:"tabular-nums"}}>{v}</div>
+      </div>);
+    const Kart=({s,buyuk})=>{
+      const d=satirDurumu(s),acik=acikKart===s.key,drKart=aktifOda==="dr",kd=drKart?kremDurum(s):null;
+      const iptal=!!s.iptalSaati,soluk=iptal||s.randevuDurum==="Gelmedi";
+      const serit=kd&&!kd.durdu?"#0d9488":SERIT[d.etiket];
+      const bg=iptal?"#fef2f2":s.alinmaSaati?"#f3f4f6":s.geldi?"#f0fdf4":"#fff";
+      const geldiTusu=gelisIsaretleyebilir&&!s.geldi&&!soluk;
+      const alindiTusu=drKart&&kd&&!kd.durdu&&drDuzenleyebilir;
+      return(
+        <div onClick={()=>setAcikKart(acik?null:s.key)} style={{display:"flex",background:bg,borderRadius:12,border:"1px solid #e8e6e0",overflow:"hidden",marginBottom:8,opacity:soluk?0.65:1,cursor:"pointer"}}>
+          <div style={{width:s.geldi||kd?8:5,background:serit,flexShrink:0}}/>
+          <div style={{flex:1,padding:buyuk?"14px 14px":"11px 12px",minWidth:0}}>
+            <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+              <span style={{fontSize:buyuk?20:17,fontWeight:700,color:iptal?"#9f1239":"#1a1a2e",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:acik?"normal":"nowrap",textDecoration:iptal?"line-through":"none"}}>{s.hasta}</span>
+              {s.randevusuz&&<span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#ede9fe",padding:"1px 5px",borderRadius:4,flexShrink:0}}>Randevusuz</span>}
+            </div>
+            <div style={{fontSize:14,color:"#555",marginTop:3}}>
+              {s.randevuDurum==="Rütuş"&&<span style={{fontSize:11,fontWeight:700,color:"#a16207",background:"#fef3c7",padding:"1px 6px",borderRadius:4,marginRight:6}}>Rütuş</span>}
+              {(s.islem||"—").split(/,\s*/).join(" · ")}
+            </div>
+            {/* Saat kutuları: Randevu | Geliş | (Dr) K. saati */}
+            <div style={{display:"grid",gridTemplateColumns:drKart?"1fr 1fr 1fr":"1fr 1fr",gap:6,marginTop:8}}>
+              <Kutu l="RANDEVU" v={s.randevusuz?"—":s.saat} buyuk={buyuk}/>
+              <Kutu l="GELİŞ" v={s.gelisSaati||"—"} c={s.gelisSaati?"#166534":"#bbb"} buyuk={buyuk}/>
+              {drKart&&(kd?(
+                <div style={{background:kd.durdu?"#e5e7eb":kd.hazir?"#0d9488":"#ccfbf1",color:kd.durdu?"#374151":kd.hazir?"#fff":"#0f766e",borderRadius:8,padding:"5px 6px",textAlign:"center"}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:0.5,opacity:0.85}}>K. SAATİ</div>
+                  <div style={{fontSize:buyuk?20:17,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{kd.saat}</div>
+                  <div style={{fontSize:13,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{sayacMetni(kd)}</div>
+                  {!kd.durdu&&!kd.hazir&&kd.hedef>0&&kd.gecen!==null&&<div style={{height:3,background:"rgba(13,148,136,0.2)",borderRadius:3,marginTop:3,overflow:"hidden"}}><div style={{width:Math.min(100,Math.round(kd.gecen/kd.hedef*100))+"%",height:"100%",background:"#14b8a6"}}/></div>}
+                </div>
+              ):kremTusuGorunur(s)?(
+                <button onClick={e=>{e.stopPropagation();kremIsaretle(s,true);}} disabled={islemde===s.key}
+                  style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"5px 4px",fontFamily:"inherit",cursor:"pointer",fontWeight:700,lineHeight:1.2}}>
+                  <div style={{fontSize:10,letterSpacing:0.5,opacity:0.85}}>K. SAATİ</div><div style={{fontSize:14}}>💧 Krem<br/>sürüldü</div>
+                </button>
+              ):<Kutu l="K. SAATİ" v="—" c="#bbb" buyuk={buyuk}/>)}
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginTop:8,minHeight:d.metin||geldiTusu||alindiTusu?40:0}}>
+              <span style={{fontSize:16,fontWeight:700,color:d.renk}}>{d.etiket==="Geldi"?"✓ GELDİ":d.etiket==="Gecikti"?"🟠 "+d.metin:d.etiket==="İptal"?"✕ İptal etti · "+s.iptalSaati:d.etiket==="Gelmedi"?"✕ Gelmedi":d.etiket==="Alındı"?"▶ "+d.metin:""}</span>
+              <span style={{display:"flex",gap:6,flexShrink:0}}>
+                {geldiTusu&&<button onClick={e=>{e.stopPropagation();iptalIsaretle(s,true);}} disabled={islemde===s.key} style={{...btnSecondary,background:"#fff",color:"#b91c1c",border:"1.5px solid #fca5a5",padding:"9px 12px",fontSize:15,fontWeight:700,borderRadius:10}}>✕ İptal</button>}
+                {geldiTusu&&<button onClick={e=>{e.stopPropagation();geldiIsaretle(s,true);}} disabled={islemde===s.key} style={{...btnPrimary,background:"#16a34a",padding:"10px 18px",fontSize:16,fontWeight:700,borderRadius:10}}>✓ GELDİ</button>}
+                {alindiTusu&&<button onClick={e=>{e.stopPropagation();alindiIsaretle(s,true);}} disabled={islemde===s.key} style={{...btnPrimary,background:"#4b5563",padding:"10px 16px",fontSize:15,fontWeight:700,borderRadius:10}}>▶ ALINDI</button>}
+              </span>
+            </div>
+            {acik&&(
+              <div onClick={e=>e.stopPropagation()} style={{marginTop:10,paddingTop:10,borderTop:"1px dashed #e5e5e0",fontSize:13,color:"#555",display:"flex",flexDirection:"column",gap:6,alignItems:"flex-start"}}>
+                {s.tel&&<a href={"tel:"+s.tel} style={{color:"#2563eb",textDecoration:"none"}}>📞 {s.tel}</a>}
+                {s.notlar&&<div>📝 {s.notlar}</div>}
+                {s.geldi&&s.kaydeden&&<div style={{color:"#999"}}>İşaretleyen: {s.kaydeden}</div>}
+                {iptal&&gelisIsaretleyebilir&&<button onClick={()=>iptalIsaretle(s,false)} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>↩ İptali geri al</button>}
+                {s.alinmaSaati&&drDuzenleyebilir&&<button onClick={()=>alindiIsaretle(s,false)} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>↩ "Alındı" kaydını geri al</button>}
+                {kd&&!s.alinmaSaati&&drDuzenleyebilir&&<button onClick={()=>kremIsaretle(s,false)} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>↩ Krem kaydını sil</button>}
+                {gelisIsaretleyebilir&&s.geldi&&!kd&&!s.randevusuz&&<button onClick={()=>geldiIsaretle(s,false)} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>↩ Geldi kaydını geri al</button>}
+              </div>
+            )}
+          </div>
         </div>
+      );
+    };
+    return(
+      <div style={{margin:"-0.5rem -0.75rem"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:800,letterSpacing:0.5,color:"#1a1a2e"}}>BEKLEYEN HASTALAR — {bugunMu?"BUGÜN":formatDate(tarih).toLocaleUpperCase("tr")}</div>
+            <div style={{fontSize:11,color:canli?"#16a34a":"#b45309",display:"flex",alignItems:"center",gap:4,marginTop:2}}><span style={{width:7,height:7,borderRadius:7,background:canli?"#22c55e":"#f59e0b"}}/>{canli?"Canlı":"Yedek mod"}</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            {!bugunMu&&<button onClick={()=>setTarih(today())} style={{...navBtnStyle,fontSize:12,padding:"5px 9px"}}>Bugün</button>}
+            <span style={{fontSize:20,fontWeight:700,fontVariantNumeric:"tabular-nums",color:"#1a1a2e"}}>{saatSimdi}</span>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:`repeat(${MOBIL_ODALAR.length},1fr)`,gap:6,marginBottom:12}}>
+          {MOBIL_ODALAR.map(([k,l])=>{
+            const L=(listeler[k]||[]).filter(x=>!x.iptalSaati),g=L.filter(x=>x.geldi).length,a=aktifOda===k;
+            return <button key={k} onClick={()=>{setAktifOda(k);setAcikKart(null);}} style={{padding:"12px 4px",borderRadius:12,border:a?"2px solid #6366f1":"1px solid #ddd",background:a?"#eef0ff":"#fff",color:a?"#4338ca":"#444",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",lineHeight:1.2}}>
+              {l}<div style={{fontSize:16,fontWeight:700,marginTop:2,fontVariantNumeric:"tabular-nums"}}>{g}/{L.length}</div>
+            </button>;
+          })}
+        </div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+          <button onClick={()=>siralaDegistir(siralama==="gelis"?"randevu":"gelis")} style={{background:"none",border:"none",color:"#6366f1",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0}}>
+            ⇅ {siralama==="gelis"?"Geliş sırası":"Randevu saati"}
+          </button>
+        </div>
+        {siradaki&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:800,color:"#6366f1",letterSpacing:1,marginBottom:5}}>SIRADAKİ →</div>
+            <Kart s={siradaki} buyuk/>
+          </div>
+        )}
+        {yukleniyor&&satirlar.length===0&&<div style={{padding:24,textAlign:"center",color:"#aaa"}}>Yükleniyor…</div>}
+        {!yukleniyor&&satirlar.length===0&&<div style={{padding:28,textAlign:"center",color:"#aaa",background:"#fff",borderRadius:12,border:"1px solid #e8e6e0"}}>
+          {aktifOda==="dr"?"Bugün için Dr İşlem listesi yok.":"Bu odada randevu yok."}
+        </div>}
+        {satirlar.filter(s=>s.key!==siradaki?.key).map(s=><Kart key={s.key} s={s}/>)}
       </div>
     );
   }
 
   const fs=tamEkran?1.35:1; // tam ekranda yazılar büyür
-  const aksiyonKolonu=gelisIsaretleyebilir||(aktifOda==="dr"&&drDuzenleyebilir&&!tamEkran);
-  const toplam=satirlar.length,gelen=satirlar.filter(s=>s.geldi).length;
+  const toplam=satirlar.filter(s=>!s.iptalSaati).length,gelen=satirlar.filter(s=>s.geldi).length;
 
   const icerik=(
     <div ref={kapRef} style={tamEkran?{position:"fixed",inset:0,zIndex:2000,background:"#f5f4f1",overflowY:"auto",padding:"1.25rem 2rem"}:{}}>
@@ -4669,7 +4950,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {gorunenOdalar.map(([k,l])=>{
-            const L=listeler[k]||[],g=L.filter(s=>s.geldi).length;
+            const L=(listeler[k]||[]).filter(s=>!s.iptalSaati),g=L.filter(s=>s.geldi).length;
             const aktif=aktifOda===k;
             return <button key={k} onClick={()=>setAktifOda(k)} style={{padding:`${10*fs}px ${18*fs}px`,borderRadius:10,border:aktif?"2px solid #6366f1":"1px solid #ddd",background:aktif?"#eef0ff":"#fff",color:aktif?"#4338ca":"#444",fontWeight:600,fontSize:14*fs,cursor:"pointer",fontFamily:"inherit"}}>
               {l} <span style={{fontWeight:400,opacity:0.7}}>{g}/{L.length}</span>
@@ -4689,10 +4970,34 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         <span style={{fontSize:20*fs,fontWeight:600,fontVariantNumeric:"tabular-nums",color:"#1a1a2e"}}>{saatSimdi}</span>
         {tamEkran
           ?<button onClick={tamEkranKapat} style={{...btnSecondary,fontSize:14*fs,background:"#fff"}}>✕ Kapat</button>
-          :<button onClick={tamEkranAc} style={{...btnSecondary,background:"#fff"}}>⛶ Tam Ekran</button>}
+          :<>
+            <button onClick={()=>listeYazdir("lazer")} title="Alex + Soprano listesini yazdır" style={{...btnSecondary,background:"#fff"}}>🖨 Alex/Soprano</button>
+            <button onClick={()=>listeYazdir("dr")} title="Dr İşlem listesini yazdır" style={{...btnSecondary,background:"#fff"}}>🖨 Dr İşlem</button>
+            <button onClick={tamEkranAc} style={{...btnSecondary,background:"#fff"}}>⛶ Tam Ekran</button>
+          </>}
       </div>
 
       {tamEkran&&<div style={{fontSize:14*fs,color:"#666",marginBottom:8}}>{formatDate(tarih)} · Gelen {gelen}/{toplam}</div>}
+
+      {!tamEkran&&(
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
+          <div style={{display:"inline-flex",border:"1px solid #ddd",borderRadius:8,overflow:"hidden",background:"#fff"}}>
+            {[["randevu","Randevu saatine göre"],["gelis","Geliş sırasına göre"]].map(([k,l])=>(
+              <button key={k} onClick={()=>siralaDegistir(k)} style={{padding:"6px 12px",border:"none",background:siralama===k?"#eef0ff":"transparent",color:siralama===k?"#4338ca":"#555",fontWeight:siralama===k?600:400,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+            ))}
+          </div>
+          {(gelisIsaretleyebilir||drDuzenleyebilir)&&!randevusuz.acik&&<button onClick={()=>setRandevusuz(r=>({...r,acik:true}))} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>＋ Randevusuz hasta geldi</button>}
+          {randevusuz.acik&&(
+            <form onSubmit={randevusuzEkle} style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",padding:"6px 8px",background:"#faf5ff",border:"1px solid #ddd6fe",borderRadius:8}}>
+              <span style={{fontSize:12,color:"#6d28d9",fontWeight:600}}>{BH_ODALAR.find(o=>o[0]===aktifOda)?.[1]} · şimdi geldi:</span>
+              <input autoFocus placeholder="Hasta adı soyadı" value={randevusuz.hasta} onChange={e=>setRandevusuz(r=>({...r,hasta:e.target.value}))} style={{...inputStyle,width:200,padding:"6px 10px"}}/>
+              <input placeholder="İşlem (Lazer, Forma…)" value={randevusuz.islem} onChange={e=>setRandevusuz(r=>({...r,islem:e.target.value}))} style={{...inputStyle,width:170,padding:"6px 10px"}}/>
+              <button type="submit" disabled={ekleniyor} style={{...btnPrimary,padding:"6px 14px",background:"#7c3aed"}}>Ekle</button>
+              <button type="button" onClick={()=>setRandevusuz({acik:false,hasta:"",islem:""})} style={{...btnSecondary,padding:"6px 10px"}}>Vazgeç</button>
+            </form>
+          )}
+        </div>
+      )}
 
       {/* Dr İşlem — sekreter doktor takviminden elle girer */}
       {aktifOda==="dr"&&drDuzenleyebilir&&!tamEkran&&(
@@ -4710,6 +5015,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
           <label title="DoktorTakvimi → Randevu listesi → Yazdır → 'PDF olarak kaydet' (saatli) ya da Randevulara genel bakış → Excel" style={{...btnSecondary,background:"#f0fdf4",borderColor:"#86efac",color:"#166534",fontWeight:600,display:"inline-block"}}>
             📥 DoktorTakvimi (PDF / Excel)<input type="file" accept=".pdf,application/pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={excelSec} style={{display:"none"}}/>
           </label>
+          {listeler.dr.length>0&&<button type="button" onClick={drListeSil} title="Bu günün Dr İşlem listesinin tamamını sil" style={{...btnSecondary,background:"#fff",color:"#b91c1c",border:"1px solid #fca5a5",fontWeight:600}}>🗑 Tüm listeyi sil</button>}
         </form>
       )}
 
@@ -4722,39 +5028,50 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
                 <th style={{padding:"10px 14px",width:70*fs}}>Saat</th>
                 <th style={{padding:"10px 14px"}}>Hasta</th>
                 <th style={{padding:"10px 14px"}}>{aktifOda==="dr"?"İşlem":"Bölge"}</th>
-                <th style={{padding:"10px 14px",width:110*fs}}>Durum</th>
-                <th style={{padding:"10px 14px",width:90*fs}}>Geliş</th>
-                {aksiyonKolonu&&<th style={{padding:"10px 14px",width:130*fs}}></th>}
+                <th style={{padding:"10px 14px",width:130*fs}}>Durum</th>
+                <th style={{padding:"10px 14px",width:80*fs}}>Geliş</th>
+                {aktifOda==="dr"&&<th style={{padding:"10px 14px",width:200*fs}}>K. saati</th>}
+                <th style={{padding:"10px 14px",width:190*fs}}></th>
               </tr>
             </thead>
             <tbody>
-              {yukleniyor&&satirlar.length===0&&<tr><td colSpan={6} style={{padding:24,textAlign:"center",color:"#aaa"}}>Yükleniyor…</td></tr>}
-              {!yukleniyor&&satirlar.length===0&&<tr><td colSpan={6} style={{padding:28,textAlign:"center",color:"#aaa"}}>
+              {yukleniyor&&satirlar.length===0&&<tr><td colSpan={8} style={{padding:24,textAlign:"center",color:"#aaa"}}>Yükleniyor…</td></tr>}
+              {!yukleniyor&&satirlar.length===0&&<tr><td colSpan={8} style={{padding:28,textAlign:"center",color:"#aaa"}}>
                 {aktifOda==="dr"?"Bu gün için Dr İşlem listesi yok. Doktor takvimindeki randevuları yukarıdan ekleyin.":"Bu gün bu odada randevu yok."}
               </td></tr>}
               {satirlar.map(s=>{
                 const d=satirDurumu(s);
+                const kd=aktifOda==="dr"?kremDurum(s):null;
+                const iptal=!!s.iptalSaati,soluk=iptal||s.randevuDurum==="Gelmedi";
+                const hucre={padding:`${10*fs}px 14px`};
                 return(
-                  <tr key={s.key} style={{background:d.satirBg,borderTop:"1px solid #f0efeb",transition:"background 0.3s",opacity:s.randevuDurum==="Gelmedi"?0.6:1}}>
-                    <td style={{padding:`${10*fs}px 14px`,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{s.saat}</td>
-                    <td style={{padding:`${10*fs}px 14px`,fontWeight:600}}>
-                      {s.hasta}
+                  <tr key={s.key} style={{background:d.satirBg,borderTop:"1px solid #f0efeb",transition:"background 0.3s",opacity:soluk?0.65:1,color:s.alinmaSaati?"#6b7280":iptal?"#9f1239":"inherit"}}>
+                    <td style={{...hucre,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{s.randevusuz?"—":s.saat}</td>
+                    <td style={{...hucre,fontWeight:600}}>
+                      <span style={{textDecoration:iptal?"line-through":"none"}}>{s.hasta}</span>
+                      {s.randevusuz&&<span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#ede9fe",padding:"1px 5px",borderRadius:4,marginLeft:6}}>Randevusuz</span>}
                       {!tamEkran&&(s.notlar||s.tel)&&<div style={{fontSize:11,color:"#999",fontWeight:400,marginTop:2}}>{[s.tel&&"📞 "+s.tel,s.notlar].filter(Boolean).join(" · ")}</div>}
                     </td>
-                    <td style={{padding:`${10*fs}px 14px`,color:"#555",fontSize:13*fs}}>
+                    <td style={{...hucre,color:iptal?"inherit":"#555",fontSize:13*fs}}>
                       {s.randevuDurum==="Rütuş"&&<span style={{fontSize:11,fontWeight:700,color:"#a16207",background:"#fef3c7",padding:"1px 6px",borderRadius:4,marginRight:6}}>Rütuş</span>}
                       {s.islem||"—"}
                     </td>
-                    <td style={{padding:`${10*fs}px 14px`}}>
-                      <span style={{fontSize:12*fs,fontWeight:700,color:d.renk,background:d.bg,padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{d.etiket}</span>
+                    <td style={hucre}>{d.metin&&<span style={{fontSize:12*fs,fontWeight:700,color:d.renk,background:d.bg,padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{d.metin}</span>}</td>
+                    <td style={{...hucre,fontWeight:700,color:"#166534",fontVariantNumeric:"tabular-nums"}} title={s.kaydeden?`İşaretleyen: ${s.kaydeden}`:""}>{s.gelisSaati||"—"}</td>
+                    {aktifOda==="dr"&&<td style={{padding:`${8*fs}px 14px`}}><KremGosterge s={s}/></td>}
+                    <td style={{padding:`${8*fs}px 14px`,textAlign:"right",whiteSpace:"nowrap"}}>
+                      {gelisIsaretleyebilir&&!s.geldi&&!soluk&&<>
+                        <button onClick={()=>iptalIsaretle(s,true)} disabled={islemde===s.key} style={{...btnSecondary,background:"#fff",color:"#b91c1c",border:"1px solid #fca5a5",padding:`${6*fs}px ${10*fs}px`,fontSize:13*fs,fontWeight:600,marginRight:6}}>✕ İptal</button>
+                        <button onClick={()=>geldiIsaretle(s,true)} disabled={islemde===s.key} style={{...btnPrimary,background:"#16a34a",padding:`${7*fs}px ${16*fs}px`,fontSize:14*fs,fontWeight:600}}>✓ Geldi</button>
+                      </>}
+                      {kd&&!kd.durdu&&drDuzenleyebilir&&<button onClick={()=>alindiIsaretle(s,true)} disabled={islemde===s.key} style={{...btnPrimary,background:"#4b5563",padding:`${7*fs}px ${14*fs}px`,fontSize:14*fs,fontWeight:600}}>▶ Alındı</button>}
+                      {!tamEkran&&<>
+                        {iptal&&gelisIsaretleyebilir&&<button onClick={()=>iptalIsaretle(s,false)} style={{background:"none",border:"none",color:"#999",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>↩ geri al</button>}
+                        {s.alinmaSaati&&drDuzenleyebilir&&<button onClick={()=>alindiIsaretle(s,false)} style={{background:"none",border:"none",color:"#999",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>↩ geri al</button>}
+                        {gelisIsaretleyebilir&&s.geldi&&!kd&&!s.randevusuz&&<button onClick={()=>geldiIsaretle(s,false)} disabled={islemde===s.key} title="Geldi kaydını geri al" style={{...btnSecondary,padding:"5px 8px",fontSize:12*fs,background:"#fff",marginLeft:6}}>↩</button>}
+                        {(aktifOda==="dr"||s.randevusuz)&&drDuzenleyebilir&&<button onClick={()=>drSil(s)} title="Listeden sil" style={{marginLeft:6,background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:15}}>✕</button>}
+                      </>}
                     </td>
-                    <td style={{padding:`${10*fs}px 14px`,fontWeight:700,color:"#166534",fontVariantNumeric:"tabular-nums"}} title={s.kaydeden?`İşaretleyen: ${s.kaydeden}`:""}>{s.gelisSaati||"—"}</td>
-                    {aksiyonKolonu&&<td style={{padding:`${8*fs}px 14px`,textAlign:"right",whiteSpace:"nowrap"}}>
-                      {gelisIsaretleyebilir&&s.randevuDurum!=="Gelmedi"&&(s.geldi
-                        ?<button onClick={()=>geldiIsaretle(s,false)} disabled={islemde===s.key} style={{...btnSecondary,padding:"5px 10px",fontSize:12*fs,background:"#fff"}}>↩ Geri al</button>
-                        :<button onClick={()=>geldiIsaretle(s,true)} disabled={islemde===s.key} style={{...btnPrimary,background:"#16a34a",padding:`${7*fs}px ${16*fs}px`,fontSize:14*fs,fontWeight:600}}>✓ Geldi</button>)}
-                      {aktifOda==="dr"&&drDuzenleyebilir&&!tamEkran&&<button onClick={()=>drSil(s)} title="Listeden sil" style={{marginLeft:6,background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:15}}>✕</button>}
-                    </td>}
                   </tr>
                 );
               })}
