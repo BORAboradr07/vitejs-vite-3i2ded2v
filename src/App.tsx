@@ -4456,7 +4456,8 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   },[]);
 
   const login=aktifKullanici?.login_name||"";
-  const gelisIsaretleyebilir=aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="sorumlu";
+  // Tüm roller Geldi / İptal / Alındı / Krem yapabilir (ekip birbirine yardım ediyor); kimin bastığı kaydedilir
+  const gelisIsaretleyebilir=aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="sorumlu"||aktifRol==="personel";
   const drDuzenleyebilir=aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="sorumlu"||aktifRol==="personel";
 
   // Uygulayıcının odası: kullanicilar.oda kolonundan; yoksa ekranda bir kez seçilir
@@ -4683,10 +4684,10 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   // Gün içi iptal — hasta aradı, gelmeyecek. Sadece bu ekranı etkiler, takvimdeki randevuya dokunmaz.
   async function iptalIsaretle(s,iptal){
     if(!gelisIsaretleyebilir||islemde)return;
-    if(!window.confirm(iptal?`${s.hasta} randevusunu iptal etti olarak işaretlensin mi?`:`${s.hasta} için iptal kaydı geri alınsın mı?`))return;
+    if(!window.confirm(iptal?`Emin misiniz?\n\n${s.hasta} (${s.saat}) randevusunu İPTAL etti olarak işaretlenecek.`:`${s.hasta} için iptal kaydı geri alınsın mı?`))return;
     setIslemde(s.key);
     const saat=suanSaatTR();
-    if(await gelisYaz(s,{iptal_saati:iptal?saat:null})&&iptal)showToast(`✕ ${s.hasta} — iptal (${saat})`);
+    if(await gelisYaz(s,{iptal_saati:iptal?saat:null,...(iptal?{kaydeden:login||ROLLER[aktifRol]}:{})})&&iptal)showToast(`✕ ${s.hasta} — iptal (${saat})`);
     setIslemde(null);
   }
   const [randevusuz,setRandevusuz]=useState({acik:false,hasta:"",islem:""});
