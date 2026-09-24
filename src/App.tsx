@@ -346,6 +346,27 @@ export default function App() {
 
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
 
+  // ── Yeni sürüm kontrolü: açık kalan sekmeler eski kodda kalmasın ──
+  // Sunucudaki index.html'in işaret ettiği JS dosyası, bu sayfanın yüklediğinden farklıysa üstte "Yenile" bandı çıkar.
+  const [yeniSurum,setYeniSurum]=useState(false);
+  useEffect(()=>{
+    const benim=[...document.querySelectorAll("script[src]")].map(x=>x.getAttribute("src")).find(x=>/assets\/index-[^/]+\.js/.test(x||""));
+    if(!benim)return; // geliştirme ortamı
+    let iptal=false;
+    async function kontrol(){
+      try{
+        const html=await fetch("/?v="+Date.now(),{cache:"no-store"}).then(r=>r.text());
+        const sunucu=(html.match(/assets\/index-[^"']+\.js/)||[])[0];
+        if(!iptal&&sunucu&&!benim.includes(sunucu))setYeniSurum(true);
+      }catch{}
+    }
+    const t=setInterval(kontrol,5*60*1000);
+    const gor=()=>{if(document.visibilityState==="visible")kontrol();};
+    document.addEventListener("visibilitychange",gor);
+    kontrol();
+    return()=>{iptal=true;clearInterval(t);document.removeEventListener("visibilitychange",gor);};
+  },[]);
+
   function kullaniciGiris(k){
     if(k?.token)CURRENT_TOKEN=k.token;
     setAktifKullanici(k);
@@ -1014,6 +1035,7 @@ export default function App() {
         else{setYoneticiKilit(false);try{window.localStorage.setItem("kl_yonetici_onay","1");}catch{}}
         setAktifSekme(sifreModal);setSifreModal(null);
       }} onKapat={()=>setSifreModal(null)}/>}
+      {yeniSurum&&<div onClick={()=>window.location.reload()} style={{position:"fixed",top:0,left:0,right:0,zIndex:10000,background:"#4338ca",color:"#fff",padding:"10px 16px",fontSize:14,fontWeight:600,textAlign:"center",cursor:"pointer",boxShadow:"0 2px 10px rgba(0,0,0,0.2)"}}>🔄 Sistemin yeni sürümü yüklendi — güncellemek için dokunun</div>}
       {toast&&<div style={{position:"fixed",bottom:24,right:24,background:toast.type==="error"?"#dc2626":"#16a34a",color:"#fff",padding:"12px 18px",borderRadius:10,fontSize:14,fontWeight:500,zIndex:9999,boxShadow:"0 4px 20px rgba(0,0,0,0.2)",maxWidth:340}}>{toast.msg}</div>}
     </div>
   );
@@ -4429,7 +4451,9 @@ function bhKremKurali(islem){
 const BH_KREM_SURELER=[15,20,30,40,45,60];
 const BH_SURELER=[10,15,20,30,45,60,90];
 
-const BH_ODALAR=[["alex","🟢 Alex"],["soprano","🟣 Soprano"],["dr","🩺 Dr İşlem"]];
+const BH_ODALAR=[["alex","🟢 Alex"],["soprano","🟣 Soprano"],["dr","🩺 Dr İşlem"],["tumu","📋 Tümü"]];
+const BH_ODA_ETIKET={alex:["Alex","#166534","#dcfce7"],soprano:["Soprano","#5b21b6","#ede9fe"],dr:["Dr","#0f766e","#ccfbf1"]};
+const BhOdaRozet=({oda})=>{const e=BH_ODA_ETIKET[oda];return e?<span style={{fontSize:10,fontWeight:800,color:e[1],background:e[2],padding:"1px 6px",borderRadius:4,marginRight:6,verticalAlign:"middle",whiteSpace:"nowrap"}}>{e[0]}</span>:null;};
 
 function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const [tarih,setTarih]=useState(today());
@@ -4538,13 +4562,13 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const gelisByRandevu={};gelisler.forEach(g=>{if(g.randevu_id)gelisByRandevu[g.randevu_id]=g;});
   // Randevu dışı satırlar (Dr İşlem kayıtları + randevusuz gelen hastalar) hasta_gelis tablosundan gelir
   // Randevu dışı satırlar (Dr İşlem kayıtları + randevusuz gelen hastalar) hasta_gelis tablosundan gelir
-  const gelisSatiri=g=>({key:"d"+g.id,randevuId:null,gelisId:g.id,saat:g.saat,sure:g.sure||0,hasta:g.hasta,tel:g.tel||"",islem:[g.islem,g.sure?g.sure+" dk":""].filter(Boolean).join(" · "),notlar:g.notlar||"",randevuDurum:null,
+  const gelisSatiri=g=>({key:"d"+g.id,oda:g.oda,randevuId:null,gelisId:g.id,saat:g.saat,sure:g.sure||0,hasta:g.hasta,tel:g.tel||"",islem:[g.islem,g.sure?g.sure+" dk":""].filter(Boolean).join(" · "),notlar:g.notlar||"",randevuDurum:null,
     geldi:!!g.geldi,gelisSaati:g.gelis_saati||"",alinmaSaati:g.alinma_saati||"",iptalSaati:g.iptal_saati||"",kaydeden:g.kaydeden||"",
     uyusmaSaati:g.uyusma_saati||"",uyusmaHedef:g.uyusma_saati?(g.uyusma_hedef||0):(g.oda==="dr"?(bhKremKurali(g.islem)?.sure||0):0),
     randevusuz:g.kaynak==="randevusuz"});
   function randevuSatirlari(oda){
     return randevular.filter(r=>r.oda===oda&&r.tarih===tarih)
-      .map(r=>{const g=gelisByRandevu[r.id];return {key:"r"+r.id,randevuId:r.id,gelisId:g?.id,saat:r.saat,sure:r.sure||0,tel:r.tel||"",hasta:r.hasta,islem:(r.bolgeler||[]).join(", "),notlar:r.notlar||"",randevuDurum:r.durum,geldi:!!g?.geldi,gelisSaati:g?.gelis_saati||"",alinmaSaati:g?.alinma_saati||"",iptalSaati:g?.iptal_saati||"",kaydeden:g?.kaydeden||""};})
+      .map(r=>{const g=gelisByRandevu[r.id];return {key:"r"+r.id,oda,randevuId:r.id,gelisId:g?.id,saat:r.saat,sure:r.sure||0,tel:r.tel||"",hasta:r.hasta,islem:(r.bolgeler||[]).join(", "),notlar:r.notlar||"",randevuDurum:r.durum,geldi:!!g?.geldi,gelisSaati:g?.gelis_saati||"",alinmaSaati:g?.alinma_saati||"",iptalSaati:g?.iptal_saati||"",kaydeden:g?.kaydeden||""};})
       .concat(gelisler.filter(g=>g.oda===oda&&!g.randevu_id&&g.id>0).map(gelisSatiri));
   }
   const [siralama,setSiralama]=useState(()=>{try{return window.localStorage.getItem("kl_bh_sira")||"randevu";}catch{return "randevu";}});
@@ -4558,6 +4582,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     return timeToMin(a.saat)-timeToMin(b.saat);
   });
   const listeler={alex:sirala(randevuSatirlari("alex")),soprano:sirala(randevuSatirlari("soprano")),dr:sirala(gelisler.filter(g=>g.oda==="dr").map(gelisSatiri))};
+  listeler.tumu=sirala([...listeler.alex,...listeler.soprano,...listeler.dr]);
   const satirlar=listeler[aktifOda]||[];
   const bugunMu=tarih===today();
   const simdiDk=timeToMin(saatSimdi);
@@ -4571,7 +4596,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     return {saat:s.uyusmaSaati,hedef:s.uyusmaHedef||0,gecen,durdu:!!s.alinmaSaati,hazir:!!s.uyusmaHedef&&gecen!==null&&gecen>=s.uyusmaHedef};
   }
   // Krem tuşu sadece krem listesindeki işlemlerde (uyusmaHedef>0) ve gelmiş hastada çıkar
-  const kremUygun=s=>aktifOda==="dr"&&(!!s.uyusmaSaati||s.uyusmaHedef>0);
+  const kremUygun=s=>s.oda==="dr"&&(!!s.uyusmaSaati||s.uyusmaHedef>0);
   const kremTusuGorunur=s=>kremUygun(s)&&drDuzenleyebilir&&s.geldi&&!s.uyusmaSaati&&!s.iptalSaati&&s.gelisId>0;
   const sayacMetni=k=>k.durdu?`⏹ ${k.gecen} dk`:k.gecen===null?"⏳":`⏳ ${k.gecen}${k.hedef?"/"+k.hedef:""} dk`;
   async function kremIsaretle(s,sur){
@@ -4616,10 +4641,10 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   function satirDurumu(s){
     if(s.iptalSaati)return {etiket:"İptal",metin:`İptal · ${s.iptalSaati}`,renk:"#991b1b",bg:"#fee2e2",satirBg:"#fef2f2"};
     if(s.randevuDurum==="Gelmedi")return {etiket:"Gelmedi",metin:"Gelmedi",renk:"#991b1b",bg:"#fee2e2",satirBg:"#fafafa"};
-    if(s.alinmaSaati){const b=beklemeDk(s);return {etiket:"Alındı",metin:`Alındı ${s.alinmaSaati}${b>0?` · ${b} dk bekledi`:""}`,renk:b>=15?"#9a3412":"#4b5563",bg:b>=15?"#fed7aa":"#e5e7eb",satirBg:"#f3f4f6"};}
+    if(s.alinmaSaati){const b=beklemeDk(s);return {etiket:"Alındı",metin:`Alındı ${s.alinmaSaati}${b>0?` · ${b} dk bekledi`:""}`,renk:b>=15?"#9a3412":"#1f2937",bg:b>=15?"#fed7aa":"#9ca3af",satirBg:"#d1d5db"};}
     if(s.geldi)return {etiket:"Geldi",metin:"Geldi",renk:"#166534",bg:"#bbf7d0",satirBg:kremDurum(s)?.hazir?"#ccfbf1":"#dcfce7"};
     const g=simdiDk-timeToMin(s.saat);
-    if(bugunMu&&g>10)return {etiket:"Gecikti",metin:`Gecikti ${g>=60?Math.floor(g/60)+" sa "+(g%60?g%60+" dk":""):g+" dk"}`.trim(),renk:"#9a3412",bg:"#fed7aa",satirBg:"#fff7ed"};
+    if(bugunMu&&g>10)return {etiket:"Gecikti",metin:`Gecikti ${g>=60?Math.floor(g/60)+" sa "+(g%60?g%60+" dk":""):g+" dk"}`.trim(),renk:"#713f12",bg:"#facc15",satirBg:"#fef08a"};
     return {etiket:"",metin:"",renk:"#555",bg:"transparent",satirBg:"#fff"};
   }
 
@@ -4637,10 +4662,10 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         setGelisler(g=>g.map(x=>x.id===s.gelisId?{...x,geldi,gelis_saati:geldi?saat:null,kaydeden}:x));
         await sbUpdate("hasta_gelis",s.gelisId,{geldi,gelis_saati:geldi?saat:null,kaydeden,guncelleme:new Date().toISOString()});
       }else{
-        const gecici={id:-Date.now(),tarih,oda:aktifOda,randevu_id:s.randevuId,saat:s.saat,hasta:s.hasta,islem:s.islem,geldi,gelis_saati:geldi?saat:null,kaydeden,kaynak:"randevu"};
+        const gecici={id:-Date.now(),tarih,oda:s.oda,randevu_id:s.randevuId,saat:s.saat,hasta:s.hasta,islem:s.islem,geldi,gelis_saati:geldi?saat:null,kaydeden,kaynak:"randevu"};
         setGelisler(g=>[...g,gecici]);
         const r=await fetch(`${SB_URL}/rest/v1/hasta_gelis?on_conflict=randevu_id`,{method:"POST",headers:{...HDR(),"Prefer":"return=representation,resolution=merge-duplicates"},
-          body:JSON.stringify({tarih,oda:aktifOda,randevu_id:s.randevuId,saat:s.saat,hasta:s.hasta,islem:s.islem,geldi,gelis_saati:geldi?saat:null,kaydeden,kaynak:"randevu",guncelleme:new Date().toISOString()})});
+          body:JSON.stringify({tarih,oda:s.oda,randevu_id:s.randevuId,saat:s.saat,hasta:s.hasta,islem:s.islem,geldi,gelis_saati:geldi?saat:null,kaydeden,kaynak:"randevu",guncelleme:new Date().toISOString()})});
         if(!r.ok)throw new Error(await r.text());
         const [kayit]=await r.json();
         setGelisler(g=>{const temiz=g.filter(x=>x.id!==gecici.id&&x.id!==kayit.id);return [...temiz,kayit];});
@@ -4660,7 +4685,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         setGelisler(g=>g.map(x=>x.id===s.gelisId?{...x,...deg}:x));
         await sbUpdate("hasta_gelis",s.gelisId,{...deg,guncelleme:new Date().toISOString()});
       }else if(s.randevuId){
-        const govde={tarih,oda:aktifOda,randevu_id:s.randevuId,saat:s.saat,hasta:s.hasta,islem:s.islem,kaynak:"randevu",...deg};
+        const govde={tarih,oda:s.oda,randevu_id:s.randevuId,saat:s.saat,hasta:s.hasta,islem:s.islem,kaynak:"randevu",...deg};
         const gecici={id:-Date.now(),...govde};
         setGelisler(g=>[...g,gecici]);
         const r=await fetch(`${SB_URL}/rest/v1/hasta_gelis?on_conflict=randevu_id`,{method:"POST",headers:{...HDR(),"Prefer":"return=representation,resolution=merge-duplicates"},body:JSON.stringify({...govde,guncelleme:new Date().toISOString()})});
@@ -4838,8 +4863,8 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
 
   // ── MOBİL KART GÖRÜNÜMÜ ──
   if(mobil&&!tamEkran){
-    const MOBIL_ODALAR=[["dr","🩺 DR"],["alex","🟢 ALEX"],["soprano","🟣 SOPRANO"]];
-    const SERIT={"Geldi":"#16a34a","Gecikti":"#ea580c","Gelmedi":"#dc2626","İptal":"#991b1b","Alındı":"#9ca3af","":"#d4d4d0"};
+    const MOBIL_ODALAR=[["dr","🩺 DR"],["alex","🟢 ALEX"],["soprano","🟣 SOPRANO"],["tumu","📋 TÜMÜ"]];
+    const SERIT={"Geldi":"#16a34a","Gecikti":"#ca8a04","Gelmedi":"#dc2626","İptal":"#991b1b","Alındı":"#4b5563","":"#d4d4d0"};
     // Sıradaki: süresi dolmuş kremli hasta (Dr) → gelip bekleyen → saati gelmemiş ilk randevu
     const bekleyenler=satirlar.filter(s=>!s.iptalSaati&&s.randevuDurum!=="Gelmedi"&&!s.alinmaSaati);
     const siradaki=!bugunMu?null:(
@@ -4852,10 +4877,10 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         <div style={{fontSize:buyuk?20:17,fontWeight:700,color:c,fontVariantNumeric:"tabular-nums"}}>{v}</div>
       </div>);
     const Kart=({s,buyuk})=>{
-      const d=satirDurumu(s),acik=acikKart===s.key,drKart=aktifOda==="dr"&&kremUygun(s),kd=drKart?kremDurum(s):null;
+      const d=satirDurumu(s),acik=acikKart===s.key,drKart=kremUygun(s),kd=drKart?kremDurum(s):null;
       const iptal=!!s.iptalSaati,soluk=iptal||s.randevuDurum==="Gelmedi";
       const serit=kd&&!kd.durdu?"#0d9488":SERIT[d.etiket];
-      const bg=iptal?"#fef2f2":s.alinmaSaati?"#f3f4f6":s.geldi?"#f0fdf4":"#fff";
+      const bg=iptal?"#fef2f2":s.alinmaSaati?"#d1d5db":s.geldi?"#f0fdf4":d.etiket==="Gecikti"?"#fef9c3":"#fff";
       const geldiTusu=gelisIsaretleyebilir&&!s.geldi&&!soluk;
       const alindiTusu=s.geldi&&!s.alinmaSaati&&!iptal&&drDuzenleyebilir;
       return(
@@ -4863,6 +4888,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
           <div style={{width:s.geldi||kd?8:5,background:serit,flexShrink:0}}/>
           <div style={{flex:1,padding:buyuk?"14px 14px":"11px 12px",minWidth:0}}>
             <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+              {aktifOda==="tumu"&&<BhOdaRozet oda={s.oda}/>}
               <span style={{fontSize:buyuk?20:17,fontWeight:700,color:iptal?"#9f1239":"#1a1a2e",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:acik?"normal":"nowrap",textDecoration:iptal?"line-through":"none"}}>{s.hasta}</span>
               {s.randevusuz&&<span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#ede9fe",padding:"1px 5px",borderRadius:4,flexShrink:0}}>Randevusuz</span>}
             </div>
@@ -4875,7 +4901,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
               <Kutu l="RANDEVU" v={s.randevusuz?"—":s.saat} buyuk={buyuk}/>
               <Kutu l="GELİŞ" v={s.gelisSaati||"—"} c={s.gelisSaati?"#166534":"#bbb"} buyuk={buyuk}/>
               {drKart&&(kd?(
-                <div style={{background:kd.durdu?"#e5e7eb":kd.hazir?"#0d9488":"#ccfbf1",color:kd.durdu?"#374151":kd.hazir?"#fff":"#0f766e",borderRadius:8,padding:"5px 6px",textAlign:"center"}}>
+                <div style={{background:kd.durdu?"#9ca3af":kd.hazir?"#0d9488":"#ccfbf1",color:kd.durdu?"#111827":kd.hazir?"#fff":"#0f766e",borderRadius:8,padding:"5px 6px",textAlign:"center"}}>
                   <div style={{fontSize:10,fontWeight:700,letterSpacing:0.5,opacity:0.85}}>K. SAATİ</div>
                   <div style={{fontSize:buyuk?20:17,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{kd.saat}</div>
                   <div style={{fontSize:13,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{sayacMetni(kd)}</div>
@@ -4889,7 +4915,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
               ):<Kutu l="K. SAATİ" v="—" c="#bbb" buyuk={buyuk}/>)}
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginTop:8,minHeight:d.metin||geldiTusu||alindiTusu?40:0}}>
-              <span style={{fontSize:16,fontWeight:700,color:d.renk}}>{d.etiket==="Geldi"?"✓ GELDİ":d.etiket==="Gecikti"?"🟠 "+d.metin:d.etiket==="İptal"?"✕ İptal etti · "+s.iptalSaati:d.etiket==="Gelmedi"?"✕ Gelmedi":d.etiket==="Alındı"?"▶ "+d.metin:""}</span>
+              <span style={{fontSize:16,fontWeight:700,color:d.renk}}>{d.etiket==="Geldi"?"✓ GELDİ":d.etiket==="Gecikti"?"🟡 "+d.metin:d.etiket==="İptal"?"✕ İptal etti · "+s.iptalSaati:d.etiket==="Gelmedi"?"✕ Gelmedi":d.etiket==="Alındı"?"▶ "+d.metin:""}</span>
               <span style={{display:"flex",gap:6,flexShrink:0}}>
                 {geldiTusu&&<button onClick={e=>{e.stopPropagation();iptalIsaretle(s,true);}} disabled={islemde===s.key} style={{...btnSecondary,background:"#fff",color:"#b91c1c",border:"1.5px solid #fca5a5",padding:"9px 12px",fontSize:15,fontWeight:700,borderRadius:10}}>✕ İptal</button>}
                 {geldiTusu&&<button onClick={e=>{e.stopPropagation();geldiIsaretle(s,true);}} disabled={islemde===s.key} style={{...btnPrimary,background:"#16a34a",padding:"10px 18px",fontSize:16,fontWeight:700,borderRadius:10}}>✓ GELDİ</button>}
@@ -4926,7 +4952,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         <div style={{display:"grid",gridTemplateColumns:`repeat(${MOBIL_ODALAR.length},1fr)`,gap:6,marginBottom:12}}>
           {MOBIL_ODALAR.map(([k,l])=>{
             const L=(listeler[k]||[]).filter(x=>!x.iptalSaati),g=L.filter(x=>x.geldi).length,a=aktifOda===k;
-            return <button key={k} onClick={()=>{setAktifOda(k);setAcikKart(null);}} style={{padding:"12px 4px",borderRadius:12,border:a?"2px solid #6366f1":"1px solid #ddd",background:a?"#eef0ff":"#fff",color:a?"#4338ca":"#444",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",lineHeight:1.2}}>
+            return <button key={k} onClick={()=>{setAktifOda(k);setAcikKart(null);}} style={{padding:"10px 2px",borderRadius:12,border:a?"2px solid #6366f1":"1px solid #ddd",background:a?"#eef0ff":"#fff",color:a?"#4338ca":"#444",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",lineHeight:1.2}}>
               {l}<div style={{fontSize:16,fontWeight:700,marginTop:2,fontVariantNumeric:"tabular-nums"}}>{g}/{L.length}</div>
             </button>;
           })}
@@ -4944,7 +4970,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         )}
         {yukleniyor&&satirlar.length===0&&<div style={{padding:24,textAlign:"center",color:"#aaa"}}>Yükleniyor…</div>}
         {!yukleniyor&&satirlar.length===0&&<div style={{padding:28,textAlign:"center",color:"#aaa",background:"#fff",borderRadius:12,border:"1px solid #e8e6e0"}}>
-          {aktifOda==="dr"?"Bugün için Dr İşlem listesi yok.":"Bu odada randevu yok."}
+          {aktifOda==="dr"?"Bugün için Dr İşlem listesi yok.":aktifOda==="tumu"?"Bugün için hasta yok.":"Bu odada randevu yok."}
         </div>}
         {satirlar.filter(s=>s.key!==siradaki?.key).map(s=><Kart key={s.key} s={s}/>)}
       </div>
@@ -4996,7 +5022,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
               <button key={k} onClick={()=>siralaDegistir(k)} style={{padding:"6px 12px",border:"none",background:siralama===k?"#eef0ff":"transparent",color:siralama===k?"#4338ca":"#555",fontWeight:siralama===k?600:400,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
             ))}
           </div>
-          {(gelisIsaretleyebilir||drDuzenleyebilir)&&!randevusuz.acik&&<button onClick={()=>setRandevusuz(r=>({...r,acik:true}))} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>＋ Randevusuz hasta geldi</button>}
+          {(gelisIsaretleyebilir||drDuzenleyebilir)&&!randevusuz.acik&&aktifOda!=="tumu"&&<button onClick={()=>setRandevusuz(r=>({...r,acik:true}))} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>＋ Randevusuz hasta geldi</button>}
           {randevusuz.acik&&(
             <form onSubmit={randevusuzEkle} style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",padding:"6px 8px",background:"#faf5ff",border:"1px solid #ddd6fe",borderRadius:8}}>
               <span style={{fontSize:12,color:"#6d28d9",fontWeight:600}}>{BH_ODALAR.find(o=>o[0]===aktifOda)?.[1]} · şimdi geldi:</span>
@@ -5037,28 +5063,28 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
               <tr style={{background:"#fafaf8",color:"#888",fontSize:11*fs,textTransform:"uppercase",letterSpacing:0.5,textAlign:"left"}}>
                 <th style={{padding:"10px 14px",width:70*fs}}>Saat</th>
                 <th style={{padding:"10px 14px"}}>Hasta</th>
-                <th style={{padding:"10px 14px"}}>{aktifOda==="dr"?"İşlem":"Bölge"}</th>
+                <th style={{padding:"10px 14px"}}>{aktifOda==="dr"?"İşlem":aktifOda==="tumu"?"Bölge / İşlem":"Bölge"}</th>
                 <th style={{padding:"10px 14px",width:130*fs}}>Durum</th>
                 <th style={{padding:"10px 14px",width:80*fs}}>Geliş</th>
-                {aktifOda==="dr"&&<th style={{padding:"10px 14px",width:200*fs}}>K. saati</th>}
+                {(aktifOda==="dr"||aktifOda==="tumu")&&<th style={{padding:"10px 14px",width:200*fs}}>K. saati</th>}
                 <th style={{padding:"10px 14px",width:190*fs}}></th>
               </tr>
             </thead>
             <tbody>
               {yukleniyor&&satirlar.length===0&&<tr><td colSpan={8} style={{padding:24,textAlign:"center",color:"#aaa"}}>Yükleniyor…</td></tr>}
               {!yukleniyor&&satirlar.length===0&&<tr><td colSpan={8} style={{padding:28,textAlign:"center",color:"#aaa"}}>
-                {aktifOda==="dr"?"Bu gün için Dr İşlem listesi yok. Doktor takvimindeki randevuları yukarıdan ekleyin.":"Bu gün bu odada randevu yok."}
+                {aktifOda==="dr"?"Bu gün için Dr İşlem listesi yok. Doktor takvimindeki randevuları yukarıdan ekleyin.":aktifOda==="tumu"?"Bu gün için hasta yok.":"Bu gün bu odada randevu yok."}
               </td></tr>}
               {satirlar.map(s=>{
                 const d=satirDurumu(s);
-                const kd=aktifOda==="dr"?kremDurum(s):null;
+                const kd=s.oda==="dr"?kremDurum(s):null;
                 const iptal=!!s.iptalSaati,soluk=iptal||s.randevuDurum==="Gelmedi";
                 const hucre={padding:`${10*fs}px 14px`};
                 return(
-                  <tr key={s.key} style={{background:d.satirBg,borderTop:"1px solid #f0efeb",transition:"background 0.3s",opacity:soluk?0.65:1,color:s.alinmaSaati?"#6b7280":iptal?"#9f1239":"inherit"}}>
+                  <tr key={s.key} style={{background:d.satirBg,borderTop:"1px solid #f0efeb",transition:"background 0.3s",opacity:soluk?0.65:1,color:s.alinmaSaati?"#374151":iptal?"#9f1239":"inherit"}}>
                     <td style={{...hucre,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{s.randevusuz?"—":s.saat}</td>
                     <td style={{...hucre,fontWeight:600}}>
-                      <span style={{textDecoration:iptal?"line-through":"none"}}>{s.hasta}</span>
+                      {aktifOda==="tumu"&&<BhOdaRozet oda={s.oda}/>}<span style={{textDecoration:iptal?"line-through":"none"}}>{s.hasta}</span>
                       {s.randevusuz&&<span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#ede9fe",padding:"1px 5px",borderRadius:4,marginLeft:6}}>Randevusuz</span>}
                       {!tamEkran&&(s.notlar||s.tel)&&<div style={{fontSize:11,color:"#999",fontWeight:400,marginTop:2}}>{[s.tel&&"📞 "+s.tel,s.notlar].filter(Boolean).join(" · ")}</div>}
                     </td>
@@ -5068,7 +5094,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
                     </td>
                     <td style={hucre}>{d.metin&&<span style={{fontSize:12*fs,fontWeight:700,color:d.renk,background:d.bg,padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{d.metin}</span>}</td>
                     <td style={{...hucre,fontWeight:700,color:"#166534",fontVariantNumeric:"tabular-nums"}} title={s.kaydeden?`İşaretleyen: ${s.kaydeden}`:""}>{s.gelisSaati||"—"}</td>
-                    {aktifOda==="dr"&&<td style={{padding:`${8*fs}px 14px`}}><KremGosterge s={s}/></td>}
+                    {(aktifOda==="dr"||aktifOda==="tumu")&&<td style={{padding:`${8*fs}px 14px`}}>{s.oda==="dr"?<KremGosterge s={s}/>:<span style={{color:"#bbb"}}>—</span>}</td>}
                     <td style={{padding:`${8*fs}px 14px`,textAlign:"right",whiteSpace:"nowrap"}}>
                       {gelisIsaretleyebilir&&!s.geldi&&!soluk&&<>
                         <button onClick={()=>iptalIsaretle(s,true)} disabled={islemde===s.key} style={{...btnSecondary,background:"#fff",color:"#b91c1c",border:"1px solid #fca5a5",padding:`${6*fs}px ${10*fs}px`,fontSize:13*fs,fontWeight:600,marginRight:6}}>✕ İptal</button>
@@ -5079,7 +5105,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
                         {iptal&&gelisIsaretleyebilir&&<button onClick={()=>iptalIsaretle(s,false)} style={{background:"none",border:"none",color:"#999",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>↩ geri al</button>}
                         {s.alinmaSaati&&drDuzenleyebilir&&<button onClick={()=>alindiIsaretle(s,false)} style={{background:"none",border:"none",color:"#999",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>↩ geri al</button>}
                         {gelisIsaretleyebilir&&s.geldi&&!kd&&!s.alinmaSaati&&!s.randevusuz&&<button onClick={()=>geldiIsaretle(s,false)} disabled={islemde===s.key} title="Geldi kaydını geri al" style={{...btnSecondary,padding:"5px 8px",fontSize:12*fs,background:"#fff",marginLeft:6}}>↩</button>}
-                        {(aktifOda==="dr"||s.randevusuz)&&drDuzenleyebilir&&<button onClick={()=>drSil(s)} title="Listeden sil" style={{marginLeft:6,background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:15}}>✕</button>}
+                        {(s.oda==="dr"||s.randevusuz)&&drDuzenleyebilir&&<button onClick={()=>drSil(s)} title="Listeden sil" style={{marginLeft:6,background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:15}}>✕</button>}
                       </>}
                     </td>
                   </tr>
