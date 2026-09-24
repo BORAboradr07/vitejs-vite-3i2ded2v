@@ -4469,6 +4469,12 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const saatInputRef=useRef(null);
   const [personelOda,setPersonelOda]=useState(()=>{try{return window.localStorage.getItem("kl_bh_oda")||null;}catch{return null;}});
   const kapRef=useRef(null);
+  useEffect(()=>{ // yanıp sönen ❗ için animasyon tanımı (bir kez)
+    if(document.getElementById("bh-anim"))return;
+    const st=document.createElement("style");st.id="bh-anim";
+    st.textContent="@keyframes bhYanip{0%{opacity:1}100%{opacity:0}}";
+    document.head.appendChild(st);
+  },[]);
   // Telefon/küçük ekran: ≤768px → kart görünümü (masaüstü tablo aynen kalır)
   const [mobil,setMobil]=useState(()=>{try{return window.matchMedia("(max-width: 768px)").matches;}catch{return false;}});
   const [acikKart,setAcikKart]=useState(null);
@@ -4637,11 +4643,27 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     const bas=Math.max(s.randevusuz?0:timeToMin(s.saat),s.gelisSaati?timeToMin(s.gelisSaati):0);
     return Math.max(0,timeToMin(s.alinmaSaati)-bas);
   }
+  // Canlı bekleme: gelmiş ama henüz alınmamış hasta şu ana kadar kaç dk bekledi (aynı kural: randevu/geliş hangisi geçse)
+  // Bekleme kademeleri: 15 dk+ turuncu · 30 dk'yı geçince kırmızı · 45 dk'yı geçince kırmızı + yanıp sönen ❗
+  const beklemeSeviye=dk=>dk>45?3:dk>30?2:dk>=15?1:0;
+  const BEKLEME_RENK=["#4b5563","#c2410c","#dc2626","#dc2626"];
+  const BeklemeSatiri=({dk,boyut=13,canli=true})=>{
+    const sv=beklemeSeviye(dk);
+    return <div style={{fontSize:boyut,fontWeight:sv>=2?800:sv===1?700:600,color:BEKLEME_RENK[sv],marginTop:2,whiteSpace:"nowrap"}}>
+      {sv===3&&<span style={{display:"inline-block",marginRight:4,animation:canli?"bhYanip 1s steps(2,start) infinite":"none"}}>❗</span>}⏱ Bekleme süresi: {beklemeYazi(dk)}
+    </div>;
+  };
+  function canliBeklemeDk(s){
+    if(!bugunMu||!s.geldi||s.alinmaSaati||s.iptalSaati||!s.gelisSaati)return null;
+    const bas=Math.max(s.randevusuz?0:timeToMin(s.saat),timeToMin(s.gelisSaati));
+    return Math.max(0,simdiDk-bas);
+  }
+  const beklemeYazi=dk=>dk>=60?`${Math.floor(dk/60)} sa ${dk%60} dk`:`${dk} dk`;
   // Durumlar: (boş) → Geldi / Gecikti / Gelmedi / İptal → Alındı
   function satirDurumu(s){
     if(s.iptalSaati)return {etiket:"İptal",metin:`İptal · ${s.iptalSaati}`,renk:"#991b1b",bg:"#fee2e2",satirBg:"#fef2f2"};
     if(s.randevuDurum==="Gelmedi")return {etiket:"Gelmedi",metin:"Gelmedi",renk:"#991b1b",bg:"#fee2e2",satirBg:"#fafafa"};
-    if(s.alinmaSaati){const b=beklemeDk(s);return {etiket:"Alındı",metin:`Alındı ${s.alinmaSaati}${b>0?` · ${b} dk bekledi`:""}`,renk:b>=15?"#9a3412":"#1f2937",bg:b>=15?"#fed7aa":"#9ca3af",satirBg:"#d1d5db"};}
+    if(s.alinmaSaati){const b=beklemeDk(s);return {etiket:"Alındı",metin:`${beklemeSeviye(b)===3?"❗ ":""}Alındı ${s.alinmaSaati}${b>0?` · ${b} dk bekledi`:""}`,renk:beklemeSeviye(b)>=2?"#fff":beklemeSeviye(b)===1?"#7c2d12":"#1f2937",bg:beklemeSeviye(b)>=2?"#dc2626":beklemeSeviye(b)===1?"#fdba74":"#9ca3af",satirBg:"#d1d5db"};}
     if(s.geldi)return {etiket:"Geldi",metin:"Geldi",renk:"#166534",bg:"#bbf7d0",satirBg:kremDurum(s)?.hazir?"#ccfbf1":"#dcfce7"};
     const g=simdiDk-timeToMin(s.saat);
     if(bugunMu&&g>10)return {etiket:"Gecikti",metin:`Gecikti ${g>=60?Math.floor(g/60)+" sa "+(g%60?g%60+" dk":""):g+" dk"}`.trim(),renk:"#713f12",bg:"#facc15",satirBg:"#fef08a"};
@@ -4915,7 +4937,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
               ):<Kutu l="K. SAATİ" v="—" c="#bbb" buyuk={buyuk}/>)}
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginTop:8,minHeight:d.metin||geldiTusu||alindiTusu?40:0}}>
-              <span style={{fontSize:16,fontWeight:700,color:d.renk}}>{d.etiket==="Geldi"?"✓ GELDİ":d.etiket==="Gecikti"?"🟡 "+d.metin:d.etiket==="İptal"?"✕ İptal etti · "+s.iptalSaati:d.etiket==="Gelmedi"?"✕ Gelmedi":d.etiket==="Alındı"?"▶ "+d.metin:""}</span>
+              <span style={{fontSize:16,fontWeight:700,color:d.etiket==="Alındı"?BEKLEME_RENK[beklemeSeviye(beklemeDk(s))].replace("#4b5563","#1f2937"):d.renk}}>{d.etiket==="Geldi"?<>✓ GELDİ{canliBeklemeDk(s)!==null&&<BeklemeSatiri dk={canliBeklemeDk(s)}/>}</>:d.etiket==="Gecikti"?"🟡 "+d.metin:d.etiket==="İptal"?"✕ İptal etti · "+s.iptalSaati:d.etiket==="Gelmedi"?"✕ Gelmedi":d.etiket==="Alındı"?"▶ "+d.metin:""}</span>
               <span style={{display:"flex",gap:6,flexShrink:0}}>
                 {geldiTusu&&<button onClick={e=>{e.stopPropagation();iptalIsaretle(s,true);}} disabled={islemde===s.key} style={{...btnSecondary,background:"#fff",color:"#b91c1c",border:"1.5px solid #fca5a5",padding:"9px 12px",fontSize:15,fontWeight:700,borderRadius:10}}>✕ İptal</button>}
                 {geldiTusu&&<button onClick={e=>{e.stopPropagation();geldiIsaretle(s,true);}} disabled={islemde===s.key} style={{...btnPrimary,background:"#16a34a",padding:"10px 18px",fontSize:16,fontWeight:700,borderRadius:10}}>✓ GELDİ</button>}
@@ -5092,7 +5114,9 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
                       {s.randevuDurum==="Rütuş"&&<span style={{fontSize:11,fontWeight:700,color:"#a16207",background:"#fef3c7",padding:"1px 6px",borderRadius:4,marginRight:6}}>Rütuş</span>}
                       {s.islem||"—"}
                     </td>
-                    <td style={hucre}>{d.metin&&<span style={{fontSize:12*fs,fontWeight:700,color:d.renk,background:d.bg,padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{d.metin}</span>}</td>
+                    <td style={hucre}>{d.metin&&<span style={{fontSize:12*fs,fontWeight:700,color:d.renk,background:d.bg,padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{d.metin}</span>}
+                      {canliBeklemeDk(s)!==null&&<BeklemeSatiri dk={canliBeklemeDk(s)} boyut={11*fs}/>}
+                    </td>
                     <td style={{...hucre,fontWeight:700,color:"#166534",fontVariantNumeric:"tabular-nums"}} title={s.kaydeden?`İşaretleyen: ${s.kaydeden}`:""}>{s.gelisSaati||"—"}</td>
                     {(aktifOda==="dr"||aktifOda==="tumu")&&<td style={{padding:`${8*fs}px 14px`}}>{s.oda==="dr"?<KremGosterge s={s}/>:<span style={{color:"#bbb"}}>—</span>}</td>}
                     <td style={{padding:`${8*fs}px 14px`,textAlign:"right",whiteSpace:"nowrap"}}>
