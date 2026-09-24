@@ -4543,7 +4543,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     randevusuz:g.kaynak==="randevusuz"});
   function randevuSatirlari(oda){
     return randevular.filter(r=>r.oda===oda&&r.tarih===tarih)
-      .map(r=>{const g=gelisByRandevu[r.id];return {key:"r"+r.id,randevuId:r.id,gelisId:g?.id,saat:r.saat,sure:r.sure||0,tel:r.tel||"",hasta:r.hasta,islem:(r.bolgeler||[]).join(", "),notlar:r.notlar||"",randevuDurum:r.durum,geldi:!!g?.geldi,gelisSaati:g?.gelis_saati||"",alinmaSaati:"",iptalSaati:g?.iptal_saati||"",kaydeden:g?.kaydeden||""};})
+      .map(r=>{const g=gelisByRandevu[r.id];return {key:"r"+r.id,randevuId:r.id,gelisId:g?.id,saat:r.saat,sure:r.sure||0,tel:r.tel||"",hasta:r.hasta,islem:(r.bolgeler||[]).join(", "),notlar:r.notlar||"",randevuDurum:r.durum,geldi:!!g?.geldi,gelisSaati:g?.gelis_saati||"",alinmaSaati:g?.alinma_saati||"",iptalSaati:g?.iptal_saati||"",kaydeden:g?.kaydeden||""};})
       .concat(gelisler.filter(g=>g.oda===oda&&!g.randevu_id&&g.id>0).map(gelisSatiri));
   }
   const [siralama,setSiralama]=useState(()=>{try{return window.localStorage.getItem("kl_bh_sira")||"randevu";}catch{return "randevu";}});
@@ -4604,11 +4604,18 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     );
   }
 
-  // Durumlar: (boş) → Geldi / Gecikti / Gelmedi / İptal  (+ kremli Dr hastasında Alındı)
+  // Bekleme: hastanın bizim yüzümüzden beklediği süre = alınma − (randevu saati ile geliş saatinin geç olanı)
+  // (erken gelen hastada randevu saatinden, geç gelen hastada geliş saatinden sayılır)
+  function beklemeDk(s){
+    if(!s.alinmaSaati)return 0;
+    const bas=Math.max(s.randevusuz?0:timeToMin(s.saat),s.gelisSaati?timeToMin(s.gelisSaati):0);
+    return Math.max(0,timeToMin(s.alinmaSaati)-bas);
+  }
+  // Durumlar: (boş) → Geldi / Gecikti / Gelmedi / İptal → Alındı
   function satirDurumu(s){
     if(s.iptalSaati)return {etiket:"İptal",metin:`İptal · ${s.iptalSaati}`,renk:"#991b1b",bg:"#fee2e2",satirBg:"#fef2f2"};
     if(s.randevuDurum==="Gelmedi")return {etiket:"Gelmedi",metin:"Gelmedi",renk:"#991b1b",bg:"#fee2e2",satirBg:"#fafafa"};
-    if(s.alinmaSaati)return {etiket:"Alındı",metin:`Alındı ${s.alinmaSaati}`,renk:"#4b5563",bg:"#e5e7eb",satirBg:"#f3f4f6"};
+    if(s.alinmaSaati){const b=beklemeDk(s);return {etiket:"Alındı",metin:`Alındı ${s.alinmaSaati}${b>0?` · ${b} dk bekledi`:""}`,renk:b>=15?"#9a3412":"#4b5563",bg:b>=15?"#fed7aa":"#e5e7eb",satirBg:"#f3f4f6"};}
     if(s.geldi)return {etiket:"Geldi",metin:"Geldi",renk:"#166534",bg:"#bbf7d0",satirBg:kremDurum(s)?.hazir?"#ccfbf1":"#dcfce7"};
     const g=simdiDk-timeToMin(s.saat);
     if(bugunMu&&g>10)return {etiket:"Gecikti",metin:`Gecikti ${g>=60?Math.floor(g/60)+" sa "+(g%60?g%60+" dk":""):g+" dk"}`.trim(),renk:"#9a3412",bg:"#fed7aa",satirBg:"#fff7ed"};
@@ -4663,7 +4670,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
       return true;
     }catch(e){setGelisler(onceki);showToast("Kaydedilemedi: "+String(e.message).slice(0,140),"error");return false;}
   }
-  // "Alındı" — kremlenen Dr hastası işleme alındı; kum saati durur.
+  // "Alındı" — hasta işleme alındı (tüm odalar). Bekleme süresi hesaplanır; kremli hastada kum saati durur.
   async function alindiIsaretle(s,alindi){
     if(!drDuzenleyebilir||islemde)return;
     if(!alindi&&!window.confirm(`${s.hasta} için "Alındı" kaydı geri alınsın mı?`))return;
@@ -4790,8 +4797,8 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     const esc=v=>String(v??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
     const bolumler=tip==="dr"?[["Dr İşlem",listeler.dr,"İşlem"]]:[["Alex Lazer",listeler.alex,"Bölge"],["Soprano / Cilt / Forma",listeler.soprano,"Bölge / İşlem"]];
     const tablo=([baslik,L,kolon])=>`<h2>${esc(baslik)} <span>(${L.length} hasta)</span></h2>`+(L.length===0?`<p class="bos">Randevu yok</p>`:
-      `<table><thead><tr><th class="c">Geldi</th><th>Saat</th><th>Hasta</th>${tip==="dr"?"<th>Telefon</th>":""}<th>${kolon}</th><th>Geliş saati</th>${tip==="dr"?"<th>Krem saati</th>":""}<th>Not</th></tr></thead><tbody>`+
-      L.map(r=>{const gm=r.randevuDurum==="Gelmedi"||!!r.iptalSaati;return `<tr class="${gm?"gm":""}"><td class="c"><span class="kutu">${r.geldi?"✓":""}</span></td><td class="saat">${esc(r.saat)}</td><td class="ad">${esc(r.hasta)}${r.randevusuz?' <i>(Randevusuz)</i>':""}${r.randevuDurum==="Rütuş"?' <i>(Rütuş)</i>':""}${r.iptalSaati?' <i>(İptal)</i>':r.randevuDurum==="Gelmedi"?' <i>(Gelmedi)</i>':""}</td>${tip==="dr"?`<td class="tel">${esc(r.tel)}</td>`:""}<td>${esc(r.islem)}</td><td class="yaz">${esc(r.gelisSaati)}</td>${tip==="dr"?`<td class="yaz">${esc(r.uyusmaSaati)}</td>`:""}<td class="yaz not">${esc(r.notlar)}</td></tr>`;}).join("")+
+      `<table><thead><tr><th class="c">Geldi</th><th>Saat</th><th>Hasta</th>${tip==="dr"?"<th>Telefon</th>":""}<th>${kolon}</th><th>Geliş saati</th>${tip==="dr"?"<th>Krem saati</th>":""}<th>Alındı</th><th>Not</th></tr></thead><tbody>`+
+      L.map(r=>{const gm=r.randevuDurum==="Gelmedi"||!!r.iptalSaati;return `<tr class="${gm?"gm":""}"><td class="c"><span class="kutu">${r.geldi?"✓":""}</span></td><td class="saat">${esc(r.saat)}</td><td class="ad">${esc(r.hasta)}${r.randevusuz?' <i>(Randevusuz)</i>':""}${r.randevuDurum==="Rütuş"?' <i>(Rütuş)</i>':""}${r.iptalSaati?' <i>(İptal)</i>':r.randevuDurum==="Gelmedi"?' <i>(Gelmedi)</i>':""}</td>${tip==="dr"?`<td class="tel">${esc(r.tel)}</td>`:""}<td>${esc(r.islem)}</td><td class="yaz">${esc(r.gelisSaati)}</td>${tip==="dr"?`<td class="yaz">${esc(r.uyusmaSaati)}</td>`:""}<td class="yaz">${esc(r.alinmaSaati)}</td><td class="yaz not">${esc(r.notlar)}</td></tr>`;}).join("")+
       `</tbody></table>`);
     const html=`<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${tip==="dr"?"Dr İşlem":"Alex-Soprano"} ${esc(tarih)}</title><style>
       @page{size:A4;margin:12mm}body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0}
@@ -4849,7 +4856,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
       const serit=kd&&!kd.durdu?"#0d9488":SERIT[d.etiket];
       const bg=iptal?"#fef2f2":s.alinmaSaati?"#f3f4f6":s.geldi?"#f0fdf4":"#fff";
       const geldiTusu=gelisIsaretleyebilir&&!s.geldi&&!soluk;
-      const alindiTusu=drKart&&kd&&!kd.durdu&&drDuzenleyebilir;
+      const alindiTusu=s.geldi&&!s.alinmaSaati&&!iptal&&drDuzenleyebilir;
       return(
         <div onClick={()=>setAcikKart(acik?null:s.key)} style={{display:"flex",background:bg,borderRadius:12,border:"1px solid #e8e6e0",overflow:"hidden",marginBottom:8,opacity:soluk?0.65:1,cursor:"pointer"}}>
           <div style={{width:s.geldi||kd?8:5,background:serit,flexShrink:0}}/>
@@ -4896,7 +4903,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
                 {iptal&&gelisIsaretleyebilir&&<button onClick={()=>iptalIsaretle(s,false)} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>↩ İptali geri al</button>}
                 {s.alinmaSaati&&drDuzenleyebilir&&<button onClick={()=>alindiIsaretle(s,false)} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>↩ "Alındı" kaydını geri al</button>}
                 {kd&&!s.alinmaSaati&&drDuzenleyebilir&&<button onClick={()=>kremIsaretle(s,false)} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>↩ Krem kaydını sil</button>}
-                {gelisIsaretleyebilir&&s.geldi&&!kd&&!s.randevusuz&&<button onClick={()=>geldiIsaretle(s,false)} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>↩ Geldi kaydını geri al</button>}
+                {gelisIsaretleyebilir&&s.geldi&&!kd&&!s.alinmaSaati&&!s.randevusuz&&<button onClick={()=>geldiIsaretle(s,false)} style={{...btnSecondary,padding:"6px 12px",fontSize:13,background:"#fff"}}>↩ Geldi kaydını geri al</button>}
               </div>
             )}
           </div>
@@ -5066,11 +5073,11 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
                         <button onClick={()=>iptalIsaretle(s,true)} disabled={islemde===s.key} style={{...btnSecondary,background:"#fff",color:"#b91c1c",border:"1px solid #fca5a5",padding:`${6*fs}px ${10*fs}px`,fontSize:13*fs,fontWeight:600,marginRight:6}}>✕ İptal</button>
                         <button onClick={()=>geldiIsaretle(s,true)} disabled={islemde===s.key} style={{...btnPrimary,background:"#16a34a",padding:`${7*fs}px ${16*fs}px`,fontSize:14*fs,fontWeight:600}}>✓ Geldi</button>
                       </>}
-                      {kd&&!kd.durdu&&drDuzenleyebilir&&<button onClick={()=>alindiIsaretle(s,true)} disabled={islemde===s.key} style={{...btnPrimary,background:"#4b5563",padding:`${7*fs}px ${14*fs}px`,fontSize:14*fs,fontWeight:600}}>▶ Alındı</button>}
+                      {s.geldi&&!s.alinmaSaati&&!iptal&&drDuzenleyebilir&&<button onClick={()=>alindiIsaretle(s,true)} disabled={islemde===s.key} style={{...btnPrimary,background:"#4b5563",padding:`${7*fs}px ${14*fs}px`,fontSize:14*fs,fontWeight:600}}>▶ Alındı</button>}
                       {!tamEkran&&<>
                         {iptal&&gelisIsaretleyebilir&&<button onClick={()=>iptalIsaretle(s,false)} style={{background:"none",border:"none",color:"#999",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>↩ geri al</button>}
                         {s.alinmaSaati&&drDuzenleyebilir&&<button onClick={()=>alindiIsaretle(s,false)} style={{background:"none",border:"none",color:"#999",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>↩ geri al</button>}
-                        {gelisIsaretleyebilir&&s.geldi&&!kd&&!s.randevusuz&&<button onClick={()=>geldiIsaretle(s,false)} disabled={islemde===s.key} title="Geldi kaydını geri al" style={{...btnSecondary,padding:"5px 8px",fontSize:12*fs,background:"#fff",marginLeft:6}}>↩</button>}
+                        {gelisIsaretleyebilir&&s.geldi&&!kd&&!s.alinmaSaati&&!s.randevusuz&&<button onClick={()=>geldiIsaretle(s,false)} disabled={islemde===s.key} title="Geldi kaydını geri al" style={{...btnSecondary,padding:"5px 8px",fontSize:12*fs,background:"#fff",marginLeft:6}}>↩</button>}
                         {(aktifOda==="dr"||s.randevusuz)&&drDuzenleyebilir&&<button onClick={()=>drSil(s)} title="Listeden sil" style={{marginLeft:6,background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:15}}>✕</button>}
                       </>}
                     </td>
