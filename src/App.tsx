@@ -151,7 +151,7 @@ const ROLLER = {yonetici:"Yönetici",sekreter:"Sekreter",personel:"Uygulayıcı"
 const EPILASYON_CIHAZLAR = ["Soprano","Alex","Nd:YAG"];
 const DOKULME_SECENEKLERI = ["Az","Orta","İyi","Çok iyi"];
 const EPILASYON_BUCKET = "epilasyon-fotolar";
-const EPILASYON_UYGULAYICI_YEDEK = ["Gülserin","Hanife","Hazal","Fatma","Gülşah"];
+const EPILASYON_UYGULAYICI_YEDEK = ["Gülserin","Hanife","Hazal","Fatma","Gülşah","Vesile"];
 
 const SAATLER = [];
 for(let h=9;h<=20;h++) for(let m=0;m<60;m+=5){if(h===20&&m>0)break;SAATLER.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);}
@@ -178,9 +178,27 @@ function bildirimGorunurMu(r,aktifRol){
   return false;
 }
 function odaKapanisSaat(oda){
-  // Alex: son işlem 19:15'te bitecek şekilde; Soprano: son işlem 19:00'da bitecek şekilde
-  return oda==="alex"?19*60+15:19*60;
+  // Alex: son işlem 19:30'da bitecek şekilde; Soprano: son işlem 19:00'da bitecek şekilde
+  return oda==="alex"?19*60+30:19*60;
 }
+// Alex yeni düzen (Vesile/Gülşah haftalık dönüşümlü: sabah 09:00-14:00, öğleden sonra 14:30-19:30) ve 14:00-14:30 öğle arası bu tarihten itibaren
+const ALEX_YENI_DUZEN="2026-10-02";
+const ALEX_DONUSUM_REF="2026-09-28"; // bu Pazartesi'nin haftası Vesile sabah, Gülşah öğleden sonra; her hafta yer değiştirir
+function alexHaftaDuzeni(tarih){
+  // tarih: "YYYY-MM-DD" → {sabah,ogle} (yeni düzen haftaları için)
+  const d=new Date(tarih+"T00:00:00");const g=d.getDay();d.setDate(d.getDate()+(g===0?-6:1-g));
+  const fark=Math.round((d-new Date(ALEX_DONUSUM_REF+"T00:00:00"))/(7*86400000));
+  const vesileSabah=(((fark%2)+2)%2)===0;
+  return vesileSabah?{sabah:"Vesile",ogle:"Gülşah"}:{sabah:"Gülşah",ogle:"Vesile"};
+}
+function odaMolalari(oda,tarih){
+  if(oda==="alex"&&(!tarih||tarih>=ALEX_YENI_DUZEN))return [{b:14*60,e:14*60+30}];
+  return [];
+}
+function molaCakisiyor(oda,tarih,bas,bit){
+  return odaMolalari(oda,tarih).some(m=>bas<m.e&&bit>m.b);
+}
+const MOLA_MESAJ="⛔ Alex'te 14:00-14:30 öğle arası — bu aralığa randevu verilemez.";
 function today(){
   // Türkiye saat dilimine göre "bugün" — UTC bazlı toISOString() gece 00:00-03:00 arası yanlış gün verebiliyordu
   const parcalar=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Istanbul",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
@@ -296,7 +314,7 @@ function GirisEkrani({onGiris}){
         </div>
         <div style={{marginBottom:14}}>
           <div style={{fontSize:12,fontWeight:600,color:"#888",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Kullanıcı Adı</div>
-          <input autoFocus value={loginName} onChange={e=>setLoginName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&girisYap()} placeholder="meltem, fatma, merve..." style={{width:"100%",padding:"11px 14px",border:"1.5px solid #ddd",borderRadius:10,fontSize:15,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+          <input autoFocus value={loginName} onChange={e=>setLoginName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&girisYap()} placeholder="hanife, fatma, merve..." style={{width:"100%",padding:"11px 14px",border:"1.5px solid #ddd",borderRadius:10,fontSize:15,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
         </div>
         <div style={{marginBottom:20}}>
           <div style={{fontSize:12,fontWeight:600,color:"#888",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Şifre</div>
@@ -489,15 +507,17 @@ export default function App() {
     return()=>{iptal=true;};
   },[seciliTarih,randevular,hastalar]);
 
-  function cakismaVar(oda,tarih,saat,sure,excludeId=null){
+  function cakismaVar(oda,tarih,saat,sure,excludeId=null,hasta=null){
     const yB=timeToMin(saat),yE=yB+sure;
+    const ayniHasta=r=>hasta&&r.hasta?.toLowerCase().trim()===hasta.toLowerCase().trim();
     const rc=randevular.filter(r=>r.oda===oda&&r.tarih===tarih&&r.id!==excludeId)
-      .find(r=>{const b=timeToMin(r.saat),e=b+r.sure;return yB<e&&yE>b;});
+      .find(r=>{const b=timeToMin(r.saat),e=b+r.sure;return yB<e&&yE>b&&!(oda==="soprano"&&ayniHasta(r));});
     const bc=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih&&b.baslik!=="DR_YOK")
       .find(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return yB<be&&yE>bb;});
     if(bc) return {tip:"blok",mesaj:`⛔ Bu saat bloklu: "${bc.baslik}" (${bc.saat}, ${bc.sure} dk).`};
     if(rc){
-      if(oda==="soprano") return {tip:"uyari",mesaj:`⚠️ Bu saatte ${rc.hasta} adlı hastanın randevusu var (${rc.saat}, ${rc.sure} dk). Yine de devam etmek istiyor musunuz?`};
+      // Soprano lazer, cilt bakımı, karbon, tüy sarartma, forma — hepsini Hanife yapıyor: aynı anda iki farklı hastaya randevu verilemez
+      if(oda==="soprano") return {tip:"randevu",mesaj:`⛔ Bu saatte ${rc.hasta} adlı hastanın randevusu var (${rc.saat}, ${rc.sure} dk). Soprano, cilt bakımı, karbon ve tüy sarartmayı aynı personel (Hanife) yaptığı için aynı anda iki randevu verilemez.`};
       return {tip:"randevu",mesaj:`⚠️ Bu saatte ${rc.hasta} adlı hastanın randevusu var (${rc.saat}, ${rc.sure} dk).`};
     }
     return null;
@@ -526,12 +546,16 @@ export default function App() {
       showToast(`${data.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu randevu o saatten sonra bitiyor, oluşturulamaz.`,"error");
       return false;
     }
+    // Öğle arası / Soprano çakışması: yeni randevuda veya saat/süre/tarih/oda değiştiyse kontrol et (eski kayıtların başka alanlarının düzenlenmesini engellemesin)
+    const eskiKayit=data.id?randevular.find(x=>x.id===data.id):null;
+    const zamanDegisti=!eskiKayit||eskiKayit.saat!==data.saat||eskiKayit.sure!==data.sure||eskiKayit.tarih!==tarihKontrol||eskiKayit.oda!==data.oda;
+    if(zamanDegisti&&molaCakisiyor(data.oda,tarihKontrol,saatMin,bitisMin)){showToast(MOLA_MESAJ,"error");return false;}
     const drYokVarMi=bloklar.filter(b=>b.baslik==="DR_YOK"&&b.tarih===tarihKontrol)
       .some(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return saatMin<be&&bitisMin>bb;});
     if(drYokVarMi){
       if(!window.confirm("⚠️ Bu zaman aralığında Dr. Duygu Hanım klinikte olmayacak. Yine de randevu oluşturmak istiyor musunuz?")) return false;
     }
-    const cakisma=cakismaVar(data.oda,tarihKontrol,data.saat,data.sure,data.id);
+    const cakisma=(data.oda!=="soprano"||zamanDegisti)?cakismaVar(data.oda,tarihKontrol,data.saat,data.sure,data.id,data.hasta):null;
     if(cakisma){
       if(cakisma.tip==="uyari"){
         if(!window.confirm(cakisma.mesaj)) return false;
@@ -672,7 +696,8 @@ export default function App() {
           showToast(`${r.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu süre uzatması o saatten sonra bitiyor, uygulanamaz.`,"error");
           return;
         }
-        const cakisma=cakismaVar(r.oda,r.tarih,r.saat,yeniSure,id);
+        if(molaCakisiyor(r.oda,r.tarih,timeToMin(r.saat),timeToMin(r.saat)+yeniSure)){showToast(MOLA_MESAJ,"error");return;}
+        const cakisma=cakismaVar(r.oda,r.tarih,r.saat,yeniSure,id,r.hasta);
         if(cakisma){
           if(cakisma.tip==="uyari"){
             if(!window.confirm(cakisma.mesaj)) return;
@@ -691,7 +716,9 @@ export default function App() {
 
   async function randevuTasi(randevu, yeniSaat){
     try{
-      const cakisma=cakismaVar(randevu.oda,randevu.tarih,yeniSaat,randevu.sure,randevu.id);
+      if(molaCakisiyor(randevu.oda,randevu.tarih,timeToMin(yeniSaat),timeToMin(yeniSaat)+randevu.sure)){showToast(MOLA_MESAJ,"error");return false;}
+      if(timeToMin(yeniSaat)+randevu.sure>odaKapanisSaat(randevu.oda)){showToast(`${randevu.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(odaKapanisSaat(randevu.oda))}'te kapanıyor — bu saate taşınamaz.`,"error");return false;}
+      const cakisma=cakismaVar(randevu.oda,randevu.tarih,yeniSaat,randevu.sure,randevu.id,randevu.hasta);
       if(cakisma){
         if(cakisma.tip==="uyari"){
           if(!window.confirm(cakisma.mesaj)) return false;
@@ -1099,8 +1126,8 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
     }
     return gruplar;
   }
-  function bosluklariBul(randevular,bloklar,bitisSaat){
-    const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
+  function bosluklariBul(randevular,bloklar,bitisSaat,molalar=[]){
+    const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure})),...molalar].sort((a,b)=>a.b-b.b);
     const bosluklar=[];
     let imlec=START;
     meşgul.forEach(m=>{
@@ -1128,10 +1155,11 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
   function renderOda(randevular,bloklar,odaId){
     const pazarMi=new Date(seciliTarih+"T00:00:00").getDay()===0;
     const bitisSaat=odaKapanisSaat(odaId);
-    const odaTotal=bitisSaat-START;
+    const molalar=pazarMi?[]:odaMolalari(odaId,seciliTarih);
+    const odaTotal=bitisSaat-START-molalar.reduce((t,m)=>t+(m.e-m.b),0);
     const gercekBloklar=bloklar.filter(b=>b.baslik!=="DR_YOK");
     const birlesik=ayniHastaBirlestir(randevular);
-    const bosluklar=bosluklariBul(randevular,gercekBloklar,bitisSaat);
+    const bosluklar=bosluklariBul(randevular,gercekBloklar,bitisSaat,molalar);
     const renkOda=odaId==="alex"?"#2d6a35":"#5b3fa0";
 
     // Tek zaman çizelgesi: randevular + bloklar + boşluklar, hepsi saate göre sıralı (Dr. Yok dahil değil — sadece bilgilendirme amaçlı ayrı gösteriliyor)
@@ -1139,9 +1167,10 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
       ...birlesik.map(u=>({tip:"randevu",b:timeToMin(u.saat),e:timeToMin(u.saat)+u.sure,veri:u})),
       ...gercekBloklar.map(b=>({tip:"blok",b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure,veri:b})),
       ...bosluklar.map(bo=>({tip:"bosluk",b:bo.b,e:bo.e,veri:bo})),
+      ...molalar.map(m=>({tip:"mola",b:m.b,e:m.e,veri:m})),
     ].sort((a,b)=>a.b-b.b||a.e-b.e);
 
-    const toplamMesgul=satirlar.filter(s=>s.tip!=="bosluk").reduce((s,x)=>s+(x.e-x.b),0);
+    const toplamMesgul=satirlar.filter(s=>s.tip!=="bosluk"&&s.tip!=="mola").reduce((s,x)=>s+(x.e-x.b),0);
     const doluluk=Math.round((toplamMesgul/odaTotal)*100);
 
     return(
@@ -1163,6 +1192,7 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
               let bg="#e9e7e1",baslik=`${minToTime(s.b)}-${minToTime(s.e)} boş`;
               if(s.tip==="randevu"){bg=renkOda;baslik=`${minToTime(s.b)}-${minToTime(s.e)} ${s.veri.hasta}`;}
               else if(s.tip==="blok"){bg="#888";baslik=`${minToTime(s.b)}-${minToTime(s.e)} ${s.veri.baslik}`;}
+              else if(s.tip==="mola"){bg="#cbd5e1";baslik=`${minToTime(s.b)}-${minToTime(s.e)} öğle arası`;}
               return <div key={i} title={baslik} style={{flexGrow:sure,flexBasis:0,minHeight:sure>0?1:0,background:bg,borderBottom:"1px solid #fff"}}/>;
             })}
           </div>
@@ -1204,6 +1234,14 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
                         </span>
                       );
                     })()}
+                  </div>
+                );
+              }
+              if(s.tip==="mola"){
+                return(
+                  <div key={"mo"+i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",marginBottom:5,borderRadius:6,background:"#e2e8f0",border:"1px dashed #94a3b8"}}>
+                    <div style={{fontSize:11,fontWeight:800,color:"#475569",width:42,flexShrink:0}}>{minToTime(s.b)}</div>
+                    <div style={{fontSize:12,fontWeight:600,color:"#475569"}}>🍽 Öğle arası ({minToTime(s.b)}-{minToTime(s.e)})</div>
                   </div>
                 );
               }
@@ -1633,6 +1671,7 @@ function BosRandevuPanel({randevular,bloklar,setSeciliTarih,onYeniRandevu,onKapa
         if(saatFiltre==="17_sonrasi"&&t<17*60)continue;
         const rc=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).some(r=>{const b=timeToMin(r.saat),e=b+r.sure;return t<e&&bitis>b;});
         const bc=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih).some(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return t<be&&bitis>bb;});
+        if(molaCakisiyor(oda,tarih,t,bitis))continue;
         if(!rc&&!bc){if(!sonuc.some(s=>s.tarih===tarih&&s.saat===saat))sonuc.push({tarih,saat});if(sonuc.filter(s=>s.tarih===tarih).length>=3)break;}
       }
       if(sonuc.length>=15)break;
@@ -2028,7 +2067,7 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
               }catch(err){showToast("Hata: "+err.message,"error");}
             }} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ddd",fontSize:13,fontWeight:600,color:r.uygulayici==="Meltem"?"#2563eb":"#7c3aed"}}>
               <option value="">Hanife (varsayılan)</option>
-              <option value="Meltem">Meltem</option>
+              {r.uygulayici==="Meltem"&&<option value="Meltem">Meltem (eski kayıt)</option>}
             </select>
             <span style={{fontSize:13,fontWeight:600,color:r.uygulayici==="Meltem"?"#2563eb":"#7c3aed"}}>👤 {r.uygulayici==="Meltem"?"Meltem":"Hanife"}</span>
           </div>
@@ -2869,7 +2908,7 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
     ["alex","soprano"].forEach(oda=>{
       const gunR=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat));
       const gunB=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih);
-      const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
+      const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure})),...odaMolalari(oda,tarih)].sort((a,b)=>a.b-b.b);
       // Pazar günü ise boşluk gösterme
       if(new Date(tarih+"T00:00:00").getDay()===0) return;
       let imlec=9*60;
@@ -3083,7 +3122,7 @@ function AnketSonucSekme({aktifRol}){
     });
     return{grupSayisi:grupDusuk.length,alexSayisi:grupAlex.length,sopranoSayisi:grupSoprano.length,sonuc};
   }
-  // Alex'te haftalık dönüşümlü sabahçı/öğlenci tahmini — bu hafta Gülşah sabahçı (09:00-14:00), Hazal öğlenci (14:30-19:15), her hafta değişiyor
+  // Alex personel tahmini — ALEX_YENI_DUZEN'den itibaren Vesile/Gülşah, öncesi Hazal/Gülşah; ikisi de haftalık dönüşümlü
   function haftaBasiPazartesi(tarihStr){
     const d=new Date(tarihStr+"T00:00:00");
     const gun=d.getDay();
@@ -3093,6 +3132,9 @@ function AnketSonucSekme({aktifRol}){
   }
   function alexPersoneliTahmini(tarih,saat){
     if(!tarih||!saat)return null;
+    // Yeni düzen: Vesile/Gülşah haftalık dönüşümlü (sabah 09:00-14:00, öğleden sonra 14:30-19:30)
+    if(tarih>=ALEX_YENI_DUZEN){const h=alexHaftaDuzeni(tarih);return timeToMin(saat)<14*60?h.sabah:h.ogle;}
+    // Eski düzen (ALEX_YENI_DUZEN öncesi):
     // Referans: 2026-07-28 (Pazartesi) haftası Hazal sabahçı, Gülşah öğlenci. Her hafta değişir.
     const refHaftaBasi=new Date("2026-07-28T00:00:00");
     const oHaftaBasi=haftaBasiPazartesi(tarih);
@@ -3155,6 +3197,7 @@ function AnketSonucSekme({aktifRol}){
   }
   const gulsahIst=personelBazliIstatistik("Gülşah","alex");
   const hazalIst=personelBazliIstatistik("Hazal","alex");
+  const vesileIst=personelBazliIstatistik("Vesile","alex");
   const hanifeIst=personelBazliIstatistik("Hanife","soprano");
 
   useEffect(()=>{
@@ -3461,12 +3504,12 @@ function AnketSonucSekme({aktifRol}){
         </div>
       )}
 
-      {(gulsahIst.toplam>0||hazalIst.toplam>0||hanifeIst.toplam>0)&&(
+      {(gulsahIst.toplam>0||hazalIst.toplam>0||vesileIst.toplam>0||hanifeIst.toplam>0)&&(
         <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
           <div style={{padding:"12px 16px",background:"#f0fdf4",borderBottom:"1px solid #bbf7d0"}}>
             <span style={{fontWeight:600,fontSize:14,color:"#16a34a"}}>👤 Personel Bazlı — Tekrar Hizmet Alma İsteği (tahmini)</span>
           </div>
-          <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:[gulsahIst.toplam>0,hazalIst.toplam>0,hanifeIst.toplam>0].filter(Boolean).length>=2?"1fr 1fr 1fr":"1fr",gap:16}}>
+          <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:[gulsahIst.toplam>0,hazalIst.toplam>0,vesileIst.toplam>0,hanifeIst.toplam>0].filter(Boolean).length>=2?"repeat(auto-fit,minmax(180px,1fr))":"1fr",gap:16}}>
             {gulsahIst.toplam>0&&(
               <div>
                 <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Gülşah ({gulsahIst.toplam} kişi)</div>
@@ -3482,6 +3525,23 @@ function AnketSonucSekme({aktifRol}){
                   </div>);
                 })}
                 <div style={{fontSize:10,color:"#dc2626",fontWeight:700,marginTop:4}}>Hayır+Kararsızım: %{(gulsahIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(gulsahIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
+              </div>
+            )}
+            {vesileIst.toplam>0&&(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Vesile ({vesileIst.toplam} kişi)</div>
+                {vesileIst.dagilim.map(d=>{
+                  const olumsuz=d.secenek==="Hayır"||d.secenek==="Kararsızım";
+                  return(
+                  <div key={d.secenek} onClick={()=>setSoruDetay({soruId:"personel_vesile",secenek:d.secenek,anketTipi:"lazer",metin:"Tekrar aynı personelden hizmet almak ister misiniz? (Vesile — tahmini)",secenekLabel:d.secenek,hastalar:personelBazliHastalar("Vesile","alex",d.secenek)})} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer",background:olumsuz?"#fffbeb":"transparent",borderRadius:4,padding:"2px 0"}}>
+                    <span style={{fontSize:11,color:olumsuz?"#dc2626":"#555",width:90,flexShrink:0,fontWeight:olumsuz?700:400}}>{d.secenek}</span>
+                    <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:7,overflow:"hidden"}}>
+                      <div style={{width:`${d.yuzde}%`,height:"100%",background:olumsuz?"#dc2626":"#22c55e"}}/>
+                    </div>
+                    <span style={{fontSize:11,fontWeight:700,color:"#555",width:30,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
+                  </div>);
+                })}
+                <div style={{fontSize:10,color:"#dc2626",fontWeight:700,marginTop:4}}>Hayır+Kararsızım: %{(vesileIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(vesileIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
               </div>
             )}
             {hazalIst.toplam>0&&(
@@ -3741,7 +3801,7 @@ function CiltBakimiSekme({randevular,setRandevular,aktifRol,showToast}){
   return(
     <div>
       <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>🌸 Cilt Bakımı Randevuları</h2>
-      <div style={{fontSize:12,color:"#888",marginBottom:14}}>Bu hafta ve önceki 3 günün cilt bakımı randevuları. Meltem olarak işaretlenmeyen hastalar otomatik olarak Hanife kabul edilir.</div>
+      <div style={{fontSize:12,color:"#888",marginBottom:14}}>Bu hafta ve önceki 3 günün cilt bakımı randevuları. Cilt bakımı uygulayıcısı Hanife'dir.</div>
       {gunListesi.length===0?(
         <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa",fontSize:13}}>Bu dönemde cilt bakımı randevusu bulunamadı.</div>
       ):gunListesi.map(([tarih,liste])=>{
@@ -3769,7 +3829,7 @@ function CiltBakimiSekme({randevular,setRandevular,aktifRol,showToast}){
                   <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                     <select value={r.uygulayici||""} onChange={e=>uygulayiciAta(r.id,e.target.value)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #ddd",fontSize:12,fontWeight:600,color:r.uygulayici==="Meltem"?"#2563eb":"#7c3aed"}}>
                       <option value="">Hanife (varsayılan)</option>
-                      <option value="Meltem">Meltem</option>
+                      {r.uygulayici==="Meltem"&&<option value="Meltem">Meltem (eski kayıt)</option>}
                     </select>
                     <span style={{fontSize:12,color:atanan==="Meltem"?"#2563eb":"#7c3aed",fontWeight:600,minWidth:50}}>👤 {atanan}</span>
                   </div>
@@ -3800,17 +3860,21 @@ function AlexProgramSekme({aktifRol}){
       const pazartesi=new Date(baslangic);pazartesi.setDate(baslangic.getDate()+i*7);
       const cumartesi=new Date(pazartesi);cumartesi.setDate(pazartesi.getDate()+5);
       const pzKey=`${pazartesi.getFullYear()}-${String(pazartesi.getMonth()+1).padStart(2,"0")}-${String(pazartesi.getDate()).padStart(2,"0")}`;
+      const cumKey=`${cumartesi.getFullYear()}-${String(cumartesi.getMonth()+1).padStart(2,"0")}-${String(cumartesi.getDate()).padStart(2,"0")}`;
       const haftaFarki=Math.round((pazartesi-REF_TARIH)/(7*86400000));
       const hazalSabahMi=(((haftaFarki%2)+2)%2)===0;
-      const varsayilanSabah=hazalSabahMi?"Hazal":"Gülşah";
-      const varsayilanOgle=hazalSabahMi?"Gülşah":"Hazal";
-      const sabah=override[pzKey]?.sabah||varsayilanSabah;
-      const ogle=override[pzKey]?.ogle||varsayilanOgle;
-      const cumKey=`${cumartesi.getFullYear()}-${String(cumartesi.getMonth()+1).padStart(2,"0")}-${String(cumartesi.getDate()).padStart(2,"0")}`;
+      const yeniDuzen=cumKey>=ALEX_YENI_DUZEN;
+      const yd=alexHaftaDuzeni(cumKey);
+      const varsayilanSabah=yeniDuzen?yd.sabah:hazalSabahMi?"Hazal":"Gülşah";
+      const varsayilanOgle=yeniDuzen?yd.ogle:hazalSabahMi?"Gülşah":"Hazal";
+      const gecerli=p=>PERSONELLER.includes(p)?p:null;
+      const sabah=gecerli(override[pzKey]?.sabah)||varsayilanSabah;
+      const ogle=gecerli(override[pzKey]?.ogle)||varsayilanOgle;
       sonuc.push({pzKey,cumKey,sabah,ogle,varsayilanSabah,varsayilanOgle,duzenlendi:!!override[pzKey]});
     }
     return sonuc;
   }
+  const PERSONELLER=["Vesile","Gülşah"];
   const liste=haftalar();
   const duzenlenebilir=aktifRol==="yonetici"||aktifRol==="sorumlu";
 
@@ -3826,19 +3890,18 @@ function AlexProgramSekme({aktifRol}){
     try{localStorage.setItem("kl_alex_program",JSON.stringify(yeni));}catch{}
   }
 
-  const PERSONELLER=["Hazal","Gülşah"];
 
   return(
     <div>
       <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>📋 Alex Çalışma Programı</h2>
-      <div style={{fontSize:12,color:"#888",marginBottom:14}}>Haftalık dönüşümlü çalışma takvimi. Sabah: 09:00-14:00 · Öğleden sonra: 14:30-19:15{!duzenlenebilir&&" · Değişiklik yapmak için Yönetici veya Sorumlu yetkisi gerekli."}</div>
+      <div style={{fontSize:12,color:"#888",marginBottom:14}}>Vesile ve Gülşah haftalık dönüşümlü çalışır. Sabah: 09:00-14:00 · Öğle arası: 14:00-14:30 · Öğleden sonra: 14:30-19:30{!duzenlenebilir&&" · Değişiklik yapmak için Yönetici veya Sorumlu yetkisi gerekli."}</div>
       <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
           <thead>
             <tr style={{background:"#f7f7f5"}}>
               <th style={{textAlign:"left",padding:"10px 14px",fontWeight:600,fontSize:12,color:"#888",borderBottom:"1px solid #e8e6e0"}}>Hafta</th>
               <th style={{textAlign:"center",padding:"10px 14px",fontWeight:600,fontSize:12,color:"#2563eb",borderBottom:"1px solid #e8e6e0"}}>Sabah (09-14)</th>
-              <th style={{textAlign:"center",padding:"10px 14px",fontWeight:600,fontSize:12,color:"#7c3aed",borderBottom:"1px solid #e8e6e0"}}>Öğle Sonrası (14:30-19:15)</th>
+              <th style={{textAlign:"center",padding:"10px 14px",fontWeight:600,fontSize:12,color:"#7c3aed",borderBottom:"1px solid #e8e6e0"}}>Öğle Sonrası (14:30-19:30)</th>
               {duzenlenebilir&&<th style={{width:60,borderBottom:"1px solid #e8e6e0"}}></th>}
             </tr>
           </thead>
@@ -4106,7 +4169,7 @@ function RaporSekme({seciliTarih,randevular,aktifRol}){
                 <div style={{fontSize:12,color:"#888",marginBottom:6}}>Bu Hafta ({haftaPzt} → {haftaCmt})</div>
                 <div style={{fontSize:20,fontWeight:700,color:"#7c3aed",marginBottom:8}}>Toplam: {haftaCilt.length}</div>
                 <div style={{display:"flex",gap:12}}>
-                  <div><span style={{fontSize:12,color:"#555"}}>Meltem:</span> <strong style={{color:"#2563eb"}}>{haftaMeltem}</strong></div>
+                  {haftaMeltem>0&&<div><span style={{fontSize:12,color:"#555"}}>Meltem:</span> <strong style={{color:"#2563eb"}}>{haftaMeltem}</strong></div>}
                   <div><span style={{fontSize:12,color:"#555"}}>Hanife:</span> <strong style={{color:"#7c3aed"}}>{haftaHanife}</strong></div>
                 </div>
               </div>
@@ -4114,7 +4177,7 @@ function RaporSekme({seciliTarih,randevular,aktifRol}){
                 <div style={{fontSize:12,color:"#888",marginBottom:6}}>Bu Ay ({today().slice(0,7)})</div>
                 <div style={{fontSize:20,fontWeight:700,color:"#7c3aed",marginBottom:8}}>Toplam: {ayCilt.length}</div>
                 <div style={{display:"flex",gap:12}}>
-                  <div><span style={{fontSize:12,color:"#555"}}>Meltem:</span> <strong style={{color:"#2563eb"}}>{ayMeltem}</strong></div>
+                  {ayMeltem>0&&<div><span style={{fontSize:12,color:"#555"}}>Meltem:</span> <strong style={{color:"#2563eb"}}>{ayMeltem}</strong></div>}
                   <div><span style={{fontSize:12,color:"#555"}}>Hanife:</span> <strong style={{color:"#7c3aed"}}>{ayHanife}</strong></div>
                 </div>
               </div>
