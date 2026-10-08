@@ -4527,6 +4527,47 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const [manuel,setManuel]=useState({saat:"",hasta:"",islem:"",notlar:"",sure:""});
   const [excelOnizleme,setExcelOnizleme]=useState(null);
   const [ekleniyor,setEkleniyor]=useState(false);
+
+  const saatInputRef=useRef(null);
+  const [personelOda,setPersonelOda]=useState(()=>{try{return window.localStorage.getItem("kl_bh_oda")||null;}catch{return null;}});
+  const kapRef=useRef(null);
+  useEffect(()=>{ // yanıp sönen ❗ için animasyon tanımı (bir kez)
+    if(document.getElementById("bh-anim"))return;
+    const st=document.createElement("style");st.id="bh-anim";
+    st.textContent="@keyframes bhYanip{0%{opacity:1}100%{opacity:0}}";
+    document.head.appendChild(st);
+  },[]);
+  // Telefon/küçük ekran: ≤768px → kart görünümü (masaüstü tablo aynen kalır)
+  const [mobil,setMobil]=useState(()=>{try{return window.matchMedia("(max-width: 768px)").matches;}catch{return false;}});
+  const [acikKart,setAcikKart]=useState(null);
+  useEffect(()=>{
+    let mq;try{mq=window.matchMedia("(max-width: 768px)");}catch{return;}
+    const fn=e=>setMobil(e.matches);
+    mq.addEventListener?mq.addEventListener("change",fn):mq.addListener(fn);
+    return()=>{mq.removeEventListener?mq.removeEventListener("change",fn):mq.removeListener(fn);};
+  },[]);
+
+  const login=aktifKullanici?.login_name||"";
+  // Tüm roller Geldi / İptal / Alındı / Krem yapabilir (ekip birbirine yardım ediyor); kimin bastığı kaydedilir
+  const gelisIsaretleyebilir=aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="sorumlu"||aktifRol==="personel";
+  const drDuzenleyebilir=aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="sorumlu"||aktifRol==="personel";
+
+  // Uygulayıcının odası: kullanicilar.oda kolonundan; yoksa ekranda bir kez seçilir
+  useEffect(()=>{
+    if(aktifRol!=="personel"||!login)return;
+    let iptal=false;
+    sbGet("kullanicilar",`login_name=eq.${encodeURIComponent(login)}&select=id,oda`).then(d=>{
+      const oda=d?.[0]?.oda;
+      if(!iptal&&(oda==="alex"||oda==="soprano"||oda==="dr")){setPersonelOda(oda);try{window.localStorage.setItem("kl_bh_oda",oda);}catch{}}
+    }).catch(()=>{});
+    return()=>{iptal=true;};
+  },[aktifRol,login]);
+
+  // Herkes tüm odaları görür (ekip birbirine yardım ediyor); uygulayıcının odası sadece açılış sekmesini belirler
+  const gorunenOdalar=BH_ODALAR;
+  const [aktifOda,setAktifOda]=useState(()=>aktifRol==="yonetici"?"dr":"alex");
+  useEffect(()=>{if(aktifRol==="personel"&&personelOda)setAktifOda(personelOda);},[aktifRol,personelOda]);
+
   // ── Clinic2026 Dr Randevu Otomatik Senkron ──
   const [drOtoYukleniyor, setDrOtoYukleniyor] = useState(false);
   const [drOtoHata, setDrOtoHata] = useState(null);
@@ -4594,46 +4635,6 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     baglan();
     return () => { kapandi = true; clearInterval(hb); clearTimeout(yenidenTimer); try { ws && ws.close(); } catch {} };
   }, [tarih, drOtomatikSenkron]);
-
-  const saatInputRef=useRef(null);
-  const [personelOda,setPersonelOda]=useState(()=>{try{return window.localStorage.getItem("kl_bh_oda")||null;}catch{return null;}});
-  const kapRef=useRef(null);
-  useEffect(()=>{ // yanıp sönen ❗ için animasyon tanımı (bir kez)
-    if(document.getElementById("bh-anim"))return;
-    const st=document.createElement("style");st.id="bh-anim";
-    st.textContent="@keyframes bhYanip{0%{opacity:1}100%{opacity:0}}";
-    document.head.appendChild(st);
-  },[]);
-  // Telefon/küçük ekran: ≤768px → kart görünümü (masaüstü tablo aynen kalır)
-  const [mobil,setMobil]=useState(()=>{try{return window.matchMedia("(max-width: 768px)").matches;}catch{return false;}});
-  const [acikKart,setAcikKart]=useState(null);
-  useEffect(()=>{
-    let mq;try{mq=window.matchMedia("(max-width: 768px)");}catch{return;}
-    const fn=e=>setMobil(e.matches);
-    mq.addEventListener?mq.addEventListener("change",fn):mq.addListener(fn);
-    return()=>{mq.removeEventListener?mq.removeEventListener("change",fn):mq.removeListener(fn);};
-  },[]);
-
-  const login=aktifKullanici?.login_name||"";
-  // Tüm roller Geldi / İptal / Alındı / Krem yapabilir (ekip birbirine yardım ediyor); kimin bastığı kaydedilir
-  const gelisIsaretleyebilir=aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="sorumlu"||aktifRol==="personel";
-  const drDuzenleyebilir=aktifRol==="sekreter"||aktifRol==="yonetici"||aktifRol==="sorumlu"||aktifRol==="personel";
-
-  // Uygulayıcının odası: kullanicilar.oda kolonundan; yoksa ekranda bir kez seçilir
-  useEffect(()=>{
-    if(aktifRol!=="personel"||!login)return;
-    let iptal=false;
-    sbGet("kullanicilar",`login_name=eq.${encodeURIComponent(login)}&select=id,oda`).then(d=>{
-      const oda=d?.[0]?.oda;
-      if(!iptal&&(oda==="alex"||oda==="soprano"||oda==="dr")){setPersonelOda(oda);try{window.localStorage.setItem("kl_bh_oda",oda);}catch{}}
-    }).catch(()=>{});
-    return()=>{iptal=true;};
-  },[aktifRol,login]);
-
-  // Herkes tüm odaları görür (ekip birbirine yardım ediyor); uygulayıcının odası sadece açılış sekmesini belirler
-  const gorunenOdalar=BH_ODALAR;
-  const [aktifOda,setAktifOda]=useState(()=>aktifRol==="yonetici"?"dr":"alex");
-  useEffect(()=>{if(aktifRol==="personel"&&personelOda)setAktifOda(personelOda);},[aktifRol,personelOda]);
 
   // Saat göstergesi + gecikme renkleri için dakikada bir yeniden çiz
   useEffect(()=>{const t=setInterval(()=>setSaatSimdi(suanSaatTR()),20000);return()=>clearInterval(t);},[]);
