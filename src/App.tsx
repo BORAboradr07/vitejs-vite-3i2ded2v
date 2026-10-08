@@ -7,6 +7,25 @@ const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 // Kasa Supabase - sadece hasta kontrolü için
 const KASA_URL = "https://pwcyawsgjzjcydcisyvy.supabase.co";
 const KASA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3Y3lhd3NnanpqY3lkY2lzeXZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNDA4MDEsImV4cCI6MjA5NDcxNjgwMX0.gnee9oYsFpxzdb_-H-JtRC2fU0Imj2Dajybt7or9a0Y";
+
+// Clinic2026 (Dr Duygu Randevu Sistemi) — sadece okuma
+const DR_URL = "https://yvueomvcxwmhywxdfzgo.supabase.co";
+const DR_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dWVvbXZjeHdtaHl3eGRmemdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2OTYzNjYsImV4cCI6MjEwNjI3MjM2Nn0.ZwABm9TiRTbvn2665JXbQY3TAZ4bKy6W9NOyfXMoLiE";
+function DR_HDR(){ return {"Content-Type":"application/json","apikey":DR_KEY,"Authorization":"Bearer "+DR_KEY}; }
+async function drRandevulariCek(tarih){
+  const startISO = new Date(tarih + "T00:00:00+03:00").toISOString();
+  const endISO   = new Date(tarih + "T23:59:59+03:00").toISOString();
+  const r = await fetch(
+    `${DR_URL}/rest/v1/dr_randevular?select=id,baslangic,bitis,durum,notlar,hastalar(id,ad,soyad,telefon),hizmetler(id,ad)&baslangic=gte.${encodeURIComponent(startISO)}&baslangic=lte.${encodeURIComponent(endISO)}&order=baslangic.asc`,
+    { headers: DR_HDR() }
+  );
+  if(!r.ok) throw new Error("Dr randevuları çekilemedi");
+  return (await r.json()).filter(d => d.durum !== "iptal").map(d => {
+    const saatTR = new Date(d.baslangic).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit", hour12: false });
+    const ad = d.hastalar ? `${d.hastalar.ad || ""} ${d.hastalar.soyad || ""}`.trim().toLocaleUpperCase("tr") : "?";
+    return { drRandevuId: d.id, tarih, saat: saatTR, hasta: ad, tel: d.hastalar?.telefon || "", islem: d.hizmetler?.ad || "", notlar: d.notlar || "", durum: d.durum };
+  });
+}
 const HDR_BASE = { "Content-Type":"application/json", "apikey":SB_KEY };
 // Giriş yapan kullanıcının kendi oturum anahtarı — login sonrası ve arka planda periyodik olarak güncellenir.
 // Giriş yapılmamışsa (ör. giriş ekranı) anon anahtara düşer.
@@ -181,7 +200,8 @@ function odaKapanisSaat(oda){
   // Alex: son işlem 19:30'da bitecek şekilde; Soprano: son işlem 19:00'da bitecek şekilde
   return oda==="alex"?19*60+30:19*60;
 }
-// Alex yeni düzen (Vesile/Gülşah haftalık dönüşümlü: sabah 09:00-14:00, öğleden sonra 14:30-19:30) ve 14:00-14:30 öğle arası bu tarihten itibaren
+// Alex yeni düzen (Vesile/Gülşah haftalık dönüşümlü: sabah 09:00-14:00, öğleden sonra 14:30-19:30) bu tarihten itibaren.
+// Öğle arası (14:00-14:30) kodda sabit değil — takvimde "Öğle Arası" bloğu olarak duruyor; yeri/süresi blok ile değiştirilebilir.
 const ALEX_YENI_DUZEN="2026-10-02";
 const ALEX_DONUSUM_REF="2026-09-28"; // bu Pazartesi'nin haftası Vesile sabah, Gülşah öğleden sonra; her hafta yer değiştirir
 function alexHaftaDuzeni(tarih){
@@ -191,14 +211,7 @@ function alexHaftaDuzeni(tarih){
   const vesileSabah=(((fark%2)+2)%2)===0;
   return vesileSabah?{sabah:"Vesile",ogle:"Gülşah"}:{sabah:"Gülşah",ogle:"Vesile"};
 }
-function odaMolalari(oda,tarih){
-  if(oda==="alex"&&(!tarih||tarih>=ALEX_YENI_DUZEN))return [{b:14*60,e:14*60+30}];
-  return [];
-}
-function molaCakisiyor(oda,tarih,bas,bit){
-  return odaMolalari(oda,tarih).some(m=>bas<m.e&&bit>m.b);
-}
-const MOLA_MESAJ="⛔ Alex'te 14:00-14:30 öğle arası — bu aralığa randevu verilemez.";
+
 function today(){
   // Türkiye saat dilimine göre "bugün" — UTC bazlı toISOString() gece 00:00-03:00 arası yanlış gün verebiliyordu
   const parcalar=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Istanbul",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
@@ -546,10 +559,9 @@ export default function App() {
       showToast(`${data.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu randevu o saatten sonra bitiyor, oluşturulamaz.`,"error");
       return false;
     }
-    // Öğle arası / Soprano çakışması: yeni randevuda veya saat/süre/tarih/oda değiştiyse kontrol et (eski kayıtların başka alanlarının düzenlenmesini engellemesin)
+    // Soprano çakışması: yeni randevuda veya saat/süre/tarih/oda değiştiyse kontrol et (eski kayıtların başka alanlarının düzenlenmesini engellemesin)
     const eskiKayit=data.id?randevular.find(x=>x.id===data.id):null;
     const zamanDegisti=!eskiKayit||eskiKayit.saat!==data.saat||eskiKayit.sure!==data.sure||eskiKayit.tarih!==tarihKontrol||eskiKayit.oda!==data.oda;
-    if(zamanDegisti&&molaCakisiyor(data.oda,tarihKontrol,saatMin,bitisMin)){showToast(MOLA_MESAJ,"error");return false;}
     const drYokVarMi=bloklar.filter(b=>b.baslik==="DR_YOK"&&b.tarih===tarihKontrol)
       .some(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return saatMin<be&&bitisMin>bb;});
     if(drYokVarMi){
@@ -696,7 +708,6 @@ export default function App() {
           showToast(`${r.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu süre uzatması o saatten sonra bitiyor, uygulanamaz.`,"error");
           return;
         }
-        if(molaCakisiyor(r.oda,r.tarih,timeToMin(r.saat),timeToMin(r.saat)+yeniSure)){showToast(MOLA_MESAJ,"error");return;}
         const cakisma=cakismaVar(r.oda,r.tarih,r.saat,yeniSure,id,r.hasta);
         if(cakisma){
           if(cakisma.tip==="uyari"){
@@ -716,7 +727,6 @@ export default function App() {
 
   async function randevuTasi(randevu, yeniSaat){
     try{
-      if(molaCakisiyor(randevu.oda,randevu.tarih,timeToMin(yeniSaat),timeToMin(yeniSaat)+randevu.sure)){showToast(MOLA_MESAJ,"error");return false;}
       if(timeToMin(yeniSaat)+randevu.sure>odaKapanisSaat(randevu.oda)){showToast(`${randevu.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(odaKapanisSaat(randevu.oda))}'te kapanıyor — bu saate taşınamaz.`,"error");return false;}
       const cakisma=cakismaVar(randevu.oda,randevu.tarih,yeniSaat,randevu.sure,randevu.id,randevu.hasta);
       if(cakisma){
@@ -1126,8 +1136,8 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
     }
     return gruplar;
   }
-  function bosluklariBul(randevular,bloklar,bitisSaat,molalar=[]){
-    const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure})),...molalar].sort((a,b)=>a.b-b.b);
+  function bosluklariBul(randevular,bloklar,bitisSaat){
+    const meşgul=[...randevular.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...bloklar.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
     const bosluklar=[];
     let imlec=START;
     meşgul.forEach(m=>{
@@ -1155,11 +1165,10 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
   function renderOda(randevular,bloklar,odaId){
     const pazarMi=new Date(seciliTarih+"T00:00:00").getDay()===0;
     const bitisSaat=odaKapanisSaat(odaId);
-    const molalar=pazarMi?[]:odaMolalari(odaId,seciliTarih);
-    const odaTotal=bitisSaat-START-molalar.reduce((t,m)=>t+(m.e-m.b),0);
+    const odaTotal=bitisSaat-START;
     const gercekBloklar=bloklar.filter(b=>b.baslik!=="DR_YOK");
     const birlesik=ayniHastaBirlestir(randevular);
-    const bosluklar=bosluklariBul(randevular,gercekBloklar,bitisSaat,molalar);
+    const bosluklar=bosluklariBul(randevular,gercekBloklar,bitisSaat);
     const renkOda=odaId==="alex"?"#2d6a35":"#5b3fa0";
 
     // Tek zaman çizelgesi: randevular + bloklar + boşluklar, hepsi saate göre sıralı (Dr. Yok dahil değil — sadece bilgilendirme amaçlı ayrı gösteriliyor)
@@ -1167,10 +1176,9 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
       ...birlesik.map(u=>({tip:"randevu",b:timeToMin(u.saat),e:timeToMin(u.saat)+u.sure,veri:u})),
       ...gercekBloklar.map(b=>({tip:"blok",b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure,veri:b})),
       ...bosluklar.map(bo=>({tip:"bosluk",b:bo.b,e:bo.e,veri:bo})),
-      ...molalar.map(m=>({tip:"mola",b:m.b,e:m.e,veri:m})),
     ].sort((a,b)=>a.b-b.b||a.e-b.e);
 
-    const toplamMesgul=satirlar.filter(s=>s.tip!=="bosluk"&&s.tip!=="mola").reduce((s,x)=>s+(x.e-x.b),0);
+    const toplamMesgul=satirlar.filter(s=>s.tip!=="bosluk").reduce((s,x)=>s+(x.e-x.b),0);
     const doluluk=Math.round((toplamMesgul/odaTotal)*100);
 
     return(
@@ -1192,7 +1200,6 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
               let bg="#e9e7e1",baslik=`${minToTime(s.b)}-${minToTime(s.e)} boş`;
               if(s.tip==="randevu"){bg=renkOda;baslik=`${minToTime(s.b)}-${minToTime(s.e)} ${s.veri.hasta}`;}
               else if(s.tip==="blok"){bg="#888";baslik=`${minToTime(s.b)}-${minToTime(s.e)} ${s.veri.baslik}`;}
-              else if(s.tip==="mola"){bg="#cbd5e1";baslik=`${minToTime(s.b)}-${minToTime(s.e)} öğle arası`;}
               return <div key={i} title={baslik} style={{flexGrow:sure,flexBasis:0,minHeight:sure>0?1:0,background:bg,borderBottom:"1px solid #fff"}}/>;
             })}
           </div>
@@ -1234,14 +1241,6 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
                         </span>
                       );
                     })()}
-                  </div>
-                );
-              }
-              if(s.tip==="mola"){
-                return(
-                  <div key={"mo"+i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",marginBottom:5,borderRadius:6,background:"#e2e8f0",border:"1px dashed #94a3b8"}}>
-                    <div style={{fontSize:11,fontWeight:800,color:"#475569",width:42,flexShrink:0}}>{minToTime(s.b)}</div>
-                    <div style={{fontSize:12,fontWeight:600,color:"#475569"}}>🍽 Öğle arası ({minToTime(s.b)}-{minToTime(s.e)})</div>
                   </div>
                 );
               }
@@ -1671,7 +1670,6 @@ function BosRandevuPanel({randevular,bloklar,setSeciliTarih,onYeniRandevu,onKapa
         if(saatFiltre==="17_sonrasi"&&t<17*60)continue;
         const rc=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).some(r=>{const b=timeToMin(r.saat),e=b+r.sure;return t<e&&bitis>b;});
         const bc=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih).some(b=>{const bb=timeToMin(b.saat),be=bb+b.sure;return t<be&&bitis>bb;});
-        if(molaCakisiyor(oda,tarih,t,bitis))continue;
         if(!rc&&!bc){if(!sonuc.some(s=>s.tarih===tarih&&s.saat===saat))sonuc.push({tarih,saat});if(sonuc.filter(s=>s.tarih===tarih).length>=3)break;}
       }
       if(sonuc.length>=15)break;
@@ -2908,7 +2906,7 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
     ["alex","soprano"].forEach(oda=>{
       const gunR=randevular.filter(r=>r.oda===oda&&r.tarih===tarih).sort((a,b)=>timeToMin(a.saat)-timeToMin(b.saat));
       const gunB=bloklar.filter(b=>b.oda===oda&&b.tarih===tarih);
-      const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure})),...odaMolalari(oda,tarih)].sort((a,b)=>a.b-b.b);
+      const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
       // Pazar günü ise boşluk gösterme
       if(new Date(tarih+"T00:00:00").getDay()===0) return;
       let imlec=9*60;
@@ -4529,6 +4527,71 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const [manuel,setManuel]=useState({saat:"",hasta:"",islem:"",notlar:"",sure:""});
   const [excelOnizleme,setExcelOnizleme]=useState(null);
   const [ekleniyor,setEkleniyor]=useState(false);
+  // ── Clinic2026 Dr Randevu Otomatik Senkron ──
+  const [drOtoYukleniyor, setDrOtoYukleniyor] = useState(false);
+  const [drOtoHata, setDrOtoHata] = useState(null);
+  const drSenkronRef = useRef(false);
+  const drOtomatikSenkron = useCallback(async () => {
+    if (drSenkronRef.current) return;
+    drSenkronRef.current = true;
+    setDrOtoYukleniyor(true); setDrOtoHata(null);
+    try {
+      const drList = await drRandevulariCek(tarih);
+      if (!drList.length) { setDrOtoYukleniyor(false); return; }
+      const mevcutDr = gelisler.filter(g => g.oda === "dr" && g.tarih === tarih);
+      const mevcutDrIds = new Set(mevcutDr.map(g => g.dr_randevu_id).filter(Boolean));
+      const mevcutSet = new Set(mevcutDr.map(g => `${g.saat}|${bhNormalize(g.hasta)}`));
+      const yeniKayitlar = drList.filter(d => !mevcutDrIds.has(d.drRandevuId) && !mevcutSet.has(`${d.saat}|${bhNormalize(d.hasta)}`));
+      if (yeniKayitlar.length > 0) {
+        const kaydeden = login || ROLLER[aktifRol];
+        const eklenen = await sbInsert("hasta_gelis", yeniKayitlar.map(k => ({
+          tarih: k.tarih, saat: k.saat, hasta: k.hasta, islem: k.islem, tel: k.tel || null,
+          notlar: k.notlar || null, sure: null, oda: "dr", geldi: false, kaynak: "clinic2026",
+          kaydeden, dr_randevu_id: k.drRandevuId
+        })));
+        setGelisler(g => [...g, ...eklenen.filter(e => e.tarih === tarih && !g.some(y => y.id === e.id))]);
+        showToast(`🩺 ${eklenen.length} Dr randevusu otomatik eklendi`);
+      }
+    } catch (e) { console.error("Dr senkron hatası:", e); setDrOtoHata(e.message); }
+    finally { setDrOtoYukleniyor(false); }
+  }, [tarih, gelisler, login, aktifRol]);
+  useEffect(() => { drSenkronRef.current = false; }, [tarih]);
+  useEffect(() => {
+    if ((aktifOda === "dr" || aktifOda === "tumu") && !drSenkronRef.current) drOtomatikSenkron();
+  }, [aktifOda, tarih, drOtomatikSenkron]);
+  // Clinic2026 Realtime — gün içi yeni randevular otomatik düşsün
+  useEffect(() => {
+    let ws = null, hb = null, yenidenTimer = null, kapandi = false, ref = 1, deneme = 0;
+    const topic = "realtime:dr_randevular_bekleyen";
+    function gonder(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ ...m, ref: String(ref++) })); }
+    function baglan() {
+      try { ws = new WebSocket(`${DR_URL.replace("https", "wss")}/realtime/v1/websocket?apikey=${DR_KEY}&vsn=1.0.0`); }
+      catch { planla(); return; }
+      ws.onopen = () => {
+        gonder({ topic, event: "phx_join", payload: { config: { broadcast: { self: false }, presence: { key: "" },
+          postgres_changes: [{ event: "*", schema: "public", table: "dr_randevular" }] }, access_token: DR_KEY }});
+        hb = setInterval(() => gonder({ topic: "phoenix", event: "heartbeat", payload: {} }), 25000);
+      };
+      ws.onmessage = ev => {
+        let m; try { m = JSON.parse(ev.data); } catch { return; }
+        if (m.topic !== topic) return;
+        if (m.event === "postgres_changes") {
+          const d = m.payload?.data;
+          if (d?.record?.baslangic) {
+            const recTarih = new Date(d.record.baslangic).toLocaleDateString("sv-SE", { timeZone: "Europe/Istanbul" });
+            if (recTarih === tarih) { drSenkronRef.current = false; setTimeout(() => drOtomatikSenkron(), 500); }
+          }
+        }
+        if ((m.event === "phx_reply" && m.payload?.status === "error") || m.event === "phx_close" || m.event === "phx_error") { try { ws.close(); } catch {} }
+      };
+      ws.onclose = () => { clearInterval(hb); if (!kapandi) planla(); };
+      ws.onerror = () => { try { ws.close(); } catch {} };
+    }
+    function planla() { deneme++; yenidenTimer = setTimeout(baglan, Math.min(30000, 2000 * deneme)); }
+    baglan();
+    return () => { kapandi = true; clearInterval(hb); clearTimeout(yenidenTimer); try { ws && ws.close(); } catch {} };
+  }, [tarih, drOtomatikSenkron]);
+
   const saatInputRef=useRef(null);
   const [personelOda,setPersonelOda]=useState(()=>{try{return window.localStorage.getItem("kl_bh_oda")||null;}catch{return null;}});
   const kapRef=useRef(null);
