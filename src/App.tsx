@@ -4580,11 +4580,22 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     setDrOtoYukleniyor(true); setDrOtoHata(null);
     try {
       const drList = await drRandevulariCek(tarih);
-      if (!drList.length) { setDrOtoYukleniyor(false); return; }
       const guncelGelisler = gelislerRef.current;
-      const mevcutDr = guncelGelisler.filter(g => g.oda === "dr" && g.tarih === tarih);
+      const mevcutDr = guncelGelisler.filter(g => g.oda === "dr" && g.tarih === tarih && g.dr_randevu_id);
+      // İptal/silinen randevuları hasta_gelis'ten kaldır
+      const drIdSet = new Set(drList.map(d => d.drRandevuId));
+      const silinecekler = mevcutDr.filter(g => !drIdSet.has(g.dr_randevu_id));
+      for (const s of silinecekler) {
+        try { await sbDelete("hasta_gelis", s.id); } catch(e) { console.error("Dr silme hatası:", e); }
+      }
+      if (silinecekler.length > 0) {
+        const silinenIds = new Set(silinecekler.map(s => s.id));
+        setGelisler(g => g.filter(x => !silinenIds.has(x.id)));
+        showToast(`🗑️ ${silinecekler.length} iptal randevu kaldırıldı`);
+      }
+      if (!drList.length) { setDrOtoYukleniyor(false); return; }
       const mevcutDrIds = new Set(mevcutDr.map(g => g.dr_randevu_id).filter(Boolean));
-      const mevcutSet = new Set(mevcutDr.map(g => `${g.saat}|${bhNormalize(g.hasta)}`));
+      const mevcutSet = new Set(guncelGelisler.filter(g => g.oda === "dr" && g.tarih === tarih).map(g => `${g.saat}|${bhNormalize(g.hasta)}`));
       const yeniKayitlar = drList.filter(d => !mevcutDrIds.has(d.drRandevuId) && !mevcutSet.has(`${d.saat}|${bhNormalize(d.hasta)}`));
       if (yeniKayitlar.length > 0) {
         const kaydeden = login || ROLLER[aktifRol];
@@ -4621,6 +4632,29 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         if (m.topic !== topic) return;
         if (m.event === "postgres_changes") {
           const d = m.payload?.data;
+          const evType = d?.type; // INSERT, UPDATE, DELETE
+          // DELETE veya iptal → ilgili kaydı hasta_gelis'ten kaldır
+          if (evType === "DELETE" && d?.old_record?.id) {
+            const silinenDrId = d.old_record.id;
+            const hedef = gelislerRef.current.find(g => g.dr_randevu_id === silinenDrId);
+            if (hedef) {
+              sbDelete("hasta_gelis", hedef.id).catch(()=>{});
+              setGelisler(g => g.filter(x => x.id !== hedef.id));
+              showToast("🗑️ İptal edilen Dr randevusu kaldırıldı");
+            }
+            return;
+          }
+          if (evType === "UPDATE" && d?.record?.durum === "iptal" && d?.record?.id) {
+            const iptalDrId = d.record.id;
+            const hedef = gelislerRef.current.find(g => g.dr_randevu_id === iptalDrId);
+            if (hedef) {
+              sbDelete("hasta_gelis", hedef.id).catch(()=>{});
+              setGelisler(g => g.filter(x => x.id !== hedef.id));
+              showToast("🗑️ İptal edilen Dr randevusu kaldırıldı");
+            }
+            return;
+          }
+          // INSERT veya diğer UPDATE → senkron tetikle
           if (d?.record?.baslangic) {
             const recTarih = new Date(d.record.baslangic).toLocaleDateString("sv-SE", { timeZone: "Europe/Istanbul" });
             if (recTarih === tarih) { drSenkronRef.current = false; setTimeout(() => drOtomatikSenkron(), 500); }
