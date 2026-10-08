@@ -4531,6 +4531,8 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const [drOtoYukleniyor, setDrOtoYukleniyor] = useState(false);
   const [drOtoHata, setDrOtoHata] = useState(null);
   const drSenkronRef = useRef(false);
+  const gelislerRef = useRef(gelisler);
+  useEffect(() => { gelislerRef.current = gelisler; }, [gelisler]);
   const drOtomatikSenkron = useCallback(async () => {
     if (drSenkronRef.current) return;
     drSenkronRef.current = true;
@@ -4538,7 +4540,8 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     try {
       const drList = await drRandevulariCek(tarih);
       if (!drList.length) { setDrOtoYukleniyor(false); return; }
-      const mevcutDr = gelisler.filter(g => g.oda === "dr" && g.tarih === tarih);
+      const guncelGelisler = gelislerRef.current;
+      const mevcutDr = guncelGelisler.filter(g => g.oda === "dr" && g.tarih === tarih);
       const mevcutDrIds = new Set(mevcutDr.map(g => g.dr_randevu_id).filter(Boolean));
       const mevcutSet = new Set(mevcutDr.map(g => `${g.saat}|${bhNormalize(g.hasta)}`));
       const yeniKayitlar = drList.filter(d => !mevcutDrIds.has(d.drRandevuId) && !mevcutSet.has(`${d.saat}|${bhNormalize(d.hasta)}`));
@@ -4554,7 +4557,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
       }
     } catch (e) { console.error("Dr senkron hatası:", e); setDrOtoHata(e.message); }
     finally { setDrOtoYukleniyor(false); }
-  }, [tarih, gelisler, login, aktifRol]);
+  }, [tarih, login, aktifRol]);
   useEffect(() => { drSenkronRef.current = false; }, [tarih]);
   useEffect(() => {
     if ((aktifOda === "dr" || aktifOda === "tumu") && !drSenkronRef.current) drOtomatikSenkron();
