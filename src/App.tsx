@@ -4572,19 +4572,24 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const [drOtoYukleniyor, setDrOtoYukleniyor] = useState(false);
   const [drOtoHata, setDrOtoHata] = useState(null);
   const drSenkronRef = useRef(false);
+  // Sekreter tarafından elle silinen dr randevu id'leri — tekrar eklenmesini engeller
+  const drSilinenlerRef = useRef(new Set(JSON.parse(localStorage.getItem("dr_silinenler_"+tarih)||"[]")));
   const gelislerRef = useRef(gelisler);
   useEffect(() => { gelislerRef.current = gelisler; }, [gelisler]);
+  const drCalisiyorRef = useRef(false);
   const drOtomatikSenkron = useCallback(async () => {
-    if (drSenkronRef.current) return;
+    if (drSenkronRef.current || drCalisiyorRef.current) return;
+    drCalisiyorRef.current = true;
     drSenkronRef.current = true;
     setDrOtoYukleniyor(true); setDrOtoHata(null);
     try {
       const drList = await drRandevulariCek(tarih);
-      const guncelGelisler = gelislerRef.current;
-      const mevcutDr = guncelGelisler.filter(g => g.oda === "dr" && g.tarih === tarih && g.dr_randevu_id);
+      // Eklemeden önce veritabanından güncel listeyi çek (kopya engeli)
+      const dbMevcut = await sbGet("hasta_gelis", `oda=eq.dr&tarih=eq.${tarih}&dr_randevu_id=not.is.null&select=id,dr_randevu_id`);
+      const dbDrIds = new Set(dbMevcut.map(g => g.dr_randevu_id));
       // İptal/silinen randevuları hasta_gelis'ten kaldır
       const drIdSet = new Set(drList.map(d => d.drRandevuId));
-      const silinecekler = mevcutDr.filter(g => !drIdSet.has(g.dr_randevu_id));
+      const silinecekler = dbMevcut.filter(g => !drIdSet.has(g.dr_randevu_id));
       for (const s of silinecekler) {
         try { await sbDelete("hasta_gelis", s.id); } catch(e) { console.error("Dr silme hatası:", e); }
       }
@@ -4594,9 +4599,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         showToast(`🗑️ ${silinecekler.length} iptal randevu kaldırıldı`);
       }
       if (!drList.length) { setDrOtoYukleniyor(false); return; }
-      const mevcutDrIds = new Set(mevcutDr.map(g => g.dr_randevu_id).filter(Boolean));
-      const mevcutSet = new Set(guncelGelisler.filter(g => g.oda === "dr" && g.tarih === tarih).map(g => `${g.saat}|${bhNormalize(g.hasta)}`));
-      const yeniKayitlar = drList.filter(d => !mevcutDrIds.has(d.drRandevuId) && !mevcutSet.has(`${d.saat}|${bhNormalize(d.hasta)}`));
+      const yeniKayitlar = drList.filter(d => !dbDrIds.has(d.drRandevuId) && !drSilinenlerRef.current.has(d.drRandevuId));
       if (yeniKayitlar.length > 0) {
         const kaydeden = login || ROLLER[aktifRol];
         const eklenen = await sbInsert("hasta_gelis", yeniKayitlar.map(k => ({
@@ -4608,9 +4611,12 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
         showToast(`🩺 ${eklenen.length} Dr randevusu otomatik eklendi`);
       }
     } catch (e) { console.error("Dr senkron hatası:", e); setDrOtoHata(e.message); }
-    finally { setDrOtoYukleniyor(false); }
+    finally { setDrOtoYukleniyor(false); drCalisiyorRef.current = false; }
   }, [tarih, login, aktifRol]);
-  useEffect(() => { drSenkronRef.current = false; }, [tarih]);
+  useEffect(() => {
+    drSenkronRef.current = false;
+    try { drSilinenlerRef.current = new Set(JSON.parse(localStorage.getItem("dr_silinenler_"+tarih)||"[]")); } catch { drSilinenlerRef.current = new Set(); }
+  }, [tarih]);
   useEffect(() => {
     if ((aktifOda === "dr" || aktifOda === "tumu") && !drSenkronRef.current) drOtomatikSenkron();
   }, [aktifOda, tarih, drOtomatikSenkron]);
@@ -4928,6 +4934,9 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     try{
       const r=await fetch(`${SB_URL}/rest/v1/hasta_gelis?oda=eq.dr&tarih=eq.${tarih}`,{method:"DELETE",headers:{...HDR(),"Prefer":"return=minimal"}});
       if(!r.ok)throw new Error(await r.text());
+      // Silinen clinic2026 randevularını engel listesine ekle
+      L.forEach(g=>{if(g.dr_randevu_id)drSilinenlerRef.current.add(g.dr_randevu_id);});
+      try{localStorage.setItem("dr_silinenler_"+tarih,JSON.stringify([...drSilinenlerRef.current]));}catch{}
       setGelisler(g=>g.filter(x=>!(x.oda==="dr"&&x.tarih===tarih)));
       showToast(`Dr İşlem listesi temizlendi (${L.length} kayıt)`);
     }catch(e){showToast("Silinemedi: "+String(e.message).slice(0,140),"error");}
@@ -4936,7 +4945,16 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   async function drSil(s){
     if(!drDuzenleyebilir||!s.gelisId)return;
     if(!window.confirm(`${s.saat} ${s.hasta} listeden silinsin mi?`))return;
-    try{await sbDelete("hasta_gelis",s.gelisId);setGelisler(g=>g.filter(x=>x.id!==s.gelisId));}
+    try{
+      await sbDelete("hasta_gelis",s.gelisId);
+      setGelisler(g=>g.filter(x=>x.id!==s.gelisId));
+      // clinic2026 randevusuysa, tekrar eklenmesini engelle
+      const silinen=gelisler.find(x=>x.id===s.gelisId);
+      if(silinen?.dr_randevu_id){
+        drSilinenlerRef.current.add(silinen.dr_randevu_id);
+        try{localStorage.setItem("dr_silinenler_"+tarih,JSON.stringify([...drSilinenlerRef.current]));}catch{}
+      }
+    }
     catch(e){showToast("Silinemedi: "+String(e.message).slice(0,120),"error");}
   }
 
