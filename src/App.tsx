@@ -4527,6 +4527,26 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const [manuel,setManuel]=useState({saat:"",hasta:"",islem:"",notlar:"",sure:""});
   const [excelOnizleme,setExcelOnizleme]=useState(null);
   const [ekleniyor,setEkleniyor]=useState(false);
+  // Dr Duygu sisteminden: TC / doğum tarihi eksik olan Dr İşlem randevuları (sadece "eksik mi" bilgisi gelir, TC'nin kendisi gelmez)
+  const [drEksik,setDrEksik]=useState({});
+  useEffect(()=>{
+    let iptal=false;
+    async function cek(){
+      try{
+        const r=await fetch(`${DR_URL}/rest/v1/dr_bekleyen_eksik_ozet?tarih=eq.${tarih}&select=dr_randevu_id,tc_eksik,dogum_eksik`,{headers:DR_HDR()});
+        if(!r.ok)return;
+        const d=await r.json();
+        const m={};
+        d.forEach(x=>{m[x.dr_randevu_id]=[x.tc_eksik&&"TC kimlik no",x.dogum_eksik&&"doğum tarihi"].filter(Boolean).join(", ");});
+        if(!iptal)setDrEksik(m);
+      }catch{}
+    }
+    setDrEksik({});
+    cek();
+    const t=setInterval(cek,60000);
+    return()=>{iptal=true;clearInterval(t);};
+  },[tarih]);
+  const eksikMetni=s=>(s&&s.oda==="dr"&&s.dr_randevu_id&&drEksik[s.dr_randevu_id])||"";
 
   const saatInputRef=useRef(null);
   const [personelOda,setPersonelOda]=useState(()=>{try{return window.localStorage.getItem("kl_bh_oda")||null;}catch{return null;}});
@@ -4837,7 +4857,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
     if(s.geldi)return {etiket:"Geldi",metin:"Geldi",renk:"#166534",bg:"#bbf7d0",satirBg:kremDurum(s)?.hazir?"#ccfbf1":"#dcfce7"};
     const g=simdiDk-timeToMin(s.saat);
     if(bugunMu&&g>10)return {etiket:"Gecikti",metin:`Gecikti ${g>=60?Math.floor(g/60)+" sa "+(g%60?g%60+" dk":""):g+" dk"}`.trim(),renk:"#713f12",bg:"#facc15",satirBg:"#fef08a"};
-    return {etiket:"",metin:"",renk:"#555",bg:"transparent",satirBg:"#fff"};
+    return {etiket:"",metin:"",renk:"#555",bg:"transparent",satirBg:eksikMetni(s)?"#ffedd5":"#fff"};
   }
 
   // ── İşlemler ──
@@ -5084,11 +5104,11 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
       const d=satirDurumu(s),acik=acikKart===s.key,drKart=kremUygun(s),kd=drKart?kremDurum(s):null;
       const iptal=!!s.iptalSaati,soluk=iptal||s.randevuDurum==="Gelmedi";
       const serit=kd&&!kd.durdu?"#0d9488":SERIT[d.etiket];
-      const bg=iptal?"#fef2f2":s.alinmaSaati?"#d1d5db":s.geldi?"#f0fdf4":d.etiket==="Gecikti"?"#fef9c3":"#fff";
+      const bg=iptal?"#fef2f2":s.alinmaSaati?"#d1d5db":s.geldi?"#f0fdf4":d.etiket==="Gecikti"?"#fef9c3":eksikMetni(s)?"#ffedd5":"#fff";
       const geldiTusu=gelisIsaretleyebilir&&!s.geldi&&!soluk;
       const alindiTusu=s.geldi&&!s.alinmaSaati&&!iptal&&drDuzenleyebilir;
       return(
-        <div onClick={()=>setAcikKart(acik?null:s.key)} style={{display:"flex",background:bg,borderRadius:12,border:"1px solid #e8e6e0",overflow:"hidden",marginBottom:8,opacity:soluk?0.65:1,cursor:"pointer"}}>
+        <div onClick={()=>setAcikKart(acik?null:s.key)} title={eksikMetni(s)?"Eksik bilgi: "+eksikMetni(s):undefined} style={{display:"flex",background:bg,borderRadius:12,border:"1px solid #e8e6e0",overflow:"hidden",marginBottom:8,opacity:soluk?0.65:1,cursor:"pointer"}}>
           <div style={{width:s.geldi||kd?8:5,background:serit,flexShrink:0}}/>
           <div style={{flex:1,padding:buyuk?"14px 14px":"11px 12px",minWidth:0}}>
             <div style={{display:"flex",alignItems:"baseline",gap:8}}>
@@ -5096,6 +5116,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
               <span style={{fontSize:buyuk?20:17,fontWeight:700,color:iptal?"#9f1239":"#1a1a2e",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:acik?"normal":"nowrap",textDecoration:iptal?"line-through":"none"}}>{s.hasta}</span>
               {s.randevusuz&&<span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#ede9fe",padding:"1px 5px",borderRadius:4,flexShrink:0}}>Randevusuz</span>}
             </div>
+            {eksikMetni(s)&&d.etiket===""&&<div style={{fontSize:12,color:"#c2410c",fontWeight:600,marginTop:2}}>⚠ Eksik: {eksikMetni(s)}</div>}
             <div style={{fontSize:14,color:"#555",marginTop:3}}>
               {s.randevuDurum==="Rütuş"&&<span style={{fontSize:11,fontWeight:700,color:"#a16207",background:"#fef3c7",padding:"1px 6px",borderRadius:4,marginRight:6}}>Rütuş</span>}
               {(s.islem||"—").split(/,\s*/).join(" · ")}
@@ -5285,11 +5306,12 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
                 const iptal=!!s.iptalSaati,soluk=iptal||s.randevuDurum==="Gelmedi";
                 const hucre={padding:`${10*fs}px 14px`};
                 return(
-                  <tr key={s.key} style={{background:d.satirBg,borderTop:"1px solid #f0efeb",transition:"background 0.3s",opacity:soluk?0.65:1,color:s.alinmaSaati?"#374151":iptal?"#9f1239":"inherit"}}>
+                  <tr key={s.key} title={eksikMetni(s)?"Eksik bilgi: "+eksikMetni(s):undefined} style={{background:d.satirBg,borderTop:"1px solid #f0efeb",transition:"background 0.3s",opacity:soluk?0.65:1,color:s.alinmaSaati?"#374151":iptal?"#9f1239":"inherit"}}>
                     <td style={{...hucre,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{s.randevusuz?"—":s.saat}</td>
                     <td style={{...hucre,fontWeight:600}}>
                       {aktifOda==="tumu"&&<BhOdaRozet oda={s.oda}/>}<span style={{textDecoration:iptal?"line-through":"none"}}>{s.hasta}</span>
                       {s.randevusuz&&<span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#ede9fe",padding:"1px 5px",borderRadius:4,marginLeft:6}}>Randevusuz</span>}
+                      {eksikMetni(s)&&d.etiket===""&&<div style={{fontSize:11,color:"#c2410c",fontWeight:600,marginTop:2}}>⚠ Eksik: {eksikMetni(s)}</div>}
                       {!tamEkran&&(s.notlar||s.tel)&&<div style={{fontSize:11,color:"#999",fontWeight:400,marginTop:2}}>{[s.tel&&"📞 "+s.tel,s.notlar].filter(Boolean).join(" · ")}</div>}
                     </td>
                     <td style={{...hucre,color:iptal?"inherit":"#555",fontSize:13*fs}}>
