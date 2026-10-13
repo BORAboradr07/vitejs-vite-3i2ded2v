@@ -4758,7 +4758,7 @@ function BekleyenHastaSekme({randevular,aktifRol,aktifKullanici,showToast}){
   const gelisByRandevu={};gelisler.forEach(g=>{if(g.randevu_id)gelisByRandevu[g.randevu_id]=g;});
   // Randevu dışı satırlar (Dr İşlem kayıtları + randevusuz gelen hastalar) hasta_gelis tablosundan gelir
   // Randevu dışı satırlar (Dr İşlem kayıtları + randevusuz gelen hastalar) hasta_gelis tablosundan gelir
-  const gelisSatiri=g=>({key:"d"+g.id,oda:g.oda,randevuId:null,gelisId:g.id,saat:g.saat,sure:g.sure||0,hasta:g.hasta,tel:g.tel||"",islem:[g.islem,g.sure?g.sure+" dk":""].filter(Boolean).join(" · "),notlar:g.notlar||"",randevuDurum:null,
+  const gelisSatiri=g=>({key:"d"+g.id,oda:g.oda,dr_randevu_id:g.dr_randevu_id||null,randevuId:null,gelisId:g.id,saat:g.saat,sure:g.sure||0,hasta:g.hasta,tel:g.tel||"",islem:[g.islem,g.sure?g.sure+" dk":""].filter(Boolean).join(" · "),notlar:g.notlar||"",randevuDurum:null,
     geldi:!!g.geldi,gelisSaati:g.gelis_saati||"",alinmaSaati:g.alinma_saati||"",iptalSaati:g.iptal_saati||"",kaydeden:g.kaydeden||"",
     uyusmaSaati:g.uyusma_saati||"",uyusmaHedef:g.uyusma_saati?(g.uyusma_hedef||0):(g.oda==="dr"?(bhKremKurali(g.islem)?.sure||0):0),
     randevusuz:g.kaynak==="randevusuz"});
