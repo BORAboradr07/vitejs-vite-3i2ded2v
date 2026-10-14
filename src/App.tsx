@@ -3302,7 +3302,7 @@ function AnketSonucSekme({aktifRol}){
   }).sort((a,b)=>(b.tamamlama_tarih||"").localeCompare(a.tamamlama_tarih||""));
 
   async function googleGonder(a){
-    const msg="Merhaba "+(a.hasta||"değerli hastamız")+", kliniğimize verdiğiniz destek için teşekkür ederiz! Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilirsiniz 🌸\n\n👉 "+GOOGLE_LINK;
+    const msg="Sayın "+(a.hasta||"değerli hastamız")+", kliniğimize verdiğiniz destek için teşekkür ederiz 🌷 Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilirsiniz 🌸\n\n👉 "+GOOGLE_LINK;
     let tel=randevuTelMap.get(a.randevu_id)||"";
     if(tel){tel=tel.replace(/\D/g,"");if(tel.startsWith("0"))tel="90"+tel.slice(1);if(!tel.startsWith("90"))tel="90"+tel;}
     window.open("https://wa.me/"+(tel||"")+"?text="+encodeURIComponent(msg),"_blank");
