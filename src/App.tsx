@@ -3143,6 +3143,7 @@ function AnketSonucSekme({aktifRol}){
     return timeToMin(saat)<14*60?sabahci:oglenci;
   }
   const randevuSaatMap=new Map(gunlukRandevular.map(r=>[r.id,r.saat]));
+  const randevuTelMap=new Map(gunlukRandevular.filter(r=>r.tel).map(r=>[r.id,r.tel]));
   const lazerIstatistik=soruIstatistikleri("lazer");
   const ciltIstatistik=soruIstatistikleri("cilt");
 
@@ -3281,7 +3282,17 @@ function AnketSonucSekme({aktifRol}){
   })();
   const gosterilen=gosterilenFiltreli;
   const sekreterModu=aktifRol==="sekreter";
+  const yoneticiMi=aktifRol==="yonetici";
   const ortalama=anketler.length>0?(anketler.reduce((s,a)=>s+(a.puan||0),0)/anketler.length).toFixed(1):"-";
+  const onPuanlar=sirali.filter(a=>a.puan===10);
+  const dokuzOnayli=sirali.filter(a=>a.puan===9&&a.google_link_onayli);
+  const personelGoogleListesi=[...onPuanlar,...dokuzOnayli].sort((a,b)=>(b.tamamlama_tarih||"").localeCompare(a.tamamlama_tarih||""));
+  async function googleLinkOnayla(a){
+    try{
+      await sbUpdate("anketler",a.id,{google_link_onayli:true});
+      setAnketler(prev=>prev.map(x=>x.id===a.id?{...x,google_link_onayli:true}:x));
+    }catch(e){console.error("Google link onay hatası",e);}
+  }
 
   // Hasta görüşleri listesi
   const yorumlar=anketler.filter(a=>{
@@ -3290,12 +3301,55 @@ function AnketSonucSekme({aktifRol}){
     return(metin&&metin.trim())||(ekYorum&&ekYorum.trim());
   }).sort((a,b)=>(b.tamamlama_tarih||"").localeCompare(a.tamamlama_tarih||""));
 
-  function googleGonder(a){
+  async function googleGonder(a){
     const msg="Merhaba "+(a.hasta||"değerli hastamız")+", kliniğimize verdiğiniz destek için teşekkür ederiz! Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilirsiniz 🌸\n\n👉 "+GOOGLE_LINK;
-    window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
+    let tel=randevuTelMap.get(a.randevu_id)||"";
+    if(tel){tel=tel.replace(/\D/g,"");if(tel.startsWith("0"))tel="90"+tel.slice(1);if(!tel.startsWith("90"))tel="90"+tel;}
+    window.open("https://wa.me/"+(tel||"")+"?text="+encodeURIComponent(msg),"_blank");
+    try{
+      await sbUpdate("anketler",a.id,{google_link_gonderildi:true});
+      setAnketler(prev=>prev.map(x=>x.id===a.id?{...x,google_link_gonderildi:true}:x));
+    }catch(e){console.error("Google link güncelleme hatası",e);}
   }
 
   if(yukleniyor) return <div style={{padding:40,textAlign:"center",color:"#aaa"}}>Yükleniyor...</div>;
+
+  /* ─── YÖNETİCİ DIŞI ROLLER: sadece 10/10 anketler + Google link ─── */
+  if(!yoneticiMi){
+    return(
+      <div>
+        <h2 style={{fontSize:18,fontWeight:600,marginBottom:12}}>📊 Anket Sonuçları — Google Yorum Gönder</h2>
+        <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:12,padding:"14px 16px",marginBottom:16}}>
+          <span style={{fontSize:14,color:"#16a34a",fontWeight:600}}>⭐ Google Yorum Gönderilebilecek Hastalar: {personelGoogleListesi.length}</span>
+        </div>
+        {personelGoogleListesi.length===0?(
+          <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa"}}>Henüz Google yorum gönderilecek hasta yok.</div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {personelGoogleListesi.map(a=>(
+              <div key={a.id} style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,padding:"12px 16px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <span style={{fontWeight:600,fontSize:14}}>{a.hasta}</span>
+                    <span style={{marginLeft:10,fontSize:22,fontWeight:700,color:"#16a34a"}}>10/10</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    {a.google_link_gonderildi?(
+                      <span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>✅ Link gönderildi</span>
+                    ):(
+                      <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#16a34a",display:"flex",alignItems:"center",gap:4}}>⭐ Google Linki Gönder</button>
+                    )}
+                    <span style={{fontSize:11,color:"#888"}}>{a.tamamlama_tarih}</span>
+                  </div>
+                </div>
+                <div style={{fontSize:12,color:"#888"}}>{a.anket_tipi==="lazer"?(a.oda==="alex"?"Alex Lazer":a.oda==="soprano"?"Soprano Lazer":"Lazer Epilasyon"):"Cilt/Karbon/Tüy"}{a.randevu_tarih&&<span style={{marginLeft:6,color:"#6366f1"}}>| Randevu: {a.randevu_tarih}</span>}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return(
     <div>
@@ -3373,7 +3427,8 @@ function AnketSonucSekme({aktifRol}){
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div><span style={{fontWeight:600,fontSize:14}}>{a.hasta}</span><span style={{marginLeft:10,fontSize:22,fontWeight:700,color:a.puan>=9?"#16a34a":a.puan>=7?"#f59e0b":"#dc2626"}}>{a.puan}/10</span></div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    {a.puan>=9&&<button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#16a34a"}}>⭐ Google Yorum</button>}
+                    {a.puan===10&&(a.google_link_gonderildi?<span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✅ Link gönderildi</span>:<button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#16a34a"}}>⭐ Google Yorum</button>)}
+                    {a.puan===9&&(a.google_link_gonderildi?<span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✅ Link gönderildi</span>:a.google_link_onayli?<button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#16a34a"}}>⭐ Google Yorum</button>:<button onClick={()=>googleLinkOnayla(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#f59e0b"}}>📋 Link Butonu Oluştur</button>)}
                     <span style={{fontSize:11,color:"#888"}}>{a.tamamlama_tarih}</span>
                   </div>
                 </div>
