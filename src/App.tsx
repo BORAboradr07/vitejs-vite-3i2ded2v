@@ -170,7 +170,7 @@ const ROLLER = {yonetici:"Yönetici",sekreter:"Sekreter",personel:"Uygulayıcı"
 const EPILASYON_CIHAZLAR = ["Soprano","Alex","Nd:YAG"];
 const DOKULME_SECENEKLERI = ["Az","Orta","İyi","Çok iyi"];
 const EPILASYON_BUCKET = "epilasyon-fotolar";
-const EPILASYON_UYGULAYICI_YEDEK = ["Gülserin","Hanife","Hazal","Fatma","Gülşah","Vesile"];
+const EPILASYON_UYGULAYICI_YEDEK = ["Hanife","Fatma","Gülşah","Vesile"];
 
 const SAATLER = [];
 for(let h=9;h<=20;h++) for(let m=0;m<60;m+=5){if(h===20&&m>0)break;SAATLER.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);}
@@ -4556,6 +4556,7 @@ const BH_KREM_KURALLARI=[
   [/botoks/,s=>/koltuk|\bel\b|\beller\b/.test(s)?{sure:20}:null],
   [/altin ?igne|morpheus/,{sure:45}],
   [/fraxis|fraksiyonel/,{sure:45}],
+  [/sac.*mezo|mezo.*sac/,null],
   [/mezo|matrix|lifting|somon|dna|pdrn|\basi(si)?\b/,s=>/goz/.test(s)?{sure:15}:{sure:45}],
   [/dudak.*dolgu|dolgu.*dudak/,{sure:15}],
 ];
