@@ -1890,6 +1890,11 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
           <div style={{maxHeight:130,overflowY:"auto",border:"1px solid #e0e0da",borderRadius:8,marginTop:4}}>
             {filtreliHastalar.map(h=><div key={h.id} onClick={()=>{setHasta(h.ad);setHastaId(h.id);setHastaTel(h.tel||"");setHastaCinsiyet(h.cinsiyet||"Bayan");setHastaFiltre("");}} style={{padding:"7px 12px",cursor:"pointer",background:hastaId===h.id?"#eef0ff":"transparent",borderBottom:"1px solid #f0f0ec",fontSize:14}}><strong>{h.ad}</strong>{h.hasta_id&&<span style={{background:"#6366f1",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:20,marginLeft:8}}>#{h.hasta_id}</span>}{h.tel&&<span style={{color:"#999",marginLeft:8,fontSize:12}}>{h.tel}</span>}</div>)}
           </div>
+          {!hasta&&hastaFiltre.trim().length>=2&&filtreliHastalar.length>0&&(
+            <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
+              <button onClick={()=>{setHasta(hastaFiltre.toLocaleUpperCase("tr"));setHastaFiltre("");}} style={{fontSize:12,padding:"8px 12px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,cursor:"pointer",color:"#92400e",fontWeight:600,textAlign:"left"}}>➕ "{hastaFiltre}" yeni hasta olarak ekle</button>
+            </div>
+          )}
           {hasta&&(
             <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
               <input value={hasta} onChange={e=>setHasta(e.target.value.toLocaleUpperCase("tr"))} style={{...inputStyle,fontSize:13,color:"#4338ca",background:"#eef0ff",border:"1px solid #a5b4fc"}} placeholder="Hasta adını düzenle..."/>
