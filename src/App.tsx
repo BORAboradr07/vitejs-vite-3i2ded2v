@@ -1849,8 +1849,13 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     if(seciliBolgeler.length===0){alert("En az bir bölge seçin.");return;}
     setKayitYapiliyor(true);
     // Hasta kartına bağlama — HER DURUMDA hasta kaydı olmalı, yoksa oluştur/bul
+    let ilkKez=false;
     if(!aktifHastaId&&aktifHasta.trim()){
-      const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel||"",hastaCinsiyet,ilkKezEpilasyon);
+      if(oda==="alex"||oda==="soprano"){
+        ilkKez=window.confirm("Bu hasta ilk defa mı epilasyona geliyor?\n\n✅ Evet → Tamam\n❌ Hayır → İptal");
+        setIlkKezEpilasyon(ilkKez);
+      }
+      const yeni=await hastaEkleDB(aktifHasta.trim(),hastaTel||"",hastaCinsiyet,ilkKez);
       if(yeni) aktifHastaId=yeni.id;
     }
     // Hasta kartına bağlanamadıysa kaydetmeyi engelle — bu olmadan epilasyon kartı, istatistikler çalışmaz
@@ -1922,7 +1927,6 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
               <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>"{hastaFiltre}" listede yok — bilgileri girin:</div>
               <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
               <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
-              <button onClick={()=>setIlkKezEpilasyon(v=>!v)} style={{...chipStyle(ilkKezEpilasyon),fontSize:12,background:ilkKezEpilasyon?"#dbeafe":undefined,color:ilkKezEpilasyon?"#2563eb":undefined,border:ilkKezEpilasyon?"1.5px solid #93c5fd":undefined}}>🆕 Yeni Hasta {ilkKezEpilasyon?"✓":""}</button>
               <button onClick={()=>{setHasta(hastaFiltre.toLocaleUpperCase("tr"));setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12}}>✓ Bu isimle devam et</button>
             </div>
           )}
