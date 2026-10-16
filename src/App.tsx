@@ -170,7 +170,7 @@ const ROLLER = {yonetici:"Yönetici",sekreter:"Sekreter",personel:"Uygulayıcı"
 const EPILASYON_CIHAZLAR = ["Soprano","Alex","Nd:YAG"];
 const DOKULME_SECENEKLERI = ["Az","Orta","İyi","Çok iyi"];
 const EPILASYON_BUCKET = "epilasyon-fotolar";
-const EPILASYON_UYGULAYICI_YEDEK = ["Hanife","Fatma","Gülşah","Vesile"];
+const EPILASYON_UYGULAYICI_YEDEK = ["Gülserin","Hanife","Hazal","Fatma","Gülşah","Vesile"];
 
 const SAATLER = [];
 for(let h=9;h<=20;h++) for(let m=0;m<60;m+=5){if(h===20&&m>0)break;SAATLER.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);}
@@ -1917,7 +1917,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
               <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>"{hastaFiltre}" listede yok — bilgileri girin:</div>
               <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
               <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
-              <button onClick={()=>setIlkKezEpilasyon(v=>!v)} style={{...chipStyle(ilkKezEpilasyon),fontSize:12,background:ilkKezEpilasyon?"#dbeafe":undefined,color:ilkKezEpilasyon?"#2563eb":undefined,border:ilkKezEpilasyon?"1.5px solid #93c5fd":undefined}}>🆕 İlk Kez Geliyor {ilkKezEpilasyon?"✓":""}</button>
+              <button onClick={()=>setIlkKezEpilasyon(v=>!v)} style={{...chipStyle(ilkKezEpilasyon),fontSize:12,background:ilkKezEpilasyon?"#dbeafe":undefined,color:ilkKezEpilasyon?"#2563eb":undefined,border:ilkKezEpilasyon?"1.5px solid #93c5fd":undefined}}>🆕 Yeni Hasta {ilkKezEpilasyon?"✓":""}</button>
               <button onClick={()=>{setHasta(hastaFiltre.toLocaleUpperCase("tr"));setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12}}>✓ Bu isimle devam et</button>
             </div>
           )}
@@ -2726,9 +2726,9 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
   const [duzenTel,setDuzenTel]=useState("");
   const [duzenCinsiyet,setDuzenCinsiyet]=useState("Bayan");
   const [gelmedPopup,setGelmedPopup]=useState(false);
-  const [ad,setAd]=useState("");const [tel,setTel]=useState("");const [cinsiyet,setCinsiyet]=useState("Bayan");
+  const [ad,setAd]=useState("");const [tel,setTel]=useState("");const [cinsiyet,setCinsiyet]=useState("Bayan");const [hastaIlkKez,setHastaIlkKez]=useState(false);
   const filtreliHastalar=filtre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(filtre.toLowerCase())||h.tel?.includes(filtre)||h.hasta_id?.includes(filtre)):[];
-  async function kaydet(){if(!ad.trim())return;await hastaEkleDB(ad.trim(),tel.trim(),cinsiyet);showToast("Hasta eklendi.");setForm(null);setAd("");setTel("");setCinsiyet("Bayan");}
+  async function kaydet(){if(!ad.trim())return;await hastaEkleDB(ad.trim(),tel.trim(),cinsiyet,hastaIlkKez);showToast("Hasta eklendi.");setForm(null);setAd("");setTel("");setCinsiyet("Bayan");setHastaIlkKez(false);}
 
   const hastaRandevular=seciliHasta?randevular.filter(r=>r.hasta?.toLowerCase().trim()===seciliHasta.ad?.toLowerCase().trim()).sort((a,b)=>a.tarih>b.tarih?1:-1):[];
   const gelmedListesi=hastaRandevular.filter(r=>r.durum==="Gelmedi"&&r.tarih>=GELMEDI_TAKIP_BASLANGIC);
@@ -2748,7 +2748,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h2 style={{fontSize:18,fontWeight:600}}>Hasta Listesi ({hastalar.length})</h2>
-        {(aktifRol==="sekreter"||aktifRol==="yonetici")&&<button onClick={()=>{setForm("yeni");setAd("");setTel("");setCinsiyet("Bayan");setSeciliHasta(null);}} style={btnPrimary}>+ Yeni Hasta</button>}
+        {(aktifRol==="sekreter"||aktifRol==="yonetici")&&<button onClick={()=>{setForm("yeni");setAd("");setTel("");setCinsiyet("Bayan");setHastaIlkKez(false);setSeciliHasta(null);}} style={btnPrimary}>+ Yeni Hasta</button>}
       </div>
       <input value={filtre} onChange={e=>setFiltre(e.target.value)} placeholder="İsim, ID veya telefon ile ara..." style={{...inputStyle,marginBottom:12}}/>
       {form==="yeni"&&(
@@ -2757,6 +2757,9 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
           <input value={tel} onChange={e=>setTel(e.target.value)} placeholder="Telefon" style={{...inputStyle,marginBottom:8}}/>
           <div style={{display:"flex",gap:6,marginBottom:10}}>
             {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setCinsiyet(c)} style={{...chipStyle(cinsiyet===c),flex:1}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
+          </div>
+          <div style={{marginBottom:10}}>
+            <button onClick={()=>setHastaIlkKez(v=>!v)} style={{...chipStyle(hastaIlkKez),fontSize:12,background:hastaIlkKez?"#dbeafe":undefined,color:hastaIlkKez?"#2563eb":undefined,border:hastaIlkKez?"1.5px solid #93c5fd":undefined}}>🆕 Yeni Hasta {hastaIlkKez?"✓":""}</button>
           </div>
           <div style={{display:"flex",gap:8}}><button onClick={kaydet} style={btnPrimary}>Kaydet</button><button onClick={()=>setForm(null)} style={btnSecondary}>İptal</button></div>
         </div>
@@ -4556,7 +4559,6 @@ const BH_KREM_KURALLARI=[
   [/botoks/,s=>/koltuk|\bel\b|\beller\b/.test(s)?{sure:20}:null],
   [/altin ?igne|morpheus/,{sure:45}],
   [/fraxis|fraksiyonel/,{sure:45}],
-  [/sac.*mezo|mezo.*sac/,null],
   [/mezo|matrix|lifting|somon|dna|pdrn|\basi(si)?\b/,s=>/goz/.test(s)?{sure:15}:{sure:45}],
   [/dudak.*dolgu|dolgu.*dudak/,{sure:15}],
 ];
