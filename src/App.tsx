@@ -920,7 +920,26 @@ export default function App() {
   const beklemeSayisi=bekleme.filter(b=>b.durum==="bekliyor").length;
   const bildirimSayisi=randevular.filter(r=>r.tarih<=today()&&r.tarih>=BILDIRIM_TAKIP_BASLANGIC&&!(r.log||[]).some(l=>l.islem?.includes("Durum:"))&&bildirimGorunurMu(r,aktifRol)).length;
   const [anketYollaAcik,setAnketYollaAcik]=useState(false);
+  const [googleLinkAcik,setGoogleLinkAcik]=useState(false);
   const anketYollaBaslangic=sonIsGunuTarihi(4);
+  const GOOGLE_LINK_MSG="https://g.page/r/CaLNk0c8C9CmEAE/review";
+  const googleLinkBaslangic=addDays(today(),-10);
+  const googleLinkListesi=(()=>{
+    const adaylar=randevular.filter(r=>r.tarih>=googleLinkBaslangic&&r.tarih<=today()&&r.durum!=="Gelmedi"&&r.durum!=="İptal");
+    const map=new Map();
+    adaylar.forEach(r=>{const k=r.hasta?.toLowerCase().trim();if(!map.has(k))map.set(k,r);});
+    return[...map.values()].sort((a,b)=>b.tarih.localeCompare(a.tarih));
+  })();
+  async function googleLinkGonderMain(r){
+    const msg="Sayın "+(r.hasta||"değerli hastamız")+", kliniğimize verdiğiniz destek için teşekkür ederiz 🌷 Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilirsiniz 🌸\n\n👉 "+GOOGLE_LINK_MSG;
+    let tel=r.tel||"";
+    if(tel){tel=tel.replace(/\D/g,"");if(tel.startsWith("0"))tel="90"+tel.slice(1);if(!tel.startsWith("90"))tel="90"+tel;}
+    window.open("https://wa.me/"+(tel||"")+"?text="+encodeURIComponent(msg),"_blank");
+    try{
+      await sbUpdate("randevular",r.id,{google_link_gonderildi:true});
+      setRandevular(prev=>prev.map(x=>x.id===r.id?{...x,google_link_gonderildi:true}:x));
+    }catch(e){console.error("Google link güncelleme hatası",e);}
+  }
   const anketGonderilmemis=(()=>{
     const ikiAyOncesi=addDays(today(),-60);
     // Son 2 ay içinde bu hastaya (adı ne olursa olsun, hangi randevusundan olursa olsun) zaten anket gönderilmiş mi?
@@ -933,6 +952,7 @@ export default function App() {
       saatiGecti5(r)&&
       r.anket_durum!=="gonderildi"&&
       r.durum!=="Gelmedi"&&
+      !r.google_link_gonderildi&&
       !yakinZamandaGonderilenHastalar.has(r.hasta?.toLowerCase().trim())
     );
     // Aynı hasta (örn. bir gün Alex, ertesi gün Soprano) birden fazla kez çıkmasın — en erken randevusunu göster
@@ -994,20 +1014,18 @@ export default function App() {
         </div>
       </header>
       <nav style={{background:"#fff",borderBottom:"1px solid #e8e6e0",padding:"0 1.5rem"}}>
-        <div style={{maxWidth:1200,margin:"0 auto",display:"flex"}}>
+        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",flexWrap:"wrap"}}>
           {[["takvim","📅 Takvim",0],...(aktifRol!=="sekreter"?[["bildirimler","🔔 Bildirimler",bildirimSayisi]]:[]),["bekleyen","🧍 Bekleyen Hasta",0],["hastalar","👤 Hastalar",0],["bekleme","⏳ Bekleme",beklemeSayisi],
             ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["rapor","📊 Rapor",0]]:[]),
             ...(aktifRol==="yonetici"?[["log","📋 Log",gunIciSayisi]]:[]),
             ...(aktifRol==="yonetici"||aktifRol==="sorumlu"?[["epilasyon_log","📋 Epilasyon Kartı Log",0]]:[]),
             ["anket_sonuc","📊 Anket Sonuçları",0],
             ["alex_program","📋 Alex Program",0],
-            ["gelmeyenler","🚫 Gelmeyenler",0],
             ["dashboard","📅 Boş Randevular",0]]
             .map(([k,l,badge])=>(
             <button key={k} onClick={()=>{
               if((k==="log"||k==="rapor"||k==="epilasyon_log")&&yoneticiKilit){setSifreModal(k);}
               else if(k==="anket_sonuc"&&yoneticiKilit&&aktifRol!=="sekreter"){setSifreModal(k);}
-
               else setAktifSekme(k);
             }} style={{padding:"12px 16px",background:"none",border:"none",borderBottom:aktifSekme===k?"2px solid #6366f1":"2px solid transparent",color:aktifSekme===k?"#6366f1":"#666",fontWeight:aktifSekme===k?600:400,fontSize:14,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
               {l}{(k==="rapor"||k==="log"||k==="epilasyon_log"||(k==="anket_sonuc"&&aktifRol!=="sekreter"))&&yoneticiKilit&&<span style={{fontSize:11,opacity:0.5}}>🔒</span>}{badge>0&&<span style={{background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:20}}>{badge}</span>}
@@ -1016,7 +1034,20 @@ export default function App() {
           <button onClick={()=>setAnketYollaAcik(true)} style={{padding:"12px 16px",background:"none",border:"none",color:anketGonderilmemis.length>0?"#ea580c":"#666",fontWeight:400,fontSize:14,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
             📤 Anket Yolla{anketGonderilmemis.length>0&&<span style={{background:"#ea580c",color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:20}}>{anketGonderilmemis.length}</span>}
           </button>
+          <button onClick={()=>setGoogleLinkAcik(true)} style={{padding:"12px 16px",background:"none",border:"none",color:"#4285f4",fontWeight:400,fontSize:14,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+            ⭐ Google Link Gönder
+          </button>
         </div>
+        {(aktifRol==="sekreter"||aktifRol==="personel")&&(
+          <div style={{maxWidth:1200,margin:"0 auto",display:"flex",borderTop:"1px solid #f0f0ec"}}>
+            <button onClick={()=>setAktifSekme("gelmeyenler")} style={{padding:"10px 16px",background:"none",border:"none",borderBottom:aktifSekme==="gelmeyenler"?"2px solid #6366f1":"2px solid transparent",color:aktifSekme==="gelmeyenler"?"#6366f1":"#666",fontWeight:aktifSekme==="gelmeyenler"?600:400,fontSize:13,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>🚫 Gelmeyenler</button>
+          </div>
+        )}
+        {(aktifRol!=="sekreter"&&aktifRol!=="personel")&&(
+          <div style={{maxWidth:1200,margin:"0 auto",display:"flex",borderTop:"1px solid #f0f0ec"}}>
+            <button onClick={()=>setAktifSekme("gelmeyenler")} style={{padding:"10px 16px",background:"none",border:"none",borderBottom:aktifSekme==="gelmeyenler"?"2px solid #6366f1":"2px solid transparent",color:aktifSekme==="gelmeyenler"?"#6366f1":"#666",fontWeight:aktifSekme==="gelmeyenler"?600:400,fontSize:13,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>🚫 Gelmeyenler</button>
+          </div>
+        )}
       </nav>
       <div style={{maxWidth:1200,margin:"0 auto",padding:"1.25rem 1.5rem"}}>
         {aktifSekme==="takvim"&&<TakvimSekme hastalar={hastalar} seciliTarih={seciliTarih} setSeciliTarih={setSeciliTarih} alexR={alexR} sopR={sopR} gunB={gunB} bloklar={bloklar} blokEkle={blokEkle} blokSil={blokSil} randevular={randevular} aktifRol={aktifRol} onYeniRandevu={(oda,saat)=>setModal({tip:"yeni",data:{oda,saat,tarih:seciliTarih}})} onRandevuTikla={r=>setModal({tip:"detay",data:r})} onRandevuDuzenle={r=>setModal({tip:"duzenle",data:r})} onRandevuTasi={randevuTasi} showToast={showToast} epilasyonDurum={epilasyonDurum}/>}
@@ -1060,6 +1091,33 @@ export default function App() {
                       <div style={{fontSize:12,color:"#888"}}>{r.tarih} · {r.oda==="alex"?"Alex":"Soprano"}{!r.tel&&<span style={{color:"#dc2626",marginLeft:6}}>telefon yok</span>}</div>
                     </div>
                     <button onClick={()=>anketGonder(r)} disabled={!r.tel} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:r.tel?"#25d366":"#ccc",cursor:r.tel?"pointer":"not-allowed",flexShrink:0}}>📱 Gönder</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </ModalWrapper>
+      )}
+      {googleLinkAcik&&(
+        <ModalWrapper onClose={()=>setGoogleLinkAcik(false)}>
+          <div>
+            <h2 style={{fontSize:16,fontWeight:600,marginBottom:4}}>⭐ Google Link Gönder</h2>
+            <div style={{fontSize:12,color:"#888",marginBottom:14}}>Son 10 gün içinde gelen hastalar. WhatsApp ile Google yorum linki gönderin.</div>
+            {googleLinkListesi.length===0?(
+              <div style={{padding:24,textAlign:"center",color:"#aaa",fontSize:13}}>Son 10 günde randevu yok.</div>
+            ):(
+              <div style={{maxHeight:400,overflowY:"auto",border:"1px solid #e8e6e0",borderRadius:10}}>
+                {googleLinkListesi.map((r,i)=>(
+                  <div key={r.id} style={{padding:"10px 14px",borderBottom:i<googleLinkListesi.length-1?"1px solid #f5f5f2":"none",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+                    <div>
+                      <div style={{fontWeight:600,fontSize:13}}>{r.hasta}</div>
+                      <div style={{fontSize:12,color:"#888"}}>{r.tarih} · {r.oda==="alex"?"Alex":"Soprano"}{!r.tel&&<span style={{color:"#dc2626",marginLeft:6}}>telefon yok</span>}</div>
+                    </div>
+                    {r.google_link_gonderildi?(
+                      <span style={{fontSize:12,color:"#16a34a",fontWeight:600,flexShrink:0}}>✅ Gönderildi</span>
+                    ):(
+                      <button onClick={()=>googleLinkGonderMain(r)} disabled={!r.tel} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:r.tel?"#4285f4":"#ccc",cursor:r.tel?"pointer":"not-allowed",flexShrink:0,display:"flex",alignItems:"center",gap:4}}>💬 WhatsApp</button>
+                    )}
                   </div>
                 ))}
               </div>
