@@ -859,8 +859,9 @@ export default function App() {
     try{
       const token=await anketOlustur(randevu);
       const link=`https://randevuuu.netlify.app/anket/${token}`;
-      const unvan=randevu.cinsiyet==="Bay"?"BEY":"HANIM";
-      const msg=`🌸 ${(randevu.hasta||"").toUpperCase()} ${unvan} MERHABALAR,\nDr. Duygu Coşkun Özbakır Kliniği olarak hizmet kalitemizi artırmak için görüşlerinize ihtiyaç duyuyoruz.\nSizin için hazırladığımız kısa anketi doldurmak ister misiniz? 🙏\n\n👉 ${link}\n\nAnketimiz yalnızca birkaç dakikanızı alacak ve yanıtlarınız tamamen gizli tutulacaktır.\nKatkınız için şimdiden teşekkür ederiz. 🌸`;
+      const ad=(randevu.hasta||"").split(" ")[0];
+      const hitap=randevu.cinsiyet==="Bay"?`Merhabalar ${ad} Bey,`:randevu.cinsiyet==="Bayan"?`Merhabalar ${ad} Hanım,`:`Merhaba Sayın ${randevu.hasta||""},`;
+      const msg=`${hitap}\nDr. Duygu Coşkun Özbakır Kliniği olarak hizmet kalitemizi artırmak için görüşlerinize ihtiyaç duyuyoruz.\nSizin için hazırladığımız kısa anketi doldurmak ister misiniz?\nAnket Bağlantısı:\n${link}\nAnketimiz yalnızca birkaç dakikanızı alacak ve yanıtlarınız hizmet kalitemizi geliştirmek amacıyla değerlendirilecektir.\nKatkınız için şimdiden teşekkür ederiz.\nDr. Duygu Coşkun Özbakır Kliniği`;
       const tel=(randevu.tel||"").replace(/[^0-9]/g,"").slice(-10);
       if(tel.length===10){
         window.open(`https://wa.me/90${tel}?text=${encodeURIComponent(msg)}`,"_blank");
@@ -922,7 +923,7 @@ export default function App() {
   const [anketYollaAcik,setAnketYollaAcik]=useState(false);
   const [googleLinkAcik,setGoogleLinkAcik]=useState(false);
   const anketYollaBaslangic=sonIsGunuTarihi(4);
-  const GOOGLE_LINK_MSG="https://g.page/r/CaLNk0c8C9CmEAE/review";
+  const GOOGLE_LINK_MSG="https://g.page/r/CaLNk0c8C9CmEBM/review";
   const googleLinkBaslangic=addDays(today(),-10);
   const googleLinkListesi=(()=>{
     const adaylar=randevular.filter(r=>r.tarih>=googleLinkBaslangic&&r.tarih<=today()&&r.durum!=="Gelmedi"&&r.durum!=="İptal");
@@ -931,7 +932,9 @@ export default function App() {
     return[...map.values()].sort((a,b)=>b.tarih.localeCompare(a.tarih));
   })();
   async function googleLinkGonderMain(r){
-    const msg="Sayın "+(r.hasta||"değerli hastamız")+", kliniğimize verdiğiniz destek için teşekkür ederiz 🌷 Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilirsiniz 🌸\n\n👉 "+GOOGLE_LINK_MSG;
+    const ad=(r.hasta||"").split(" ")[0];
+    const hitap=r.cinsiyet==="Bay"?"Merhabalar "+ad+" Bey,":r.cinsiyet==="Bayan"?"Merhabalar "+ad+" Hanım,":"Merhaba Sayın "+(r.hasta||"değerli hastamız")+",";
+    const msg=hitap+"\nKliniğimize verdiğiniz destek için teşekkür ederiz. Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilir ve bize destek verebilirsiniz.\nGoogle Yorum Butonu:\n"+GOOGLE_LINK_MSG;
     let tel=r.tel||"";
     if(tel){tel=tel.replace(/\D/g,"");if(tel.startsWith("0"))tel="90"+tel.slice(1);if(!tel.startsWith("90"))tel="90"+tel;}
     window.open("https://wa.me/"+(tel||"")+"?text="+encodeURIComponent(msg),"_blank");
@@ -3134,7 +3137,7 @@ function AnketSonucSekme({aktifRol}){
   const [yukleniyor,setYukleniyor]=useState(true);
   const [filtre,setFiltre]=useState("hepsi");
   const [anketSekme,setAnketSekme]=useState("puanlar");
-  const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEAE/review";
+  const GOOGLE_LINK="https://g.page/r/CaLNk0c8C9CmEBM/review";
   const LAZER_SORULAR_METIN={s1:"Randevu ve karşılama sürecinden memnun kaldınız mı?",s2:"Personelimizin ilgi ve iletişimini nasıl değerlendirirsiniz?",s3:"İşlem sırasında kendinizi rahat ve güvende hissettiniz mi?",s4:"Mahremiyetinize yeterince özen gösterildiğini düşünüyor musunuz?",s5:"Klinik hijyenini nasıl değerlendirirsiniz?",s6:"İşlem öncesinde yeterince bilgilendirildiniz mi?",s7:"Genel memnuniyet puanı (1-10)",s8:"Tekrar aynı personelden hizmet almak ister misiniz?",s9:"Kliniğimizi yakınlarınıza tavsiye eder misiniz?",s10:"Görüş veya önerileriniz"};
   const CILT_SORULAR_METIN={s1:"İşlem öncesinde size yeterli bilgilendirme yapıldı mı?",s2:"Personelimizin ilgisini ve iletişimini nasıl değerlendirirsiniz?",s3:"İşlem sırasında kendinizi rahat hissettiniz mi?",s4:"Klinik hijyenini nasıl değerlendirirsiniz?",s5:"İşlem sonrasında öneriler ve bakım tavsiyeleri yeterince anlatıldı mı?",s6:"Genel memnuniyet puanı (1-10)",s7:"Aynı personelden tekrar hizmet almak ister misiniz?",s8:"Kliniğimizi yakınlarınıza tavsiye eder misiniz?",s9:"Görüş, öneri veya paylaşmak istediğiniz başka bir konu"};
   function soruMetni(anketTipi,key){const m=anketTipi==="lazer"?LAZER_SORULAR_METIN:CILT_SORULAR_METIN;return m[key]||key;}
@@ -3372,7 +3375,9 @@ function AnketSonucSekme({aktifRol}){
   }).sort((a,b)=>(b.tamamlama_tarih||"").localeCompare(a.tamamlama_tarih||""));
 
   async function googleGonder(a){
-    const msg="Sayın "+(a.hasta||"değerli hastamız")+", kliniğimize verdiğiniz destek için teşekkür ederiz 🌷 Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilirsiniz 🌸\n\n👉 "+GOOGLE_LINK;
+    const ad=(a.hasta||"").split(" ")[0];
+    const hitap=a.cinsiyet==="Bay"?"Merhabalar "+ad+" Bey,":a.cinsiyet==="Bayan"?"Merhabalar "+ad+" Hanım,":"Merhaba Sayın "+(a.hasta||"değerli hastamız")+",";
+    const msg=hitap+"\nKliniğimize verdiğiniz destek için teşekkür ederiz. Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilir ve bize destek verebilirsiniz.\nGoogle Yorum Butonu:\n"+GOOGLE_LINK;
     let tel=randevuTelMap.get(a.randevu_id)||"";
     if(tel){tel=tel.replace(/\D/g,"");if(tel.startsWith("0"))tel="90"+tel.slice(1);if(!tel.startsWith("90"))tel="90"+tel;}
     window.open("https://wa.me/"+(tel||"")+"?text="+encodeURIComponent(msg),"_blank");
