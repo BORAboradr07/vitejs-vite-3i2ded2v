@@ -170,7 +170,7 @@ const ROLLER = {yonetici:"Yönetici",sekreter:"Sekreter",personel:"Uygulayıcı"
 const EPILASYON_CIHAZLAR = ["Soprano","Alex","Nd:YAG"];
 const DOKULME_SECENEKLERI = ["Az","Orta","İyi","Çok iyi"];
 const EPILASYON_BUCKET = "epilasyon-fotolar";
-const EPILASYON_UYGULAYICI_YEDEK = ["Gülserin","Hanife","Hazal","Fatma","Gülşah","Vesile"];
+const EPILASYON_UYGULAYICI_YEDEK = ["Gülserin","Hanife","Fatma","Gülşah","Vesile"];
 
 const SAATLER = [];
 for(let h=9;h<=20;h++) for(let m=0;m<60;m+=5){if(h===20&&m>0)break;SAATLER.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);}
@@ -3176,22 +3176,40 @@ function AnketSonucSekme({aktifRol}){
   }
   function soruIstatistikleri(anketTipi){
     const sorular=anketTipi==="lazer"?LAZER_SORULAR_TAM:CILT_SORULAR_TAM;
-    const grupDusuk=anketler.filter(a=>a.anket_tipi===anketTipi&&a.puan!=null&&a.puan<10);
-    const grupAlex=grupDusuk.filter(a=>a.oda==="alex");
-    const grupSoprano=grupDusuk.filter(a=>a.oda==="soprano");
-    const dusukDagilim=dagilimHesapla(sorular,grupDusuk);
+    const grupTum=anketler.filter(a=>a.anket_tipi===anketTipi&&a.puan!=null&&a.puan<10);
+    const grupAlex=grupTum.filter(a=>a.oda==="alex");
+    const grupSoprano=grupTum.filter(a=>a.oda==="soprano");
+    // Personel bazlı gruplar
+    const personelGruplari={};
+    ["Gülşah","Vesile","Hanife"].forEach(p=>{
+      personelGruplari[p]=grupTum.filter(a=>{
+        if(p==="Hanife")return a.oda==="soprano";
+        const saat=randevuSaatMap.get(a.randevu_id);
+        return a.oda==="alex"&&saat&&alexPersoneliTahmini(a.randevu_tarih,saat)===p;
+      });
+    });
     const alexDagilim=dagilimHesapla(sorular,grupAlex);
     const sopranoDagilim=dagilimHesapla(sorular,grupSoprano);
-    const sonuc=dusukDagilim.map(d=>{
-      const alexD=alexDagilim.find(g=>g.id===d.id);
-      const sopD=sopranoDagilim.find(g=>g.id===d.id);
+    const personelDagilimlari={};
+    ["Gülşah","Vesile","Hanife"].forEach(p=>{personelDagilimlari[p]=dagilimHesapla(sorular,personelGruplari[p]);});
+    const sonuc=alexDagilim.map((d,idx)=>{
+      const sopD=sopranoDagilim[idx];
+      const pDag={};
+      ["Gülşah","Vesile","Hanife"].forEach(p=>{pDag[p]=personelDagilimlari[p]?.[idx];});
       return{
         id:d.id,
         metin:soruMetni(anketTipi,d.id),
-        dagilim:d.dagilim.map((opt,i)=>({...opt,alexYuzde:alexD?.dagilim?.[i]?.yuzde,sopranoYuzde:sopD?.dagilim?.[i]?.yuzde}))
+        dagilim:d.dagilim.map((opt,i)=>({
+          ...opt,
+          alexYuzde:opt.yuzde,
+          sopranoYuzde:sopD?.dagilim?.[i]?.yuzde,
+          gulsahYuzde:pDag["Gülşah"]?.dagilim?.[i]?.yuzde,
+          vesileYuzde:pDag["Vesile"]?.dagilim?.[i]?.yuzde,
+          hanifeYuzde:pDag["Hanife"]?.dagilim?.[i]?.yuzde,
+        }))
       };
     });
-    return{grupSayisi:grupDusuk.length,alexSayisi:grupAlex.length,sopranoSayisi:grupSoprano.length,sonuc};
+    return{grupSayisi:grupTum.length,alexSayisi:grupAlex.length,sopranoSayisi:grupSoprano.length,personelSayilari:Object.fromEntries(["Gülşah","Vesile","Hanife"].map(p=>[p,personelGruplari[p].length])),sonuc};
   }
   // Alex personel tahmini — ALEX_YENI_DUZEN'den itibaren Vesile/Gülşah, öncesi Hazal/Gülşah; ikisi de haftalık dönüşümlü
   function haftaBasiPazartesi(tarihStr){
@@ -3268,7 +3286,6 @@ function AnketSonucSekme({aktifRol}){
     }).map(a=>({hasta:a.hasta,puan:a.puan,tarih:a.tamamlama_tarih,oda:a.oda,randevuTarih:a.randevu_tarih,personel:personelAdi}));
   }
   const gulsahIst=personelBazliIstatistik("Gülşah","alex");
-  const hazalIst=personelBazliIstatistik("Hazal","alex");
   const vesileIst=personelBazliIstatistik("Vesile","alex");
   const hanifeIst=personelBazliIstatistik("Hanife","soprano");
 
@@ -3632,12 +3649,12 @@ function AnketSonucSekme({aktifRol}){
         </div>
       )}
 
-      {(gulsahIst.toplam>0||hazalIst.toplam>0||vesileIst.toplam>0||hanifeIst.toplam>0)&&(
+      {(gulsahIst.toplam>0||vesileIst.toplam>0||hanifeIst.toplam>0)&&(
         <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,marginBottom:20,overflow:"hidden"}}>
           <div style={{padding:"12px 16px",background:"#f0fdf4",borderBottom:"1px solid #bbf7d0"}}>
             <span style={{fontWeight:600,fontSize:14,color:"#16a34a"}}>👤 Personel Bazlı — Tekrar Hizmet Alma İsteği (tahmini)</span>
           </div>
-          <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:[gulsahIst.toplam>0,hazalIst.toplam>0,vesileIst.toplam>0,hanifeIst.toplam>0].filter(Boolean).length>=2?"repeat(auto-fit,minmax(180px,1fr))":"1fr",gap:16}}>
+          <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:[gulsahIst.toplam>0,vesileIst.toplam>0,hanifeIst.toplam>0].filter(Boolean).length>=2?"repeat(auto-fit,minmax(180px,1fr))":"1fr",gap:16}}>
             {gulsahIst.toplam>0&&(
               <div>
                 <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Gülşah ({gulsahIst.toplam} kişi)</div>
@@ -3670,23 +3687,6 @@ function AnketSonucSekme({aktifRol}){
                   </div>);
                 })}
                 <div style={{fontSize:10,color:"#dc2626",fontWeight:700,marginTop:4}}>Hayır+Kararsızım: %{(vesileIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(vesileIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
-              </div>
-            )}
-            {hazalIst.toplam>0&&(
-              <div>
-                <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:8}}>Hazal ({hazalIst.toplam} kişi)</div>
-                {hazalIst.dagilim.map(d=>{
-                  const olumsuz=d.secenek==="Hayır"||d.secenek==="Kararsızım";
-                  return(
-                  <div key={d.secenek} onClick={()=>setSoruDetay({soruId:"personel_hazal",secenek:d.secenek,anketTipi:"lazer",metin:"Tekrar aynı personelden hizmet almak ister misiniz? (Hazal — tahmini)",secenekLabel:d.secenek,hastalar:personelBazliHastalar("Hazal","alex",d.secenek)})} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,cursor:"pointer",background:olumsuz?"#fffbeb":"transparent",borderRadius:4,padding:"2px 0"}}>
-                    <span style={{fontSize:11,color:olumsuz?"#dc2626":"#555",width:90,flexShrink:0,fontWeight:olumsuz?700:400}}>{d.secenek}</span>
-                    <div style={{flex:1,background:"#f0f0ed",borderRadius:6,height:7,overflow:"hidden"}}>
-                      <div style={{width:`${d.yuzde}%`,height:"100%",background:olumsuz?"#dc2626":"#22c55e"}}/>
-                    </div>
-                    <span style={{fontSize:11,fontWeight:700,color:"#555",width:30,textAlign:"right",flexShrink:0}}>%{d.yuzde}</span>
-                  </div>);
-                })}
-                <div style={{fontSize:10,color:"#dc2626",fontWeight:700,marginTop:4}}>Hayır+Kararsızım: %{(hazalIst.dagilim.find(d=>d.secenek==="Hayır")?.yuzde||0)+(hazalIst.dagilim.find(d=>d.secenek==="Kararsızım")?.yuzde||0)}</div>
               </div>
             )}
             {hanifeIst.toplam>0&&(
@@ -3724,20 +3724,23 @@ function AnketSonucSekme({aktifRol}){
                   return(
                   <div key={s.id} style={{marginBottom:16}}>
                     <div style={{fontSize:12,color:"#666",marginBottom:6,fontWeight:600}}>{s.metin}</div>
-                    <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
-                      <thead><tr style={{color:"#aaa",textAlign:"left"}}><th style={{fontWeight:400,width:110,paddingBottom:4}}>Seçenek</th><th style={{fontWeight:400,paddingBottom:4}}>Genel %</th><th style={{fontWeight:400,paddingBottom:4,color:"#2563eb"}}>Alex %</th><th style={{fontWeight:400,paddingBottom:4,color:"#7c3aed"}}>Soprano %</th></tr></thead>
+                    <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",fontSize:11,borderCollapse:"collapse",minWidth:500}}>
+                      <thead><tr style={{color:"#aaa",textAlign:"left"}}><th style={{fontWeight:400,width:100,paddingBottom:4}}>Seçenek</th><th style={{fontWeight:400,paddingBottom:4,color:"#2563eb"}}>Alex %</th><th style={{fontWeight:400,paddingBottom:4,color:"#7c3aed"}}>Soprano %</th><th style={{fontWeight:400,paddingBottom:4,color:"#059669"}}>Gülşah %</th><th style={{fontWeight:400,paddingBottom:4,color:"#d97706"}}>Vesile %</th><th style={{fontWeight:400,paddingBottom:4,color:"#dc2626"}}>Hanife %</th></tr></thead>
                       <tbody>{s.dagilim.map(d=>{
                         const olumsuz=soru&&olumsuzMu(soru,soru.tip==="yildiz"?d.secenek.replace("★",""):d.secenek);
-                        const secenekDeger=soru?.tip==="yildiz"?d.secenek.replace("★",""):d.secenek;
                         return(
                         <tr key={d.secenek} onClick={olumsuz?()=>setSoruDetay({soruId:s.id,secenek:soru.tip==="yildiz"?"3_ve_alti":d.secenek,anketTipi:"lazer",metin:s.metin,secenekLabel:soru.tip==="yildiz"?"3★ ve altı":d.secenek,hastalar:soruSecenekHastalari("lazer",s.id,soru.tip==="yildiz"?"3_ve_alti":d.secenek,null)}):undefined} style={{cursor:olumsuz?"pointer":undefined,background:olumsuz?"#fffbeb":undefined}}>
                           <td style={{padding:"3px 0",color:olumsuz?"#dc2626":"#555",fontWeight:olumsuz?600:400}}>{d.secenek}{olumsuz&&" 👆"}</td>
-                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#f0f0ed",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.yuzde}%`,height:"100%",background:olumsuz?"#dc2626":"#6366f1"}}/></div><span style={{fontWeight:700,color:olumsuz?"#dc2626":"#555",minWidth:28}}>%{d.yuzde}</span></div></td>
-                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#eff6ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.alexYuzde??0}%`,height:"100%",background:"#2563eb"}}/></div><span style={{fontWeight:700,color:"#2563eb",minWidth:28}}>{d.alexYuzde!==undefined?`%${d.alexYuzde}`:"-"}</span></div></td>
-                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#f3f0ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.sopranoYuzde??0}%`,height:"100%",background:"#7c3aed"}}/></div><span style={{fontWeight:700,color:"#7c3aed",minWidth:28}}>{d.sopranoYuzde!==undefined?`%${d.sopranoYuzde}`:"-"}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#eff6ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.alexYuzde??0}%`,height:"100%",background:"#2563eb"}}/></div><span style={{fontWeight:700,color:"#2563eb",minWidth:26}}>%{d.alexYuzde??0}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#f3f0ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.sopranoYuzde??0}%`,height:"100%",background:"#7c3aed"}}/></div><span style={{fontWeight:700,color:"#7c3aed",minWidth:26}}>%{d.sopranoYuzde??0}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#ecfdf5",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.gulsahYuzde??0}%`,height:"100%",background:"#059669"}}/></div><span style={{fontWeight:700,color:"#059669",minWidth:26}}>%{d.gulsahYuzde??0}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#fffbeb",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.vesileYuzde??0}%`,height:"100%",background:"#d97706"}}/></div><span style={{fontWeight:700,color:"#d97706",minWidth:26}}>%{d.vesileYuzde??0}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#fef2f2",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.hanifeYuzde??0}%`,height:"100%",background:"#dc2626"}}/></div><span style={{fontWeight:700,color:"#dc2626",minWidth:26}}>%{d.hanifeYuzde??0}</span></div></td>
                         </tr>);
                       })}</tbody>
                     </table>
+                    </div>
                   </div>);
                 })}
               </div>
@@ -3750,19 +3753,23 @@ function AnketSonucSekme({aktifRol}){
                   return(
                   <div key={s.id} style={{marginBottom:16}}>
                     <div style={{fontSize:12,color:"#666",marginBottom:6,fontWeight:600}}>{s.metin}</div>
-                    <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
-                      <thead><tr style={{color:"#aaa",textAlign:"left"}}><th style={{fontWeight:400,width:110,paddingBottom:4}}>Seçenek</th><th style={{fontWeight:400,paddingBottom:4}}>Genel %</th><th style={{fontWeight:400,paddingBottom:4,color:"#2563eb"}}>Alex %</th><th style={{fontWeight:400,paddingBottom:4,color:"#7c3aed"}}>Soprano %</th></tr></thead>
+                    <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",fontSize:11,borderCollapse:"collapse",minWidth:500}}>
+                      <thead><tr style={{color:"#aaa",textAlign:"left"}}><th style={{fontWeight:400,width:100,paddingBottom:4}}>Seçenek</th><th style={{fontWeight:400,paddingBottom:4,color:"#2563eb"}}>Alex %</th><th style={{fontWeight:400,paddingBottom:4,color:"#7c3aed"}}>Soprano %</th><th style={{fontWeight:400,paddingBottom:4,color:"#059669"}}>Gülşah %</th><th style={{fontWeight:400,paddingBottom:4,color:"#d97706"}}>Vesile %</th><th style={{fontWeight:400,paddingBottom:4,color:"#dc2626"}}>Hanife %</th></tr></thead>
                       <tbody>{s.dagilim.map(d=>{
                         const olumsuz=soru&&olumsuzMu(soru,soru.tip==="yildiz"?d.secenek.replace("★",""):d.secenek);
                         return(
                         <tr key={d.secenek} onClick={olumsuz?()=>setSoruDetay({soruId:s.id,secenek:soru.tip==="yildiz"?"3_ve_alti":d.secenek,anketTipi:"cilt",metin:s.metin,secenekLabel:soru.tip==="yildiz"?"3★ ve altı":d.secenek,hastalar:soruSecenekHastalari("cilt",s.id,soru.tip==="yildiz"?"3_ve_alti":d.secenek,null)}):undefined} style={{cursor:olumsuz?"pointer":undefined,background:olumsuz?"#fffbeb":undefined}}>
                           <td style={{padding:"3px 0",color:olumsuz?"#dc2626":"#555",fontWeight:olumsuz?600:400}}>{d.secenek}{olumsuz&&" 👆"}</td>
-                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#f0f0ed",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.yuzde}%`,height:"100%",background:olumsuz?"#dc2626":"#6366f1"}}/></div><span style={{fontWeight:700,color:olumsuz?"#dc2626":"#555",minWidth:28}}>%{d.yuzde}</span></div></td>
-                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#eff6ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.alexYuzde??0}%`,height:"100%",background:"#2563eb"}}/></div><span style={{fontWeight:700,color:"#2563eb",minWidth:28}}>{d.alexYuzde!==undefined?`%${d.alexYuzde}`:"-"}</span></div></td>
-                          <td><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,background:"#f3f0ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:80}}><div style={{width:`${d.sopranoYuzde??0}%`,height:"100%",background:"#7c3aed"}}/></div><span style={{fontWeight:700,color:"#7c3aed",minWidth:28}}>{d.sopranoYuzde!==undefined?`%${d.sopranoYuzde}`:"-"}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#eff6ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.alexYuzde??0}%`,height:"100%",background:"#2563eb"}}/></div><span style={{fontWeight:700,color:"#2563eb",minWidth:26}}>%{d.alexYuzde??0}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#f3f0ff",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.sopranoYuzde??0}%`,height:"100%",background:"#7c3aed"}}/></div><span style={{fontWeight:700,color:"#7c3aed",minWidth:26}}>%{d.sopranoYuzde??0}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#ecfdf5",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.gulsahYuzde??0}%`,height:"100%",background:"#059669"}}/></div><span style={{fontWeight:700,color:"#059669",minWidth:26}}>%{d.gulsahYuzde??0}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#fffbeb",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.vesileYuzde??0}%`,height:"100%",background:"#d97706"}}/></div><span style={{fontWeight:700,color:"#d97706",minWidth:26}}>%{d.vesileYuzde??0}</span></div></td>
+                          <td><div style={{display:"flex",alignItems:"center",gap:3}}><div style={{flex:1,background:"#fef2f2",borderRadius:4,height:7,overflow:"hidden",maxWidth:60}}><div style={{width:`${d.hanifeYuzde??0}%`,height:"100%",background:"#dc2626"}}/></div><span style={{fontWeight:700,color:"#dc2626",minWidth:26}}>%{d.hanifeYuzde??0}</span></div></td>
                         </tr>);
                       })}</tbody>
                     </table>
+                    </div>
                   </div>);
                 })}
               </div>
