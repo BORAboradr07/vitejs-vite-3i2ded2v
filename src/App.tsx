@@ -26,6 +26,32 @@ async function drRandevulariCek(tarih){
     return { drRandevuId: d.id, tarih, saat: saatTR, hasta: ad, tel: d.hastalar?.telefon || "", islem: d.hizmetler?.ad || "", notlar: d.notlar || "", durum: d.durum };
   });
 }
+// ── TELEFON NORMALIZE ────────────────────────────────────────────────────────
+function telefonNormalize(v){
+  let d=String(v??'').replace(/\D/g,'');
+  d=d.replace(/^00/,'');
+  if(d.startsWith('90')&&d.length>=12) d=d.slice(2);
+  if(d.startsWith('0')&&d.length===11) d=d.slice(1);
+  return d;
+}
+function telefonGecerliMi(v){ return telefonNormalize(v).length===10; }
+
+// +90 etiketli, sayaçlı telefon giriş kutusu
+function TelInput({value,onChange,style:st,placeholder}){
+  const norm=telefonNormalize(value);
+  const hane=norm.length;
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:0}}>
+        <span style={{background:"#f0f0ed",border:"1px solid #ddd",borderRight:"none",borderRadius:"8px 0 0 8px",padding:"8px 10px",fontSize:14,color:"#555",fontWeight:600,whiteSpace:"nowrap"}}>+90</span>
+        <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"5XX XXX XX XX"} style={{...st,borderRadius:"0 8px 8px 0",borderLeft:"none",flex:1}} inputMode="tel"/>
+        <span style={{fontSize:11,color:hane===10?"#16a34a":"#999",marginLeft:8,whiteSpace:"nowrap",fontWeight:hane===10?700:400}}>{hane}/10</span>
+      </div>
+      <div style={{fontSize:11,color:"#999",marginTop:3}}>Başında 0 olmadan 10 hane yazın. Örnek: 5321234567</div>
+    </div>
+  );
+}
+
 const HDR_BASE = { "Content-Type":"application/json", "apikey":SB_KEY };
 // Giriş yapan kullanıcının kendi oturum anahtarı — login sonrası ve arka planda periyodik olarak güncellenir.
 // Giriş yapılmamışsa (ör. giriş ekranı) anon anahtara düşer.
@@ -674,7 +700,7 @@ export default function App() {
   }
 
   async function randevuHastaBilgisiDuzenle(r,yeniAd,yeniTel){
-    const ad=yeniAd.trim(),tel=yeniTel.trim();
+    const ad=yeniAd.trim(),tel=telefonNormalize(yeniTel);
     if(!ad){showToast("Ad soyad boş olamaz.","error");return false;}
     // Bu hastanın "hastalar" tablosunda kaydı var mı? (hasta_id ya da isimle eşleştir)
     const hastaKaydi=hastalar.find(h=>h.hasta_id&&r.hasta_id&&String(h.hasta_id)===String(r.hasta_id))
@@ -776,10 +802,11 @@ export default function App() {
 
   async function hastaGuncelle(hasta,yeniAd,yeniTel,yeniCinsiyet,yeniHastaId){
     try{
+      const normTel=telefonNormalize(yeniTel);
       const eskiAd=hasta.ad;
       const eskiHastaId=hasta.hasta_id;
       const hastaIdDegisti=yeniHastaId!==undefined&&yeniHastaId!==eskiHastaId;
-      const guncelAlanlar={ad:yeniAd,tel:yeniTel,cinsiyet:yeniCinsiyet};
+      const guncelAlanlar={ad:yeniAd,tel:normTel,cinsiyet:yeniCinsiyet};
       if(hastaIdDegisti)guncelAlanlar.hasta_id=yeniHastaId;
       const hastaSonuc=await sbUpdate("hastalar",hasta.id,guncelAlanlar);
       if(!hastaSonuc||hastaSonuc.length===0){
@@ -816,11 +843,11 @@ export default function App() {
     }catch(e){showToast("Hata: "+e.message,"error");return false;}
   }
 
-  async function hastaEkleDB(ad,tel,cinsiyet="Bayan",ilkKez=false){
+  async function hastaEkleDB(ad,tel,cinsiyet="Bayan",ilkKez=false,mukerrerOnay=false){
     try{
+      const normTel=telefonNormalize(tel);
       const varMi=hastalar.find(h=>h.ad?.toLowerCase().trim()===ad.toLowerCase().trim());
       if(varMi){
-        // Mevcut hasta, ilk kez işaretlendiyse güncelle
         if(ilkKez&&!varMi.ilk_kez_epilasyon){
           try{await sbUpdate("hastalar",varMi.id,{ilk_kez_epilasyon:true});varMi.ilk_kez_epilasyon=true;}catch(e){}
         }
@@ -834,13 +861,21 @@ export default function App() {
         setHastalar(prev=>[...prev,...dbKontrol.filter(d=>!prev.some(p=>p.id===d.id))]);
         return dbKontrol[0];
       }
+      // Mükerrer telefon kontrolü
+      if(normTel.length===10&&!mukerrerOnay){
+        const ayniTel=hastalar.find(h=>telefonNormalize(h.tel)===normTel);
+        if(ayniTel){
+          const devam=window.confirm(`⚠️ Bu numarayla kayıtlı hasta var:\n${ayniTel.ad} (${ayniTel.tel})\n\nMevcut kartı kullanmak için İptal'e, farklı kişi olarak yeni kart açmak için Tamam'a tıklayın.`);
+          if(!devam) return ayniTel;
+        }
+      }
       const maxId=hastalar.reduce((max,h)=>{
         const n=parseInt(h.hasta_id||"0");
         return n>max?n:max;
       },0);
       const yeniId=String(maxId+1).padStart(4,"0");
-      const [ins]=await sbInsert("hastalar",{ad,tel,cinsiyet,hasta_id:yeniId,ilk_kez_epilasyon:ilkKez});
-      const yeni={id:ins.id,ad,tel,cinsiyet,hasta_id:yeniId,ilk_kez_epilasyon:ilkKez};
+      const [ins]=await sbInsert("hastalar",{ad,tel:normTel,cinsiyet,hasta_id:yeniId,ilk_kez_epilasyon:ilkKez});
+      const yeni={id:ins.id,ad,tel:normTel,cinsiyet,hasta_id:yeniId,ilk_kez_epilasyon:ilkKez};
       setHastalar(prev=>[...prev,yeni]);
       return yeni;
     } catch(e){showToast("Hata: "+e.message,"error");return null;}
@@ -862,9 +897,9 @@ export default function App() {
       const ad=(randevu.hasta||"").split(" ")[0];
       const hitap=randevu.cinsiyet==="Bay"?`Merhabalar ${ad} Bey,`:randevu.cinsiyet==="Bayan"?`Merhabalar ${ad} Hanım,`:`Merhaba Sayın ${randevu.hasta||""},`;
       const msg=`${hitap}\nDr. Duygu Coşkun Özbakır Kliniği olarak hizmet kalitemizi artırmak için görüşlerinize ihtiyaç duyuyoruz.\nSizin için hazırladığımız kısa anketi doldurmak ister misiniz?\nAnket Bağlantısı:\n${link}\nAnketimiz yalnızca birkaç dakikanızı alacak ve yanıtlarınız hizmet kalitemizi geliştirmek amacıyla değerlendirilecektir.\nKatkınız için şimdiden teşekkür ederiz.\nDr. Duygu Coşkun Özbakır Kliniği`;
-      const tel=(randevu.tel||"").replace(/[^0-9]/g,"").slice(-10);
-      if(tel.length===10){
-        window.open(`https://wa.me/90${tel}?text=${encodeURIComponent(msg)}`,"_blank");
+      const ntel=telefonNormalize(randevu.tel);
+      if(ntel.length===10){
+        window.open(`https://wa.me/90${ntel}?text=${encodeURIComponent(msg)}`,"_blank");
         await anketDurumGuncelle(randevu.id,"gonderildi");
         showToast("Anket gönderildi!");
       } else {
@@ -875,7 +910,7 @@ export default function App() {
 
   async function beklemeyeEkle(veri){
     try{
-      const sbData={ad:veri.ad,tel:veri.tel,oda:veri.oda,bolgeler:veri.bolgeler||[],tercih_tarih:veri.tercihTarih||null,tercih_saat:veri.tercihSaat||null,notlar:veri.notlar||"",durum:"bekliyor",kayit_tarih:today(),kayit_saat:nowTime()};
+      const sbData={ad:veri.ad,tel:telefonNormalize(veri.tel),oda:veri.oda,bolgeler:veri.bolgeler||[],tercih_tarih:veri.tercihTarih||null,tercih_saat:veri.tercihSaat||null,notlar:veri.notlar||"",durum:"bekliyor",kayit_tarih:today(),kayit_saat:nowTime()};
       const [ins]=await sbInsert("bekleme",sbData);
       setBekleme(prev=>[{...sbData,id:ins.id,tercihTarih:sbData.tercih_tarih,tercihSaat:sbData.tercih_saat,kayitTarih:sbData.kayit_tarih,kayitSaat:sbData.kayit_saat},...prev]);
       showToast("Bekleme listesine eklendi.");
@@ -935,9 +970,8 @@ export default function App() {
     const ad=(r.hasta||"").split(" ")[0];
     const hitap=r.cinsiyet==="Bay"?"Merhabalar "+ad+" Bey,":r.cinsiyet==="Bayan"?"Merhabalar "+ad+" Hanım,":"Merhaba Sayın "+(r.hasta||"değerli hastamız")+",";
     const msg=hitap+"\nKliniğimize verdiğiniz destek için teşekkür ederiz. Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilir ve bize destek verebilirsiniz.\nGoogle Yorum Butonu:\n"+GOOGLE_LINK_MSG;
-    let tel=r.tel||"";
-    if(tel){tel=tel.replace(/\D/g,"");if(tel.startsWith("0"))tel="90"+tel.slice(1);if(!tel.startsWith("90"))tel="90"+tel;}
-    window.open("https://wa.me/"+(tel||"")+"?text="+encodeURIComponent(msg),"_blank");
+    const ntel=telefonNormalize(r.tel);
+    window.open("https://wa.me/90"+ntel+"?text="+encodeURIComponent(msg),"_blank");
     try{
       await sbUpdate("randevular",r.id,{google_link_gonderildi:true});
       setRandevular(prev=>prev.map(x=>x.id===r.id?{...x,google_link_gonderildi:true}:x));
@@ -1906,6 +1940,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     }
     if(!aktifHasta){alert("Hasta adı girin.");return;}
     if(!hastaTel.trim()&&!hastaId){alert("Telefon numarası zorunludur.");return;}
+    if(hastaTel.trim()&&!telefonGecerliMi(hastaTel)){alert("Başında 0 olmadan 10 hane yazın. Örnek: 5321234567");return;}
     if(!hastaCinsiyet){alert("Cinsiyet seçimi zorunludur.");return;}
     if(seciliBolgeler.length===0){alert("En az bir bölge seçin.");return;}
     setKayitYapiliyor(true);
@@ -1925,10 +1960,10 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
       setKayitYapiliyor(false);
       return;
     }
-    await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar,tel:hastaTel,cinsiyet:hastaCinsiyet});
+    await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar,tel:telefonNormalize(hastaTel),cinsiyet:hastaCinsiyet});
     setKayitYapiliyor(false);
   }
-  const filtreliHastalar=hastaFiltre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(hastaFiltre.toLowerCase())||h.hasta_id?.includes(hastaFiltre)||h.tel?.includes(hastaFiltre)||(hastaFiltre.trim().length>=3&&benzerlik(h.ad,hastaFiltre)>=0.6)):[];
+  const filtreliHastalar=hastaFiltre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(hastaFiltre.toLowerCase())||h.hasta_id?.includes(hastaFiltre)||telefonNormalize(h.tel).includes(telefonNormalize(hastaFiltre))||(hastaFiltre.trim().length>=3&&benzerlik(h.ad,hastaFiltre)>=0.6)):[];
   const otomatikSure=(()=>{const t=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||15),0);return durum==="Rütuş"?Math.ceil((t||15)/2):(t||15);})();
   const onizlemeRenk=islemRenk(seciliBolgeler,oda,durum);
   return(
@@ -1964,9 +1999,9 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
           {hasta&&(
             <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:6}}>
               <input value={hasta} onChange={e=>setHasta(e.target.value.toLocaleUpperCase("tr"))} style={{...inputStyle,fontSize:13,color:"#4338ca",background:"#eef0ff",border:"1px solid #a5b4fc"}} placeholder="Hasta adını düzenle..."/>
-              <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
-              <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
-              {hastaTel&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}><span style={{fontSize:12,color:"#888"}}>📞</span><a href={`https://wa.me/90${hastaTel.replace(/[^0-9]/g,"").slice(-10)}`} target="_blank" style={{fontSize:14,fontWeight:600,color:"#16a34a",textDecoration:"none"}}>{hastaTel}</a></div>}
+              <TelInput value={hastaTel} onChange={setHastaTel} style={inputStyle} placeholder="5XX XXX XX XX"/>
+              <div style={{display:"flex",gap:6,marginTop:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
+              {hastaTel&&telefonGecerliMi(hastaTel)&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,marginTop:6}}><span style={{fontSize:12,color:"#888"}}>📞</span><a href={`https://wa.me/90${telefonNormalize(hastaTel)}`} target="_blank" style={{fontSize:14,fontWeight:600,color:"#16a34a",textDecoration:"none"}}>+90 {telefonNormalize(hastaTel)}</a></div>}
             </div>
           )}
           {!hasta&&hastaFiltre.trim().length>=1&&filtreliHastalar.length===0&&(
@@ -1986,7 +2021,7 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
                 return null;
               })()}
               <div style={{fontSize:12,color:"#888",padding:"6px 10px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8}}>"{hastaFiltre}" listede yok — bilgileri girin:</div>
-              <input value={hastaTel} onChange={e=>setHastaTel(e.target.value)} style={inputStyle} placeholder="Telefon *"/>
+              <TelInput value={hastaTel} onChange={setHastaTel} style={inputStyle}/>
               <div style={{display:"flex",gap:6}}>{["Bayan","Bay"].map(c=><button key={c} onClick={()=>setHastaCinsiyet(c)} style={{...chipStyle(hastaCinsiyet===c),flex:1,fontSize:12}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}</div>
               <button onClick={()=>{setHasta(hastaFiltre.toLocaleUpperCase("tr"));setHastaFiltre("");}} style={{...chipStyle(true),fontSize:12}}>✓ Bu isimle devam et</button>
             </div>
@@ -2048,7 +2083,7 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
         <div style={{background:"#f7f7f5",borderRadius:10,padding:12,marginBottom:14,border:"1.5px solid #a5b4fc"}}>
           <Label>Hasta Bilgilerini Düzenle</Label>
           <input value={yeniHastaAd} onChange={e=>setYeniHastaAd(e.target.value.toLocaleUpperCase("tr"))} placeholder="Ad Soyad" style={{...inputStyle,marginBottom:8}}/>
-          <input value={yeniHastaTel} onChange={e=>setYeniHastaTel(e.target.value)} placeholder="Telefon" style={{...inputStyle,marginBottom:8}}/>
+          <TelInput value={yeniHastaTel} onChange={setYeniHastaTel} style={{...inputStyle,marginBottom:8}}/>
           <div style={{fontSize:11,color:"#888",marginBottom:8}}>Bu bilgiler hastanın tüm geçmiş/gelecek randevu kayıtlarında da güncellenecek.</div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>onHastaDuzenle(r,yeniHastaAd,yeniHastaTel)} style={btnPrimary}>Kaydet</button>
@@ -2079,7 +2114,7 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
         <div style={{fontSize:13,color:"#888",marginTop:4}}>Süre: <strong>{bolgeEdit?yeniSure:r.sure} dk</strong></div>
         {r.notlar&&<div style={{fontSize:13,color:"#555",marginTop:6,fontStyle:"italic"}}>"{r.notlar}"</div>}
         {r.tel&&<div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}>
-          <span style={{fontSize:13,color:"#555"}}>📞 {r.tel}</span>
+          <span style={{fontSize:13,color:"#555"}}>📞 +90 {telefonNormalize(r.tel)}</span>
           <button onClick={()=>{
             const ad=r.hasta||"";
             const gunler=["Pazar","Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi"];
@@ -2087,8 +2122,8 @@ function RandevuDetay({randevu:r,hastalar,randevular,aktifRol,onDuzenle,onDurumG
             const gun=gunler[dt.getDay()];
             const unvan=r.cinsiyet==="Bay"?"BEY":"HANIM";
             const msg=`🌸 ${ad.toUpperCase()} ${unvan} MERHABALAR,\nDr. Duygu Coşkun Özbakır Kliniği'nden yazıyorum.\n${gun} günü saat ${r.saat}'daki lazer randevunuzu hatırlatmak istedim. 😊\nİşlemlerin planlanan şekilde ilerleyebilmesi için randevu saatinizden 5 dakika önce kliniğimizde olmanızı rica ederiz. Geç kalınması durumunda, sonraki randevuların aksamaması adına işlem süresinde kısıtlama gerekebilir.\nYoğun talep nedeniyle randevu planlamalarımızı düzenli sürdürebilmek adına, randevunuzu koruyabilmemiz için gün sonuna kadar dönüş yapmanızı rica ederiz.\nRandevunuza katılacaksanız "Evet", katılamayacaksanız "Hayır" şeklinde dönüş yapmanız yeterlidir. 😊\nAnlayışınız için teşekkür eder, sağlıklı günler dileriz. 🌸\nDr. Duygu Coşkun Özbakır Kliniği`;
-            const tel=r.tel.replace(/[^0-9]/g,"").slice(-10);
-            window.open(`https://wa.me/90${tel}?text=${encodeURIComponent(msg)}`,"_blank");
+            const ntel=telefonNormalize(r.tel);
+            window.open(`https://wa.me/90${ntel}?text=${encodeURIComponent(msg)}`,"_blank");
           }} style={{marginLeft:"auto",background:"#25d366",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>📱 WhatsApp</button>
         </div>}
       </div>
@@ -2610,6 +2645,7 @@ function BeklemeListesi({bekleme,aktifRol,showToast,onRandevuyaCevir,onSil,onEkl
   function toggleBolge(b){setBolgeler(prev=>prev.includes(b)?prev.filter(x=>x!==b):[...prev,b]);}
   async function kaydet(){
     if(!ad.trim()||!tel.trim()){showToast("Ad ve telefon zorunlu!","error");return;}
+    if(!telefonGecerliMi(tel)){showToast("Başında 0 olmadan 10 hane yazın. Örnek: 5321234567","error");return;}
     await onEkle({ad:ad.trim(),tel:tel.trim(),oda,bolgeler,tercihTarih,tercihSaat,notlar});
     setAd("");setTel("");setOda("alex");setBolgeler([]);setTercihTarih("");setTercihSaat("");setNotlar("");setFormAcik(false);
   }
@@ -2626,7 +2662,7 @@ function BeklemeListesi({bekleme,aktifRol,showToast,onRandevuyaCevir,onSil,onEkl
           <div style={{fontSize:14,fontWeight:600,color:"#4338ca",marginBottom:14}}>📋 Yeni Bekleme Kaydı</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
             <div><Label>Ad Soyad *</Label><input value={ad} onChange={e=>setAd(e.target.value.toLocaleUpperCase("tr"))} placeholder="Hasta adı" style={inputStyle}/></div>
-            <div><Label>Telefon *</Label><input value={tel} onChange={e=>setTel(e.target.value)} placeholder="0532 ..." style={inputStyle}/></div>
+            <div><Label>Telefon *</Label><TelInput value={tel} onChange={setTel} style={inputStyle}/></div>
           </div>
           <Label>Oda</Label>
           <div style={{display:"flex",gap:8,marginBottom:12}}>{[["alex","Alex Lazer"],["soprano","Soprano / Cilt / Forma"]].map(([k,l])=><button key={k} onClick={()=>{setOda(k);setBolgeler([]);}} style={chipStyle(oda===k)}>{l}</button>)}</div>
@@ -2797,8 +2833,8 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
   const [duzenCinsiyet,setDuzenCinsiyet]=useState("Bayan");
   const [gelmedPopup,setGelmedPopup]=useState(false);
   const [ad,setAd]=useState("");const [tel,setTel]=useState("");const [cinsiyet,setCinsiyet]=useState("Bayan");const [hastaIlkKez,setHastaIlkKez]=useState(false);
-  const filtreliHastalar=filtre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(filtre.toLowerCase())||h.tel?.includes(filtre)||h.hasta_id?.includes(filtre)):[];
-  async function kaydet(){if(!ad.trim())return;await hastaEkleDB(ad.trim(),tel.trim(),cinsiyet,hastaIlkKez);showToast("Hasta eklendi.");setForm(null);setAd("");setTel("");setCinsiyet("Bayan");setHastaIlkKez(false);}
+  const filtreliHastalar=filtre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(filtre.toLowerCase())||telefonNormalize(h.tel).includes(telefonNormalize(filtre))||h.hasta_id?.includes(filtre)):[];
+  async function kaydet(){if(!ad.trim())return;if(tel.trim()&&!telefonGecerliMi(tel)){showToast("Başında 0 olmadan 10 hane yazın. Örnek: 5321234567","error");return;}await hastaEkleDB(ad.trim(),tel.trim(),cinsiyet,hastaIlkKez);showToast("Hasta eklendi.");setForm(null);setAd("");setTel("");setCinsiyet("Bayan");setHastaIlkKez(false);}
 
   const hastaRandevular=seciliHasta?randevular.filter(r=>r.hasta?.toLowerCase().trim()===seciliHasta.ad?.toLowerCase().trim()).sort((a,b)=>a.tarih>b.tarih?1:-1):[];
   const gelmedListesi=hastaRandevular.filter(r=>r.durum==="Gelmedi"&&r.tarih>=GELMEDI_TAKIP_BASLANGIC);
@@ -2824,7 +2860,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
       {form==="yeni"&&(
         <div style={{background:"#fff",border:"1px solid #e0ddd5",borderRadius:10,padding:14,marginBottom:12}}>
           <input value={ad} onChange={e=>setAd(e.target.value.toLocaleUpperCase("tr"))} placeholder="Ad Soyad *" style={{...inputStyle,marginBottom:8}}/>
-          <input value={tel} onChange={e=>setTel(e.target.value)} placeholder="Telefon" style={{...inputStyle,marginBottom:8}}/>
+          <TelInput value={tel} onChange={setTel} style={{...inputStyle,marginBottom:8}}/>
           <div style={{display:"flex",gap:6,marginBottom:10}}>
             {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setCinsiyet(c)} style={{...chipStyle(cinsiyet===c),flex:1}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
           </div>
@@ -2851,7 +2887,7 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
             </div>
             <div style={{fontSize:15,fontWeight:600,marginBottom:12,color:"#333"}}>Hasta Bilgileri</div>
             <input value={duzenAd} onChange={e=>setDuzenAd(e.target.value.toLocaleUpperCase("tr"))} style={{...inputStyle,marginBottom:8}}/>
-            <input value={duzenTel} onChange={e=>setDuzenTel(e.target.value)} placeholder="Telefon" style={{...inputStyle,marginBottom:8}}/>
+            <TelInput value={duzenTel} onChange={setDuzenTel} style={{...inputStyle,marginBottom:8}}/>
             <div style={{display:"flex",gap:6,marginBottom:12}}>
               {["Bayan","Bay"].map(c=><button key={c} onClick={()=>setDuzenCinsiyet(c)} style={{...chipStyle(duzenCinsiyet===c),flex:1}}>{c==="Bayan"?"👩 Bayan":"👨 Bay"}</button>)}
             </div>
@@ -3396,8 +3432,8 @@ function AnketSonucSekme({aktifRol}){
     const hitap=a.cinsiyet==="Bay"?"Merhabalar "+ad+" Bey,":a.cinsiyet==="Bayan"?"Merhabalar "+ad+" Hanım,":"Merhaba Sayın "+(a.hasta||"değerli hastamız")+",";
     const msg=hitap+"\nKliniğimize verdiğiniz destek için teşekkür ederiz. Google'da yorum bırakarak diğer hastalarımıza da yardımcı olabilir ve bize destek verebilirsiniz.\nGoogle Yorum Butonu:\n"+GOOGLE_LINK;
     let tel=randevuTelMap.get(a.randevu_id)||"";
-    if(tel){tel=tel.replace(/\D/g,"");if(tel.startsWith("0"))tel="90"+tel.slice(1);if(!tel.startsWith("90"))tel="90"+tel;}
-    window.open("https://wa.me/"+(tel||"")+"?text="+encodeURIComponent(msg),"_blank");
+    const ntel=telefonNormalize(tel);
+    window.open("https://wa.me/"+(ntel?"90"+ntel:"")+"?text="+encodeURIComponent(msg),"_blank");
     try{
       await sbUpdate("anketler",a.id,{google_link_gonderildi:true});
       setAnketler(prev=>prev.map(x=>x.id===a.id?{...x,google_link_gonderildi:true}:x));
