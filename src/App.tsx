@@ -1963,7 +1963,8 @@ function RandevuForm({basData,hastalar,hastaEkleDB,aktifRol,onKaydet,onIptal,duz
     await onKaydet({id:basData.id||null,oda,hasta:aktifHasta,hastaId:aktifHastaId,tarih,saat,sure,bolgeler:seciliBolgeler,durum,odeme,notlar,tel:telefonNormalize(hastaTel),cinsiyet:hastaCinsiyet});
     setKayitYapiliyor(false);
   }
-  const filtreliHastalar=hastaFiltre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(hastaFiltre.toLowerCase())||h.hasta_id?.includes(hastaFiltre)||telefonNormalize(h.tel).includes(telefonNormalize(hastaFiltre))||(hastaFiltre.trim().length>=3&&benzerlik(h.ad,hastaFiltre)>=0.6)):[];
+  const _tfr=telefonNormalize(hastaFiltre);
+  const filtreliHastalar=hastaFiltre.trim().length>=1?hastalar.filter(h=>(h.ad||"").toLocaleLowerCase("tr").includes(hastaFiltre.toLocaleLowerCase("tr"))||h.hasta_id?.includes(hastaFiltre)||(_tfr.length>=2&&telefonNormalize(h.tel).includes(_tfr))||(hastaFiltre.trim().length>=3&&benzerlik(h.ad,hastaFiltre)>=0.6)):[];
   const otomatikSure=(()=>{const t=seciliBolgeler.reduce((s,b)=>s+(BOLGE_SURELER[b]||15),0);return durum==="Rütuş"?Math.ceil((t||15)/2):(t||15);})();
   const onizlemeRenk=islemRenk(seciliBolgeler,oda,durum);
   return(
@@ -2833,7 +2834,9 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
   const [duzenCinsiyet,setDuzenCinsiyet]=useState("Bayan");
   const [gelmedPopup,setGelmedPopup]=useState(false);
   const [ad,setAd]=useState("");const [tel,setTel]=useState("");const [cinsiyet,setCinsiyet]=useState("Bayan");const [hastaIlkKez,setHastaIlkKez]=useState(false);
-  const filtreliHastalar=filtre.trim().length>=1?hastalar.filter(h=>h.ad.toLowerCase().includes(filtre.toLowerCase())||telefonNormalize(h.tel).includes(telefonNormalize(filtre))||h.hasta_id?.includes(filtre)):[];
+  const _tf=telefonNormalize(filtre);
+  const filtreliHastalarTum=filtre.trim().length>=1?hastalar.filter(h=>(h.ad||"").toLocaleLowerCase("tr").includes(filtre.toLocaleLowerCase("tr"))||(_tf.length>=2&&telefonNormalize(h.tel).includes(_tf))||h.hasta_id?.includes(filtre)):[];
+  const filtreliHastalar=filtreliHastalarTum.slice(0,30);
   async function kaydet(){if(!ad.trim())return;if(tel.trim()&&!telefonGecerliMi(tel)){showToast("Başında 0 olmadan 10 hane yazın. Örnek: 5321234567","error");return;}await hastaEkleDB(ad.trim(),tel.trim(),cinsiyet,hastaIlkKez);showToast("Hasta eklendi.");setForm(null);setAd("");setTel("");setCinsiyet("Bayan");setHastaIlkKez(false);}
 
   const hastaRandevular=seciliHasta?randevular.filter(r=>r.hasta?.toLowerCase().trim()===seciliHasta.ad?.toLowerCase().trim()).sort((a,b)=>a.tarih>b.tarih?1:-1):[];
@@ -2978,7 +2981,9 @@ function HastalarSekme({hastalar,hastaEkleDB,hastaGuncelle,aktifRol,showToast,ra
         </div>
       ):(
         <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
-          {filtreliHastalar.length===0&&<div style={{padding:20,color:"#aaa",textAlign:"center"}}>Hasta bulunamadı.</div>}
+          {filtreliHastalar.length===0&&filtre.trim().length>=1&&<div style={{padding:20,color:"#aaa",textAlign:"center"}}>Hasta bulunamadı.</div>}
+          {filtreliHastalar.length===0&&filtre.trim().length===0&&<div style={{padding:20,color:"#aaa",textAlign:"center"}}>Aramak için isim, telefon veya ID yazın.</div>}
+          {filtreliHastalarTum.length>30&&<div style={{padding:"8px 16px",fontSize:12,color:"#6366f1",background:"#eef0ff",textAlign:"center"}}>{filtreliHastalarTum.length} sonuçtan ilk 30 gösteriliyor — daraltmak için yazmaya devam edin.</div>}
           {filtreliHastalar.map((h,i)=>(
             <div key={h.id} onClick={()=>{setSeciliHasta(h);setDuzenAd(h.ad);setDuzenTel(h.tel||"");setDuzenCinsiyet(h.cinsiyet||"Bayan");}} style={{padding:"12px 16px",borderBottom:i<filtreliHastalar.length-1?"1px solid #f0f0ec":"none",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}
               onMouseEnter={e=>e.currentTarget.style.background="#f7f7f5"}
