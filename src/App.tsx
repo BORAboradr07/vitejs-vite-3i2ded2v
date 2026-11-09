@@ -222,12 +222,16 @@ function bildirimGorunurMu(r,aktifRol){
   }
   return false;
 }
-function odaKapanisSaat(oda){
-  // Alex: son işlem 19:30'da bitecek şekilde; Soprano: son işlem 19:00'da bitecek şekilde
+const YENI_SAAT_TARIH="2026-12-01";
+function odaBaslangicSaat(tarih){ return tarih&&tarih>=YENI_SAAT_TARIH?10*60:9*60; }
+function odaKapanisSaat(oda,tarih){
+  if(tarih&&tarih>=YENI_SAAT_TARIH) return 19*60;
   return oda==="alex"?19*60+30:19*60;
 }
-// Alex yeni düzen (Vesile/Gülşah haftalık dönüşümlü: sabah 09:00-14:00, öğleden sonra 14:30-19:30) bu tarihten itibaren.
-// Öğle arası (14:00-14:30) kodda sabit değil — takvimde "Öğle Arası" bloğu olarak duruyor; yeri/süresi blok ile değiştirilebilir.
+// Alex yeni düzen (Vesile/Gülşah haftalık dönüşümlü) bu tarihten itibaren.
+// 1 Aralık 2026 öncesi: sabah 09:00-14:00, öğle arası 14:00-14:30, ö.s. 14:30-19:30
+// 1 Aralık 2026 sonrası: sabah 10:00-14:00, öğle arası 14:00-15:00, ö.s. 15:00-19:00
+// Öğle arası kodda sabit değil — takvimde "Öğle Arası" bloğu olarak duruyor.
 const ALEX_YENI_DUZEN="2026-10-02";
 const ALEX_DONUSUM_REF="2026-09-28"; // bu Pazartesi'nin haftası Vesile sabah, Gülşah öğleden sonra; her hafta yer değiştirir
 function alexHaftaDuzeni(tarih){
@@ -580,7 +584,12 @@ export default function App() {
     }
     const saatMin=timeToMin(data.saat);
     const bitisMin=saatMin+data.sure;
-    const kapanisSaat=odaKapanisSaat(data.oda);
+    const kapanisSaat=odaKapanisSaat(data.oda,tarihKontrol);
+    const acilisSaat=odaBaslangicSaat(tarihKontrol);
+    if(saatMin<acilisSaat){
+      showToast(`Klinik ${minToTime(acilisSaat)}'dan önce açılmıyor — bu saate randevu oluşturulamaz.`,"error");
+      return false;
+    }
     if(bitisMin>kapanisSaat){
       showToast(`${data.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu randevu o saatten sonra bitiyor, oluşturulamaz.`,"error");
       return false;
@@ -729,7 +738,7 @@ export default function App() {
       const r=randevular.find(x=>x.id===id);
       // Çakışma kontrolü - süre uzadıysa
       if(yeniSure>(r?.sure||0)){
-        const kapanisSaat=odaKapanisSaat(r.oda);
+        const kapanisSaat=odaKapanisSaat(r.oda,r.tarih);
         if(timeToMin(r.saat)+yeniSure>kapanisSaat){
           showToast(`${r.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(kapanisSaat)}'te kapanıyor — bu süre uzatması o saatten sonra bitiyor, uygulanamaz.`,"error");
           return;
@@ -753,7 +762,7 @@ export default function App() {
 
   async function randevuTasi(randevu, yeniSaat){
     try{
-      if(timeToMin(yeniSaat)+randevu.sure>odaKapanisSaat(randevu.oda)){showToast(`${randevu.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(odaKapanisSaat(randevu.oda))}'te kapanıyor — bu saate taşınamaz.`,"error");return false;}
+      if(timeToMin(yeniSaat)+randevu.sure>odaKapanisSaat(randevu.oda,randevu.tarih)){showToast(`${randevu.oda==="alex"?"Alex":"Soprano"} odası ${minToTime(odaKapanisSaat(randevu.oda,randevu.tarih))}'te kapanıyor — bu saate taşınamaz.`,"error");return false;}
       const cakisma=cakismaVar(randevu.oda,randevu.tarih,yeniSaat,randevu.sure,randevu.id,randevu.hasta);
       if(cakisma){
         if(cakisma.tip==="uyari"){
@@ -1194,7 +1203,7 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
   const [kumePopup,setKumePopup]=useState(null);
   function prevDay(){setSeciliTarih(addDays(seciliTarih,-1));}
   function nextDay(){setSeciliTarih(addDays(seciliTarih,1));}
-  const START=9*60,END=20*60,TOTAL=END-START;
+  const START=odaBaslangicSaat(seciliTarih),END=20*60,TOTAL=END-START;
   const STRIP_H=320;
 
   function ayniHastaBirlestir(liste){
@@ -1259,7 +1268,7 @@ function TakvimSekme({hastalar=[],seciliTarih,setSeciliTarih,alexR,sopR,gunB,blo
   }
   function renderOda(randevular,bloklar,odaId){
     const pazarMi=new Date(seciliTarih+"T00:00:00").getDay()===0;
-    const bitisSaat=odaKapanisSaat(odaId);
+    const bitisSaat=odaKapanisSaat(odaId,seciliTarih);
     const odaTotal=bitisSaat-START;
     const gercekBloklar=bloklar.filter(b=>b.baslik!=="DR_YOK");
     const birlesik=ayniHastaBirlestir(randevular);
@@ -1757,7 +1766,7 @@ function BosRandevuPanel({randevular,bloklar,setSeciliTarih,onYeniRandevu,onKapa
       if(dow===0)continue; // Pazar günleri her zaman atla
       if(gunFiltre==="haftaici"&&dow===6)continue;
       if(gunFiltre==="haftasonu"&&dow!==6)continue;
-      const S=9*60,E=odaKapanisSaat(oda);
+      const S=odaBaslangicSaat(tarih),E=odaKapanisSaat(oda,tarih);
       for(let t=S;t+sure<=E;t+=15){
         const saat=minToTime(t);const bitis=t+sure;
         if(saatFiltre==="sabah"&&t>=13*60)continue;
@@ -3023,8 +3032,8 @@ function DashboardSekme({randevular,bloklar,bekleme,setSeciliTarih,setAktifSekme
       const mesgul=[...gunR.map(r=>({b:timeToMin(r.saat),e:timeToMin(r.saat)+r.sure})),...gunB.map(b=>({b:timeToMin(b.saat),e:timeToMin(b.saat)+b.sure}))].sort((a,b)=>a.b-b.b);
       // Pazar günü ise boşluk gösterme
       if(new Date(tarih+"T00:00:00").getDay()===0) return;
-      let imlec=9*60;
-      const kapanis=odaKapanisSaat(oda);
+      let imlec=odaBaslangicSaat(tarih);
+      const kapanis=odaKapanisSaat(oda,tarih);
       mesgul.forEach(m=>{
         if(m.b>imlec+5){sonuc[oda].push({saat:minToTime(imlec),dk:m.b-imlec});}
         imlec=Math.max(imlec,m.e);
@@ -4070,7 +4079,7 @@ function AlexProgramSekme({aktifRol}){
   return(
     <div>
       <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>📋 Alex Çalışma Programı</h2>
-      <div style={{fontSize:12,color:"#888",marginBottom:14}}>Vesile ve Gülşah haftalık dönüşümlü çalışır. Sabah: 09:00-14:00 · Öğle arası: 14:00-14:30 · Öğleden sonra: 14:30-19:30{!duzenlenebilir&&" · Değişiklik yapmak için Yönetici veya Sorumlu yetkisi gerekli."}</div>
+      <div style={{fontSize:12,color:"#888",marginBottom:14}}>Vesile ve Gülşah haftalık dönüşümlü çalışır. {today()>=YENI_SAAT_TARIH?"Sabah: 10:00-14:00 · Öğle arası: 14:00-15:00 · Öğleden sonra: 15:00-19:00":"Sabah: 09:00-14:00 · Öğle arası: 14:00-14:30 · Öğleden sonra: 14:30-19:30"}{!duzenlenebilir&&" · Değişiklik yapmak için Yönetici veya Sorumlu yetkisi gerekli."}</div>
       <div style={{background:"#fff",border:"1px solid #e8e6e0",borderRadius:12,overflow:"hidden"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
           <thead>
