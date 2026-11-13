@@ -3476,11 +3476,12 @@ function AnketSonucSekme({aktifRol}){
                     <span style={{marginLeft:10,fontSize:22,fontWeight:700,color:"#16a34a"}}>10/10</span>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    {a.google_link_gonderildi?(
-                      <span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>✅ Link gönderildi</span>
-                    ):(
-                      <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#16a34a",display:"flex",alignItems:"center",gap:4}}>⭐ Google Linki Gönder</button>
-                    )}
+                    {(()=>{
+                      const suresi=a.tamamlama_tarih&&a.tamamlama_tarih<addDays(today(),-7);
+                      if(a.google_link_gonderildi) return <span style={{fontSize:12,color:"#f59e0b",fontWeight:600}}>Link yollandı.</span>;
+                      if(suresi) return <span style={{fontSize:12,color:"#dc2626",fontWeight:600}}>Link süresi geçtiği için inaktif oldu</span>;
+                      return <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:12,padding:"6px 14px",background:"#16a34a",display:"flex",alignItems:"center",gap:4}}>⭐ Google Linki Gönder</button>;
+                    })()}
                     <span style={{fontSize:11,color:"#888"}}>{a.tamamlama_tarih}</span>
                   </div>
                 </div>
@@ -3569,8 +3570,10 @@ function AnketSonucSekme({aktifRol}){
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div><span style={{fontWeight:600,fontSize:14}}>{a.hasta}</span><span style={{marginLeft:10,fontSize:22,fontWeight:700,color:a.puan>=9?"#16a34a":a.puan>=7?"#f59e0b":"#dc2626"}}>{a.puan}/10</span></div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    {a.puan===10&&(a.google_link_gonderildi?<span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✅ Link gönderildi</span>:<button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#16a34a"}}>⭐ Google Yorum</button>)}
-                    {a.puan===9&&(a.google_link_gonderildi?<span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✅ Link gönderildi</span>:a.google_link_onayli?<button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#16a34a"}}>⭐ Google Yorum</button>:<button onClick={()=>googleLinkOnayla(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#f59e0b"}}>📋 Link Butonu Oluştur</button>)}
+                    {(()=>{const suresi=a.tamamlama_tarih&&a.tamamlama_tarih<addDays(today(),-7);
+                      if(a.puan===10){if(a.google_link_gonderildi)return <span style={{fontSize:11,color:"#f59e0b",fontWeight:600}}>Link yollandı.</span>;if(suresi)return <span style={{fontSize:11,color:"#dc2626",fontWeight:600}}>Link süresi geçti</span>;return <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#16a34a"}}>⭐ Google Yorum</button>;}
+                      if(a.puan===9){if(a.google_link_gonderildi)return <span style={{fontSize:11,color:"#f59e0b",fontWeight:600}}>Link yollandı.</span>;if(suresi)return <span style={{fontSize:11,color:"#dc2626",fontWeight:600}}>Link süresi geçti</span>;if(a.google_link_onayli)return <button onClick={()=>googleGonder(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#16a34a"}}>⭐ Google Yorum</button>;return <button onClick={()=>googleLinkOnayla(a)} style={{...btnPrimary,fontSize:11,padding:"4px 10px",background:"#f59e0b"}}>📋 Link Butonu Oluştur</button>;}
+                      return null;})()}
                     <span style={{fontSize:11,color:"#888"}}>{a.tamamlama_tarih}</span>
                   </div>
                 </div>
